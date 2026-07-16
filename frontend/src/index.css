@@ -1,0 +1,146 @@
+@import "tailwindcss";
+
+/**
+ * Theme tokens (Tailwind v4, CSS-first).
+ *
+ * Every custom colour, font, and animation lives here -- v4 generates the
+ * matching utilities straight from these variables, so there is no
+ * tailwind.config.js. `--color-primary` yields bg-primary / text-primary /
+ * border-primary, `--font-mono` yields font-mono, `--animate-fade-in` yields
+ * animate-fade-in.
+ *
+ * Values are plain hex. v4 applies opacity modifiers (bg-primary/10) with
+ * color-mix(), so the old "space-separated RGB channels" trick that v3 needed
+ * for <alpha-value> is obsolete -- and actively harmful now, since a bare
+ * `0 255 133` is not a colour any CSS property accepts.
+ *
+ * Dark base, terminal green primary. Nothing in a component should hardcode a
+ * colour; if a value is missing, add a token here.
+ */
+@theme {
+  /* surfaces, back to front */
+  --color-bg: #070a08;
+  --color-surface: #0f1410;
+  --color-surface-raised: #171f19;
+  --color-border: #222e25;
+
+  /* text */
+  --color-foreground: #d6f5db;
+  --color-muted: #74907c;
+
+  /* terminal green */
+  --color-primary: #00ff85;
+  --color-primary-strong: #00d16c;
+  /* Text on a primary fill. Near-black, because green this bright fails
+     contrast against white by a wide margin. */
+  --color-primary-foreground: #04120a;
+
+  --color-secondary: #00d1ff;
+  --color-secondary-foreground: #031218;
+
+  /* status */
+  --color-error: #ff5656;
+  --color-warn: #ffb829;
+  --color-info: #60aaff;
+
+  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Consolas,
+    monospace;
+
+  --animate-fade-in: fade-in 150ms ease-out;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-bg text-foreground font-mono antialiased;
+  }
+
+  ::selection {
+    @apply bg-primary/30 text-foreground;
+  }
+
+  /* Focus must stay visible: this app asks people to retype channel codes and
+     passphrases, and keyboard users need to see where they are. */
+  :focus-visible {
+    outline: 2px solid --alpha(var(--color-primary) / 70%);
+    outline-offset: 2px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-bg;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-border rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-primary/40;
+  }
+
+  input,
+  textarea {
+    @apply bg-surface-raised text-foreground placeholder:text-muted;
+  }
+}
+
+@layer components {
+  /* Listed as one selector group rather than having the variants @apply .btn.
+     v4's @apply only accepts real utilities, so applying a component class
+     defined in this same layer fails to build. */
+  .btn,
+  .btn-primary,
+  .btn-ghost,
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded px-4 py-2 text-sm font-medium
+           transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply bg-primary text-primary-foreground hover:bg-primary-strong;
+  }
+
+  .btn-ghost {
+    @apply border border-border bg-surface-raised text-foreground hover:border-primary/50
+           hover:text-primary;
+  }
+
+  .btn-danger {
+    @apply border border-error/40 bg-error/10 text-error hover:bg-error/20;
+  }
+
+  .field {
+    @apply w-full rounded border border-border bg-surface-raised px-3 py-2 text-sm outline-none
+           transition-colors focus:border-primary/60;
+  }
+
+  .card {
+    @apply rounded-lg border border-border bg-surface p-4;
+  }
+
+  .tag {
+    @apply inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase
+           tracking-wider;
+  }
+}
