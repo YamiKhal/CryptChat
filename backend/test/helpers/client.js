@@ -21,7 +21,15 @@ const sodium = require('libsodium-wrappers-sumo');
  * disagree, that disagreement is the bug.
  */
 
-const API = process.env.TEST_API_URL || 'http://localhost:3000';
+/**
+ * Where the emulator points.
+ *
+ * TEST_PORT lets a suite run on a free port when 3000 is taken (a dev server,
+ * or two suites at once). The server helper reads the same variable, so the two
+ * cannot drift apart.
+ */
+const TEST_PORT = process.env.TEST_PORT || '3000';
+const API = process.env.TEST_API_URL || `http://localhost:${TEST_PORT}`;
 
 let ready = false;
 export async function initCrypto() {

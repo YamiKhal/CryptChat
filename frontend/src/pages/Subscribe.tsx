@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Crown, Check, Loader2 } from 'lucide-react';
-import { api } from '../lib/api';
+import { Crown, Check, Loader2, Gift } from 'lucide-react';
+import { api, Plan } from '../lib/api';
 
 /**
  * Buying a subscription, deliberately while logged out.
@@ -22,16 +22,49 @@ export default function Subscribe() {
   const sessionId = params.get('session_id');
   const done = window.location.pathname.endsWith('/done');
 
+  const [plans, setPlans] = useState<Plan[] | null>(null);
+  const [mode, setMode] = useState<'subscription' | 'gift'>('subscription');
+  const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    if (done) return;
+    let cancelled = false;
+    api
+      .plans()
+      .then((res) => {
+        if (cancelled) return;
+        setPlans(res.plans);
+        // Default to the first subscription plan, so the button is never dead.
+        setSelected(res.plans.find((p) => p.kind === 'subscription')?.slug ?? null);
+      })
+      .catch((err) => !cancelled && setError((err as Error).message));
+    return () => {
+      cancelled = true;
+    };
+  }, [done]);
+
   if (done) return <Done sessionId={sessionId} />;
 
+  const shown = (plans ?? []).filter((p) => p.kind === mode);
+
+  function pickMode(next: 'subscription' | 'gift') {
+    setMode(next);
+    // Carry the selection across tabs by duration where possible -- someone
+    // eyeing a 3-month plan who switches to gifting most likely wants 3 months.
+    const current = plans?.find((p) => p.slug === selected);
+    const match = plans?.find((p) => p.kind === next && p.months === current?.months);
+    setSelected(match?.slug ?? plans?.find((p) => p.kind === next)?.slug ?? null);
+  }
+
   async function handleCheckout() {
+    if (!selected) return;
     setError('');
     setBusy(true);
     try {
-      const { url } = await api.startCheckout();
+      // A slug, never a price id. The server maps it.
+      const { url } = await api.startCheckout(selected);
       // Stripe-hosted: no card data ever touches this origin, which is why there
       // is no publishable key and no PCI surface here.
       window.location.href = url;
@@ -43,7 +76,7 @@ export default function Subscribe() {
 
   return (
     <div className="min-h-screen grid place-items-center p-4">
-      <div className="w-full max-w-sm space-y-4">
+      <div className="w-full max-w-sm space-y-4 py-8">
         <header className="space-y-1 text-center">
           <h1 className="flex items-center justify-center gap-2 text-2xl font-bold tracking-tight text-primary">
             <Crown size={22} className="fill-warn/25 text-warn" aria-hidden="true" />
@@ -80,6 +113,62 @@ export default function Subscribe() {
         </section>
 
         <section className="card space-y-3">
+          {/* Subscribe vs gift. Different Stripe products, and genuinely
+              different things: one renews, the other is a code you hand over. */}
+          <div className="grid grid-cols-2 gap-1 rounded border border-border p-0.5">
+            {(['subscription', 'gift'] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => pickMode(m)}
+                className={`rounded px-2 py-1.5 text-xs transition-colors ${
+                  mode === m ? 'bg-primary/15 text-primary' : 'text-muted hover:text-foreground'
+                }`}
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  {m === 'gift' && <Gift size={12} aria-hidden="true" />}
+                  {m === 'subscription' ? 'Subscribe' : 'Gift a code'}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {plans === null && <p className="py-4 text-center text-xs text-muted">loading…</p>}
+
+          {plans !== null && shown.length === 0 && (
+            <p className="py-4 text-center text-xs text-muted">
+              {mode === 'gift' ? 'Gift codes are not available yet.' : 'Nothing is on sale yet.'}
+            </p>
+          )}
+
+          <div className="space-y-1.5">
+            {shown.map((plan) => (
+              <button
+                key={plan.slug}
+                onClick={() => setSelected(plan.slug)}
+                className={`flex w-full items-center justify-between rounded border px-3 py-2.5
+                  text-left transition-colors ${
+                    selected === plan.slug
+                      ? 'border-primary/60 bg-primary/10'
+                      : 'border-border hover:border-primary/30'
+                  }`}
+              >
+                <span className="text-sm">{plan.label}</span>
+                <span className="text-[11px] text-muted">{plan.blurb}</span>
+              </button>
+            ))}
+          </div>
+
+          {mode === 'gift' && shown.length > 0 && (
+            <p className="rounded border border-info/30 bg-info/10 p-3 text-[11px] text-info">
+              A gift is a code, not a subscription — nothing renews and there is nothing to cancel.
+              The months start when it is <em>redeemed</em>, not today, so it keeps indefinitely. If
+              whoever redeems it already has a subscription, the months are held in reserve and
+              start once that subscription stops renewing. Nobody pays for time they were given.
+            </p>
+          )}
+        </section>
+
+        <section className="card space-y-3">
           <h2 className="text-xs uppercase tracking-wider text-muted">how this works</h2>
           <ol className="space-y-2 text-[11px] text-muted">
             <li>
@@ -87,12 +176,11 @@ export default function Subscribe() {
               your account to Stripe — we do not send one, because you are not logged in.
             </li>
             <li>
-              <span className="text-foreground">2.</span> You get a redemption code, by email and on
-              the next screen.
+              <span className="text-foreground">2.</span> You get a redemption code by email.
             </li>
             <li>
-              <span className="text-foreground">3.</span> You enter the code in Settings. That is
-              what turns the badge on.
+              <span className="text-foreground">3.</span> {mode === 'gift' ? 'Whoever you give it to enters' : 'You enter'} the
+              code in Settings. That is what turns the badge on.
             </li>
           </ol>
           <p className="rounded border border-info/30 bg-info/10 p-3 text-[11px] text-info">
@@ -107,8 +195,12 @@ export default function Subscribe() {
           <p className="rounded border border-error/30 bg-error/10 p-4 text-xs text-error">{error}</p>
         )}
 
-        <button onClick={handleCheckout} disabled={busy} className="btn-primary w-full">
-          {busy ? 'redirecting…' : 'Subscribe'}
+        <button
+          onClick={handleCheckout}
+          disabled={busy || !selected}
+          className="btn-primary w-full"
+        >
+          {busy ? 'redirecting…' : mode === 'gift' ? 'Buy gift code' : 'Subscribe'}
         </button>
 
         <Link to="/" className="block text-center text-xs text-muted hover:text-foreground">
@@ -193,12 +285,13 @@ function Done({ sessionId }: { sessionId: string | null }) {
               <Crown size={24} className="mx-auto fill-warn/25 text-warn" aria-hidden="true" />
               <p className="text-sm">Thank you — payment confirmed.</p>
               <p className="rounded border border-info/30 bg-info/10 p-3 text-left text-[11px] text-info">
-                Your redemption code has been emailed to you. Log in, then enter it under{' '}
-                <span className="font-medium">Settings → Subscription</span> to turn on your badge.
+                Your code has been emailed to you. Enter it under{' '}
+                <span className="font-medium">Settings → Subscription</span> — or pass it on, if it
+                was a gift.
               </p>
               <p className="text-[11px] text-muted">
-                We can only show the code once and we store just a hash of it, so nobody — including
-                us — can look it up later. Keep the email until you have redeemed it.
+                We store only a hash of the code, so nobody — including us — can look it up or
+                re-send it. Keep the email until it has been redeemed.
               </p>
             </>
           )}

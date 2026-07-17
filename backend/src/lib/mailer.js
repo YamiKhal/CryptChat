@@ -167,19 +167,44 @@ export async function sendResetMail(to, token) {
   });
 }
 
-export async function sendRedemptionMail(to, code) {
+export async function sendRedemptionMail(to, code, { months = 0, isGift = false } = {}) {
+  const period = months === 1 ? '1 month' : `${months} months`;
+
+  const giftBody = [
+    `Thanks. Here is your gift code, good for ${period} of CryptChat Supporter:`,
+    '',
+    `    ${code}`,
+    '',
+    'Give it to whoever you like, or keep it. Whoever redeems it enters it under',
+    'Settings > Subscription in the app.',
+    '',
+    `The ${period} start when the code is redeemed, not today -- so there is no`,
+    'rush, and nothing is lost by holding on to it. The code does not expire.',
+    '',
+    'If the person redeeming it already has a subscription, the gifted months are',
+    'held in reserve and start once that subscription stops renewing. They will',
+    'never pay for time they were given.',
+    '',
+    'This code is the only link between this payment and an account, and we store',
+    'only a hash of it -- we cannot look it up or re-send it. Keep this email',
+    'until it has been redeemed.',
+  ];
+
+  const subscriptionBody = [
+    'Thanks for subscribing. Here is your redemption code:',
+    '',
+    `    ${code}`,
+    '',
+    'Enter it under Settings > Subscription in the app to activate your badge.',
+    '',
+    'This code is the only link between this payment and an account, and we store',
+    'only a hash of it -- we cannot look it up or re-send it. Keep this email',
+    'until you have redeemed it.',
+  ];
+
   await send({
     to,
-    subject: 'Your CryptChat subscription code',
-    text: [
-      'Thanks for subscribing. Here is your redemption code:',
-      '',
-      `    ${code}`,
-      '',
-      'Enter it under Settings > Subscription in the app to activate your badge.',
-      '',
-      'This code is the only link between this payment and an account, and we',
-      'store only a hash of it. Keep it until you have redeemed it.',
-    ].join('\n'),
+    subject: isGift ? `Your CryptChat gift code (${period})` : 'Your CryptChat subscription code',
+    text: (isGift ? giftBody : subscriptionBody).join('\n'),
   });
 }

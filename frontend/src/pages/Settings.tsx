@@ -10,10 +10,9 @@ import {
   EncryptedBundle,
 } from '../lib/crypto';
 import { saveAccount, Vault } from '../lib/vault';
-import { Crown, ExternalLink } from 'lucide-react';
 import { api, EmailState, Badge as BadgeState } from '../lib/api';
 import Avatar from '../components/Avatar';
-import Badge from '../components/Badge';
+import SubscriptionSection from '../components/SubscriptionSection';
 
 export default function Settings() {
   const session = useSession();
@@ -197,7 +196,18 @@ export default function Settings() {
       const res = await api.redeem(session.token!, redeemCode.trim());
       setBadge(res.badge);
       setRedeemCode('');
-      setStatus({ kind: 'ok', text: 'Badge activated.' });
+
+      const months = res.redeemed.months ?? 0;
+      const period = months === 1 ? '1 month' : `${months} months`;
+
+      // "Redeemed!" with an unchanged expiry date reads as a bug. Say where the
+      // months went.
+      setStatus({
+        kind: 'ok',
+        text: res.redeemed.parked
+          ? `${period} banked. They start when your current subscription stops renewing — you will not pay for gifted time.`
+          : 'Badge activated.',
+      });
     } catch (err) {
       setStatus({ kind: 'error', text: (err as Error).message });
     } finally {
@@ -527,83 +537,14 @@ export default function Settings() {
       </section>
 
       {/* subscription */}
-      <section className="card space-y-3">
-        <h2 className="text-xs uppercase tracking-wider text-muted">subscription</h2>
-
-        {badge ? (
-          <>
-            <p className="flex items-center gap-2 text-xs">
-              <Badge since={badge.since} size="md" withLabel />
-              <span className="text-muted">since {new Date(badge.since).toLocaleDateString()}</span>
-            </p>
-            <p className="text-[11px] text-muted">
-              Your badge is the only record. We store no payment details and your account is not
-              linked to your payment in our database — the badge and the purchase are connected only
-              by a random code you redeemed.
-            </p>
-
-            {portalUrl ? (
-              <>
-                <a
-                  href={portalUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn-ghost block w-full text-center text-xs"
-                >
-                  <span className="inline-flex items-center gap-1.5">
-                    Manage or cancel
-                    <ExternalLink size={11} aria-hidden="true" />
-                  </span>
-                </a>
-                <p className="text-[11px] text-muted">
-                  Cancelling happens on Stripe, not here — enter the email you paid with and they
-                  will send you a link. We cannot do it for you: we never stored who paid, which is
-                  the point. Your badge stays until{' '}
-                  {new Date(badge.until).toLocaleDateString()} either way — you paid for that time.
-                </p>
-              </>
-            ) : (
-              <p className="rounded border border-warn/30 bg-warn/10 p-3 text-[11px] text-warn">
-                Cancellation is not configured on this deployment. Contact support to cancel.
-              </p>
-            )}
-          </>
-        ) : (
-          <>
-            <p className="text-xs text-muted">No subscription on this account.</p>
-            <label className="block space-y-1">
-              <span className="text-xs text-muted">redemption code</span>
-              <input
-                className="field font-mono"
-                value={redeemCode}
-                onChange={(e) => setRedeemCode(e.target.value)}
-                placeholder="XXXXX-XXXXX-XXXXX-XXXXX"
-                autoCapitalize="characters"
-                autoCorrect="off"
-                spellCheck={false}
-              />
-            </label>
-            <button
-              className="btn-ghost w-full text-xs"
-              disabled={busy || !redeemCode.trim()}
-              onClick={handleRedeem}
-            >
-              redeem
-            </button>
-            <p className="text-[11px] text-muted">
-              Subscriptions are bought logged out and redeemed with a code, so the payment is never
-              tied to this account on our side.
-            </p>
-
-            <Link to="/subscribe" className="btn-primary block w-full text-center text-xs">
-              <span className="inline-flex items-center gap-1.5">
-                <Crown size={13} className="fill-warn/25" aria-hidden="true" />
-                Become a supporter
-              </span>
-            </Link>
-          </>
-        )}
-      </section>
+      <SubscriptionSection
+        badge={badge}
+        portalUrl={portalUrl}
+        redeemCode={redeemCode}
+        onCodeChange={setRedeemCode}
+        onRedeem={handleRedeem}
+        busy={busy}
+      />
 
       {/* export */}
       <section className="card space-y-3">

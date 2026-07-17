@@ -30,6 +30,22 @@ export interface Badge {
   /** When the badge was granted -- the record of when they subscribed. */
   since: string;
   until: string;
+  /**
+   * Gifted months banked but not yet counting.
+   *
+   * Parked while something else already covers the account, so nobody burns
+   * gifted time they are simultaneously paying for. Starts automatically once
+   * nothing else is active.
+   */
+  creditMonths?: number;
+}
+
+export interface Plan {
+  slug: string;
+  kind: 'subscription' | 'gift';
+  months: number;
+  label: string;
+  blurb: string;
 }
 
 export interface MeResponse {
@@ -206,8 +222,20 @@ export const api = {
       token
     ),
 
-  /** Anonymous by design: no session travels with the checkout. */
-  startCheckout: () => request<{ url: string }>('/billing/checkout', { method: 'POST' }),
+  /** What is on sale. Unconfigured plans are simply absent. */
+  plans: () => request<{ plans: Plan[]; billingEnabled: boolean }>('/billing/plans'),
+
+  /**
+   * Anonymous by design: no session travels with the checkout.
+   *
+   * Sends a plan *slug*, never a price id — the server maps it. A price id from
+   * the browser would let anyone check out against any price on the account.
+   */
+  startCheckout: (plan: string) =>
+    request<{ url: string }>('/billing/checkout', {
+      method: 'POST',
+      body: JSON.stringify({ plan }),
+    }),
 
   /**
    * Confirm a completed checkout.
@@ -221,7 +249,15 @@ export const api = {
     request<{ mailed?: true; pending?: true }>(`/billing/code/${encodeURIComponent(sessionId)}`),
 
   redeem: (token: string, code: string) =>
-    request<{ badge: Badge }>('/billing/redeem', { method: 'POST', body: JSON.stringify({ code }) }, token),
+    request<{
+      badge: Badge | null;
+      redeemed: {
+        kind: 'subscription' | 'gift';
+        months: number | null;
+        /** True when gifted months were banked rather than started. */
+        parked: boolean;
+      };
+    }>('/billing/redeem', { method: 'POST', body: JSON.stringify({ code }) }, token),
 
   createChannel: (token: string) =>
     request<{ channelId: string; code: string; codeExpiresAt: string; members: MemberInfo[] }>(

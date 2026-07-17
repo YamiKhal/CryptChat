@@ -135,14 +135,54 @@ if (isProd && !rateLimitsEnabled) {
 // Billing is optional -- the app is complete without it. But a half-configured
 // Stripe is worse than none: checkout would take money and the webhook that
 // grants the entitlement would never verify, so the buyer pays and gets nothing.
+/**
+ * Price ids, one per purchasable plan.
+ *
+ * Explicit env vars rather than a lookup at boot: resolving prices from Stripe
+ * would put a network call and a third-party outage on the startup path, for
+ * values that change about once a year.
+ *
+ * STRIPE_PRICE_ID (the old single-price variable) is still read as the monthly
+ * price so an existing deployment does not break on this upgrade.
+ */
+const prices = {
+  monthly: process.env.STRIPE_PRICE_MONTHLY || '',
+  quarterly: process.env.STRIPE_PRICE_QUARTERLY || '',
+  semiannual: process.env.STRIPE_PRICE_SEMIANNUAL || '',
+  yearly: process.env.STRIPE_PRICE_YEARLY || '',
+  gift1: process.env.STRIPE_GIFT_PRICE_1M || '',
+  gift3: process.env.STRIPE_GIFT_PRICE_3M || '',
+  gift6: process.env.STRIPE_GIFT_PRICE_6M || '',
+  gift12: process.env.STRIPE_GIFT_PRICE_12M || '',
+};
+
 if (process.env.STRIPE_SECRET_KEY) {
-  const missing = ['STRIPE_WEBHOOK_SECRET', 'STRIPE_PRICE_ID'].filter((n) => !process.env[n]);
+  const missing = ['STRIPE_WEBHOOK_SECRET'].filter((n) => !process.env[n]);
   if (missing.length) {
     console.error(
       `FATAL: STRIPE_SECRET_KEY is set but ${missing.join(' and ')} ${missing.length > 1 ? 'are' : 'is'} missing.\n` +
         '  A checkout without a verified webhook charges the customer and never grants the entitlement.'
     );
     process.exit(1);
+  }
+
+  // At least one price, or billing is switched on with nothing to sell: the
+  // subscribe page renders an empty list and every checkout 400s.
+  if (!Object.values(prices).some(Boolean)) {
+    console.error(
+      'FATAL: STRIPE_SECRET_KEY is set but no price is configured. Refusing to start.\n' +
+        '  Set at least STRIPE_PRICE_MONTHLY. See stripe.md.'
+    );
+    process.exit(1);
+  }
+
+  // Unconfigured plans are simply not offered, so a partial setup is valid --
+  // but it is far more often a forgotten paste than a deliberate choice.
+  const unset = Object.entries(prices)
+    .filter(([, v]) => !v)
+    .map(([k]) => k);
+  if (unset.length) {
+    console.warn(`WARNING: no price configured for: ${unset.join(', ')}. Those plans are hidden.`);
   }
 
   // A warning, not a boot failure: billing genuinely works without it. But we
@@ -237,7 +277,10 @@ export const config = {
     enabled: Boolean(process.env.STRIPE_SECRET_KEY),
     secretKey: process.env.STRIPE_SECRET_KEY || '',
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
-    priceId: process.env.STRIPE_PRICE_ID || '',
+
+    // Slug -> Stripe price id. See lib/plans.js; a plan with no price here is
+    // never offered and cannot be checked out.
+    prices,
 
     /**
      * Stripe's hosted Customer Portal *login* page.

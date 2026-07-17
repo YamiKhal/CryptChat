@@ -250,6 +250,41 @@ CREATE TABLE IF NOT EXISTS entitlements (
 
 CREATE INDEX IF NOT EXISTS entitlements_user_idx ON entitlements (user_id, status);
 
+-- 'subscription' | 'gift'. A subscription's clock is Stripe's (it renews and
+-- invoice.paid extends it). A gift is a one-off payment worth N months, which
+-- Stripe has no way to express -- so the duration lives here.
+ALTER TABLE entitlements ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'subscription';
+
+-- Months a gift is worth. Null for subscriptions, where Stripe owns the period.
+ALTER TABLE entitlements ADD COLUMN IF NOT EXISTS duration_months INT;
+
+-- Nullable, because an unredeemed gift has no expiry *yet*.
+--
+-- This is the crux of the gift model: the clock starts when the code is
+-- redeemed, not when it is bought. Someone who buys a 12-month gift in January
+-- and hands it over in June must give the recipient 12 months from June. Setting
+-- expires_at at purchase would silently burn the difference.
+ALTER TABLE entitlements ALTER COLUMN expires_at DROP NOT NULL;
+
+-- Unredeemed gift codes never expire. Prepaid value with an expiry date is
+-- restricted or outright banned in much of the EU and US, and an unredeemed row
+-- grants nothing anyway -- the only cost of keeping it is one dead row.
+--
+-- status values:
+--   unredeemed -- bought, code outstanding, grants nothing
+--   credit     -- gift redeemed but PARKED: the account has an active
+--                 subscription, so these months must not burn yet
+--   active     -- currently granting time; expires_at is meaningful
+--   cancelled  -- subscription cancelled at Stripe; runs out its paid period
+--   expired    -- ran out
+--
+-- 'credit' is the interesting one. Without it, redeeming a gift while
+-- subscribed would extend an expiry the subscription is already paying to
+-- extend -- so the user would pay for months they had been given. Parked credit
+-- waits until no subscription is active, then starts counting. See badgeFor().
+CREATE INDEX IF NOT EXISTS entitlements_credit_idx
+  ON entitlements (user_id, kind, status) WHERE status = 'credit';
+
 -- Stripe retries webhooks and does not promise exactly-once. Without this, a
 -- retried invoice.paid extends the subscription twice.
 CREATE TABLE IF NOT EXISTS billing_events (

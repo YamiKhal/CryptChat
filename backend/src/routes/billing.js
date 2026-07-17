@@ -7,6 +7,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { billingLimiter } from '../middleware/security.js';
 import { issueRedemptionCode, redemptionIndex } from '../lib/identityCrypto.js';
 import { sendRedemptionMail } from '../lib/mailer.js';
+import { resolvePlan, availablePlans, checkoutMode } from '../lib/plans.js';
 
 /**
  * Subscriptions, deliberately not joined to a payment identity.
@@ -32,7 +33,7 @@ import { sendRedemptionMail } from '../lib/mailer.js';
 const router = Router();
 
 const stripe = config.billing.enabled
-  ? new Stripe(config.billing.secretKey, { apiVersion: '2024-06-20' })
+  ? new Stripe(config.billing.secretKey, { apiVersion: '2026-06-24.dahlia' })
   : null;
 
 /* ------------------------------------------------------------------ */
@@ -49,17 +50,115 @@ const stripe = config.billing.enabled
  */
 export async function badgeFor(userId) {
   const result = await pool.query(
-    `SELECT granted_at, expires_at FROM entitlements
-      WHERE user_id = $1 AND status = 'active' AND expires_at > now()
-      ORDER BY expires_at DESC LIMIT 1`,
+    `SELECT id, kind, status, granted_at, expires_at, duration_months
+       FROM entitlements
+      WHERE user_id = $1 AND status IN ('active', 'cancelled', 'credit')
+      ORDER BY expires_at DESC NULLS LAST`,
     [userId]
   );
-  if (result.rowCount === 0) return null;
 
-  const row = result.rows[0];
-  // `since` is the badge grant date, which the user asked to keep as the record
-  // of when they subscribed. It is not a payment date and carries no amount.
-  return { active: true, since: row.granted_at, until: row.expires_at };
+  const rows = result.rows;
+  const now = Date.now();
+  const live = rows.filter((r) => r.expires_at && new Date(r.expires_at).getTime() > now);
+
+  if (live.length > 0) {
+    // Something is already granting time. Any parked credit stays parked --
+    // that is the whole point of parking it.
+    const best = live[0];
+    const parkedMonths = rows
+      .filter((r) => r.status === 'credit')
+      .reduce((n, r) => n + (r.duration_months ?? 0), 0);
+
+    return {
+      active: true,
+      // The badge grant date -- the record of when they subscribed. Not a
+      // payment date, and it carries no amount.
+      since: best.granted_at,
+      until: best.expires_at,
+      creditMonths: parkedMonths,
+    };
+  }
+
+  // Nothing live. If gift credit is parked, now is when it starts counting.
+  const parked = rows.filter((r) => r.status === 'credit');
+  if (parked.length === 0) return null;
+
+  const activated = await activateOldestCredit(userId);
+  if (!activated) return null;
+
+  const stillParked = parked
+    .filter((r) => r.id !== activated.id)
+    .reduce((n, r) => n + (r.duration_months ?? 0), 0);
+
+  return {
+    active: true,
+    since: activated.granted_at,
+    until: activated.expires_at,
+    creditMonths: stillParked,
+  };
+}
+
+/**
+ * Start the clock on the oldest parked gift.
+ *
+ * Called lazily, from the read path, when an account has credit but nothing
+ * currently granting time. A write inside a read is not free, but the
+ * alternative is a cron sweeping every account every minute to notice the exact
+ * moment a subscription lapsed -- far more machinery, and wrong between ticks.
+ * This only ever fires on the first request after the account goes uncovered.
+ *
+ * Oldest first, and one at a time: two 3-month gifts are six months in sequence,
+ * not three months twice. Credits queue; they never run in parallel.
+ *
+ * The advisory lock serialises redeem/activate for one user, so two concurrent
+ * requests cannot both activate the same credit or burn two at once. It is
+ * transaction-scoped and released on commit or rollback.
+ */
+async function activateOldestCredit(userId) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [userId]);
+
+    // Re-check under the lock: another request may have activated one while we
+    // were waiting for it, in which case there is nothing to do.
+    const covered = await client.query(
+      `SELECT 1 FROM entitlements
+        WHERE user_id = $1 AND status IN ('active', 'cancelled') AND expires_at > now()
+        LIMIT 1`,
+      [userId]
+    );
+    if (covered.rowCount > 0) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+
+    const activated = await client.query(
+      `UPDATE entitlements SET
+         status = 'active',
+         expires_at = now() + (duration_months || ' months')::interval
+       WHERE id = (
+         SELECT id FROM entitlements
+          WHERE user_id = $1 AND status = 'credit'
+          ORDER BY granted_at ASC
+          LIMIT 1
+          FOR UPDATE
+       )
+       RETURNING id, granted_at, expires_at`,
+      [userId]
+    );
+
+    await client.query('COMMIT');
+    return activated.rowCount ? activated.rows[0] : null;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    // A failure to activate must not break /auth/me. The credit is still parked
+    // and the next request will try again.
+    console.error('activating gift credit failed:', err.message);
+    return null;
+  } finally {
+    client.release();
+  }
 }
 
 router.get('/status', requireAuth, async (req, res, next) => {
@@ -93,17 +192,32 @@ router.post('/checkout', billingLimiter, async (req, res, next) => {
   try {
     if (!stripe) return res.status(404).json({ error: 'billing is not enabled' });
 
+    // The client sends a slug, never a price id. A price id from the browser
+    // would let someone check out against any price on the account -- the
+    // cheapest one, or a leftover test price at zero -- and take 12 months free.
+    const plan = resolvePlan(req.body?.plan);
+    if (!plan) return res.status(400).json({ error: 'unknown plan' });
+
     const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
-      line_items: [{ price: config.billing.priceId, quantity: 1 }],
+      mode: checkoutMode(plan),
+      line_items: [{ price: plan.priceId, quantity: 1 }],
       success_url: `${config.publicAppUrl}/subscribe/done?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${config.publicAppUrl}/subscribe`,
+      // Set by us, server-side, so the webhook can trust it. Stripe has no way
+      // to express "this one-off payment is worth 3 months", so the duration has
+      // to ride along here.
+      metadata: { plan: plan.slug, kind: plan.kind, months: String(plan.months) },
     });
 
     res.json({ url: session.url });
   } catch (err) {
     next(err);
   }
+});
+
+/** What is actually on sale. Drives the picker; unconfigured plans are absent. */
+router.get('/plans', (req, res) => {
+  res.json({ plans: availablePlans(), billingEnabled: config.billing.enabled });
 });
 
 /**
@@ -167,15 +281,60 @@ router.post('/redeem', requireAuth, billingLimiter, async (req, res, next) => {
     }
 
     await client.query('BEGIN');
+    // Serialise redeem/activate for this account, so two codes redeemed at once
+    // cannot both read the same "is anything covering them" answer and both
+    // start burning.
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [req.userId]);
 
-    // Claim atomically. Two tabs submitting the same code would otherwise both
-    // see it unredeemed and the second would overwrite the first's user_id.
+    // Is anything already granting time? Decides whether a gift starts counting
+    // now or waits.
+    const covered = await client.query(
+      `SELECT 1 FROM entitlements
+        WHERE user_id = $1 AND status IN ('active', 'cancelled') AND expires_at > now()
+        LIMIT 1`,
+      [req.userId]
+    );
+    const alreadyCovered = covered.rowCount > 0;
+
+    /**
+     * Claim atomically. Two tabs submitting the same code would otherwise both
+     * see it unredeemed and the second would overwrite the first's user_id.
+     *
+     * The CASE is the gift model in one expression:
+     *
+     *   subscription -- keeps the expiry Stripe already set. Its clock has been
+     *                   running since purchase; that is what a subscription is.
+     *
+     *   gift, uncovered -- starts now. now() + N months.
+     *
+     *   gift, covered   -- PARKS. status 'credit', no expiry. It must not extend
+     *                      an expiry the subscription is already paying to
+     *                      extend, or the user pays for months they were given.
+     *                      badgeFor() starts it the moment nothing else covers
+     *                      them.
+     *
+     * `expires_at > now()` is deliberately not required for gifts: an unredeemed
+     * gift has no expiry at all, and gift codes never go stale.
+     */
     const claimed = await client.query(
       `UPDATE entitlements
-          SET user_id = $2, status = 'active', granted_at = now(), redeem_hash = NULL
-        WHERE redeem_hash = $1 AND status = 'unredeemed' AND expires_at > now()
-        RETURNING id, granted_at, expires_at`,
-      [redemptionIndex(code), req.userId]
+          SET user_id = $2,
+              granted_at = now(),
+              redeem_hash = NULL,
+              status = CASE
+                WHEN kind = 'gift' AND $3::boolean THEN 'credit'
+                ELSE 'active'
+              END,
+              expires_at = CASE
+                WHEN kind = 'gift' AND $3::boolean THEN NULL
+                WHEN kind = 'gift' THEN now() + (duration_months || ' months')::interval
+                ELSE expires_at
+              END
+        WHERE redeem_hash = $1
+          AND status = 'unredeemed'
+          AND (kind = 'gift' OR expires_at > now())
+        RETURNING id, kind, status, granted_at, expires_at, duration_months`,
+      [redemptionIndex(code), req.userId, alreadyCovered]
     );
 
     if (claimed.rowCount === 0) {
@@ -189,7 +348,18 @@ router.post('/redeem', requireAuth, billingLimiter, async (req, res, next) => {
     await client.query('COMMIT');
 
     const row = claimed.rows[0];
-    res.json({ badge: { active: true, since: row.granted_at, until: row.expires_at } });
+    const badge = await badgeFor(req.userId);
+
+    res.json({
+      badge,
+      redeemed: {
+        kind: row.kind,
+        months: row.duration_months,
+        // True when the months were banked rather than started. The UI has to
+        // say so, or "redeemed!" with an unchanged expiry date reads as a bug.
+        parked: row.status === 'credit',
+      },
+    });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     next(err);
@@ -265,39 +435,60 @@ async function handleEvent(event) {
       const session = event.data.object;
       if (session.payment_status !== 'paid') return;
 
-      const subscriptionId = session.subscription;
-      const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-      const expiresAt = periodEnd(subscription);
-      if (!expiresAt) throw new Error('subscription has no period end');
-
       const code = issueRedemptionCode();
+      const months = Number(session.metadata?.months) || 0;
+      const isGift = session.metadata?.kind === 'gift';
 
-      const result = await pool.query(
-        `INSERT INTO entitlements (redeem_hash, status, expires_at)
-         VALUES ($1, 'unredeemed', $2)
-         RETURNING id`,
-        [
-          redemptionIndex(code),
-          new Date(expiresAt.getTime() + config.billing.graceDays * 86400000),
-        ]
-      );
-      const entitlementId = result.rows[0].id;
+      let entitlementId;
 
-      // The entitlement id, and nothing else. Adding a user id here -- even
-      // "just for support" -- would hand Stripe the link this design exists to
-      // avoid, and it would be permanent.
-      await stripe.subscriptions.update(subscriptionId, {
-        metadata: { entitlement_id: entitlementId },
-      });
+      if (isGift) {
+        // A one-off payment. No subscription object, no renewal, nothing to
+        // cancel -- and crucially no expires_at yet: the clock starts when the
+        // code is redeemed, which may be months from now.
+        if (!months) throw new Error('gift checkout carried no month count');
+
+        const result = await pool.query(
+          `INSERT INTO entitlements (redeem_hash, status, kind, duration_months, expires_at)
+           VALUES ($1, 'unredeemed', 'gift', $2, NULL)
+           RETURNING id`,
+          [redemptionIndex(code), months]
+        );
+        entitlementId = result.rows[0].id;
+      } else {
+        const subscriptionId = session.subscription;
+        const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+        const expiresAt = periodEnd(subscription);
+        if (!expiresAt) throw new Error('subscription has no period end');
+
+        const result = await pool.query(
+          `INSERT INTO entitlements (redeem_hash, status, kind, expires_at)
+           VALUES ($1, 'unredeemed', 'subscription', $2)
+           RETURNING id`,
+          [
+            redemptionIndex(code),
+            new Date(expiresAt.getTime() + config.billing.graceDays * 86400000),
+          ]
+        );
+        entitlementId = result.rows[0].id;
+
+        // The entitlement id, and nothing else. Adding a user id here -- even
+        // "just for support" -- would hand Stripe the link this design exists to
+        // avoid, and it would be permanent. Only subscriptions need it: it is
+        // what lets a renewal find its entitlement.
+        await stripe.subscriptions.update(subscriptionId, {
+          metadata: { entitlement_id: entitlementId },
+        });
+      }
+
       await stripe.checkout.sessions.update(session.id, {
-        metadata: { entitlement_id: entitlementId },
+        metadata: { ...session.metadata, entitlement_id: entitlementId },
       });
 
       // The success page can be closed or refreshed away, and the buyer has
       // already paid. Mail is the durable copy.
       const to = session.customer_details?.email;
       if (to) {
-        await sendRedemptionMail(to, code).catch((err) =>
+        await sendRedemptionMail(to, code, { months, isGift }).catch((err) =>
           console.error('redemption mail failed to send:', err.message)
         );
       }

@@ -237,15 +237,43 @@ CREATE TABLE IF NOT EXISTS entitlements (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),  -- the only id Stripe ever sees
   redeem_hash TEXT UNIQUE,                        -- HMAC(pepper, code); nulled once redeemed
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,  -- null until redeemed
-  status TEXT NOT NULL DEFAULT 'unredeemed',      -- unredeemed|active|expired|cancelled
+  status TEXT NOT NULL DEFAULT 'unredeemed',      -- unredeemed|credit|active|expired|cancelled
+  kind TEXT NOT NULL DEFAULT 'subscription',      -- 'subscription' | 'gift'
+  duration_months INT,                            -- gifts only; Stripe cannot express this
   granted_at TIMESTAMPTZ,
-  expires_at TIMESTAMPTZ NOT NULL,
+  expires_at TIMESTAMPTZ,                         -- NULL until a gift is redeemed
   created_at TIMESTAMPTZ DEFAULT now()
 );
 ```
 
 There is **no activity column and no login timestamp anywhere in this schema.**
 That absence is a feature, not an omission — see §3.3.
+
+### Gifts are credit, not an expiry bump
+
+Two products at Stripe: **Supporter** (four recurring prices — monthly, 3, 6, 12
+months) and **Supporter Gift** (four one-off prices for the same durations). A
+subscription renews and is cancellable; a gift is a code worth N months and
+nothing else.
+
+Three rules make gifts fair, and each exists because the obvious implementation
+is wrong:
+
+1. **The clock starts at redemption.** Setting `expires_at` at purchase would
+   burn the months between buying a gift and handing it over — hence the nullable
+   column.
+2. **Redeeming while already covered parks the months** (`status='credit'`). The
+   naive `expires_at += N months` collides with the subscription's own
+   `invoice.paid`, which pushes the same column forward — so the user would pay
+   for months they had been given. Parked credit starts only when nothing else
+   covers the account, lazily, on the next badge read. No cron.
+3. **Credits queue.** Two 3-month gifts are six months in sequence, never three
+   months twice.
+
+Gift codes never expire — prepaid value with an expiry date is restricted or
+banned in much of the EU and US, and an unredeemed row grants nothing anyway.
+Subscription codes *do* expire, because Stripe's clock has been running since
+purchase. That asymmetry is deliberate.
 
 1. `checkout.session.completed` → create an entitlement, generate a redemption
    code, store `HMAC(code)`, write `entitlement_id` into the Stripe subscription

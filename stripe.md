@@ -18,17 +18,64 @@ below looks slightly unusual.
    its own products, and its own webhooks — nothing you do here touches real
    money, and nothing carries over to live mode automatically.
 
-2. **Products → Add product.**
-   - Name: whatever the tier is called (this is shown on the checkout page).
-   - Pricing model: **Recurring**.
-   - Price: your amount, **Monthly**.
-   - Save.
+2. **Products → Add product.** Name it "Supporter" — this is what appears on the
+   checkout page and the receipt. Add a **Recurring** price, **Monthly**. Save.
 
-3. Open the product, find the **price** (not the product) and copy its ID. It
-   starts with `price_`. This is `STRIPE_PRICE_ID`.
+3. Open the product and **Add price** three more times, all Recurring:
+
+   | plan | billing period | env var |
+   | --- | --- | --- |
+   | monthly | Monthly | `STRIPE_PRICE_MONTHLY` |
+   | quarterly | Custom → every **3 months** | `STRIPE_PRICE_QUARTERLY` |
+   | semiannual | Custom → every **6 months** | `STRIPE_PRICE_SEMIANNUAL` |
+   | yearly | Yearly | `STRIPE_PRICE_YEARLY` |
+
+   **One product, four prices** — not four products. That is exactly what
+   Stripe's model is for: a *product* is the thing you sell, a *price* is how you
+   pay for it. Four products would fragment your reporting and gain nothing.
+
+   (Stripe stores these as `interval` + `interval_count`, so "every 3 months" is
+   `month × 3`. You never touch those fields directly.)
+
+4. Copy each **price** id — they start with `price_`.
 
    > It must be the *price* id, not the *product* id (`prod_`). Checkout takes
    > prices; a product id fails at session creation with an unhelpful error.
+
+   Every price you leave unconfigured is simply not offered. The picker only
+   shows plans that resolve, so a partial setup is valid — the server warns at
+   boot listing what is missing.
+
+### Gift codes — a second product
+
+**Products → Add product**, name it "Supporter Gift". Add **four one-off
+prices** (Stripe calls this "One-off", not Recurring):
+
+| gift | env var |
+| --- | --- |
+| 1 month | `STRIPE_GIFT_PRICE_1M` |
+| 3 months | `STRIPE_GIFT_PRICE_3M` |
+| 6 months | `STRIPE_GIFT_PRICE_6M` |
+| 12 months | `STRIPE_GIFT_PRICE_12M` |
+
+A separate product, and the reason is the buyer's experience: the product name is
+what they see at checkout and on the receipt. "Supporter Gift" reads correctly;
+"Supporter" with a one-time charge does not. It also keeps recurring revenue and
+one-off sales from blurring together in your dashboard.
+
+Stripe *allows* mixing recurring and one-off prices on one product. Don't.
+
+**Stripe has no idea a gift is worth 3 months.** It only knows someone paid once.
+The duration lives in [`src/lib/plans.js`](backend/src/lib/plans.js) and is
+attached to the checkout session as metadata, server-side. That metadata is what
+the webhook reads to decide what the code is worth.
+
+### Never accept a price id from the browser
+
+The client sends a **slug** (`gift3`, `yearly`); the server maps it to a
+configured price. If the client could send a `price_...`, anyone could post the
+id of your cheapest price — or a leftover £0 test price — and take 12 months for
+nothing. `resolvePlan()` is the only way a price reaches Stripe.
 
 ## 2. API key
 
@@ -156,23 +203,37 @@ Any future expiry, any CVC, any postcode.
 ```
 buyer (logged out)
   │
-  ├─ POST /billing/checkout ─────────────► Stripe Checkout session
-  │                                        (no session, no user id sent)
+  ├─ POST /billing/checkout {plan: "yearly"|"gift3"|...}
+  │      └─ slug ─► configured price. A price id from the browser is refused.
+  │                 mode: subscription | payment (gifts are one-off)
+  │                                     ────► Stripe Checkout session
+  │                                           (no session, no user id sent)
   ├─ pays on Stripe's hosted page
   │
   ├─ redirected to /subscribe/done?session_id=...
   │
   │   meanwhile, independently:
   │   Stripe ──► POST /billing/webhook (checkout.session.completed)
-  │                └─ create entitlement row (random uuid)
   │                └─ generate redemption code, store HMAC(code)
-  │                └─ write {entitlement_id} to subscription metadata
+  │                ├─ subscription: entitlement{kind:'subscription',
+  │                │                  expires_at: period_end + grace}
+  │                │    └─ write {entitlement_id} to subscription metadata
+  │                │       (that is what lets a renewal find it)
+  │                └─ gift: entitlement{kind:'gift', duration_months: N,
+  │                                     expires_at: NULL}
+  │                     no subscription object exists; nothing to tag
   │                └─ mail the code to the payer
   │
-  └─ user logs into their account, Settings → Subscription
+  └─ someone (the buyer, or whoever they gave it to) redeems it
        └─ POST /billing/redeem {code}
-            └─ entitlement.user_id = them, status = active
-            └─ badge appears
+            └─ entitlement.user_id = them
+            ├─ subscription  → status 'active', keeps Stripe's expiry
+            ├─ gift, account uncovered → status 'active',
+            │                            expires_at = now + N months
+            └─ gift, already covered   → status 'credit', expires_at NULL
+                                         PARKED. Starts when nothing else
+                                         covers them. Nobody pays for
+                                         gifted time.
 
 later, cancelling:
 
@@ -189,6 +250,37 @@ user → STRIPE_PORTAL_URL (we are not involved)
 The browser redirect and the webhook **race**, deliberately. The success page
 handles the webhook not having landed yet (`202 pending`) rather than assuming
 ordering — Stripe makes no promise about which arrives first.
+
+## Gift credit: months that wait their turn
+
+A gift is **not** an expiry extension. It is credit, and it only counts down when
+nothing else is covering the account.
+
+Redeem a 3-month gift while your subscription is billing, and those months
+**park**: `status='credit'`, no expiry. Your badge date does not move. The moment
+the subscription stops renewing, the credit starts — automatically, on the next
+badge read, no cron involved.
+
+Why it has to work this way: the obvious implementation is
+`expires_at += 3 months`. But a subscription's `invoice.paid` *also* pushes
+`expires_at` forward, so those gifted months would be consumed by time the user
+was simultaneously paying for. They would pay for months they had been given.
+Parking is what makes that impossible.
+
+Consequences that follow, all tested in
+[`test/credits.test.js`](backend/test/credits.test.js):
+
+- **The clock starts at redemption, not purchase.** Buy a 12-month gift in
+  January, hand it over in June, the recipient gets 12 months from June. This is
+  why `expires_at` is nullable.
+- **Credits queue, never overlap.** Two 3-month gifts are six months in sequence,
+  not three months twice.
+- **Gift codes never expire.** Prepaid value with an expiry is restricted or
+  banned in much of the EU and US, and an unredeemed row grants nothing anyway.
+- **Subscription codes *do* expire**, because Stripe's clock has been running
+  since purchase. That asymmetry is deliberate.
+
+Nothing is lost either way; it is only ever deferred.
 
 ## Things that will bite you
 
@@ -220,6 +312,16 @@ re-issue, or refund. There is no lookup.
 **Metadata carries the entitlement id and nothing else.** Not a user id, not a
 username — not even "just for support". Adding one hands Stripe the exact link
 this design exists to avoid, permanently, for every future customer.
+
+**A gift checkout has no subscription object.** `session.subscription` is null,
+`invoice.paid` never fires, and `stripe.subscriptions.update` would throw. The
+webhook branches on `session.metadata.kind`, which we set ourselves at session
+creation — so it is trustworthy, unlike anything the browser sends.
+
+**Adding a plan means adding a price, an env var, and an entry in `plans.js`.**
+Miss the last one and the price is unreachable; miss the env var and the plan is
+silently hidden (with a boot warning). Nothing breaks loudly, which is exactly
+why it is worth knowing.
 
 ## The claim you can defend
 

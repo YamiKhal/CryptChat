@@ -20,12 +20,36 @@ const backendDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '.
  * failures.
  */
 
-export const LOG_PATH = path.join(backendDir, 'test-server.log');
+// Per-port: two suites on different ports must not read each other's mail links.
+export const LOG_PATH = path.join(
+  backendDir,
+  `test-server${process.env.TEST_PORT ? `-${process.env.TEST_PORT}` : ''}.log`
+);
 
 let child = null;
 
-export async function startServer({ port = 3000, env = {} } = {}) {
+export async function startServer({ port = Number(process.env.TEST_PORT) || 3000, env = {} } = {}) {
   if (child) throw new Error('server already started');
+
+  /**
+   * Refuse to run against a server we did not start.
+   *
+   * Without this check the failure is silent and deeply confusing: our spawn
+   * dies with EADDRINUSE into a log nobody reads, the health probe passes
+   * because *something* is listening, and the whole suite then runs against a
+   * stale process -- one with rate limits on, an older schema, or a different
+   * config entirely. The tests fail for reasons that have nothing to do with the
+   * code under test.
+   *
+   * A leftover `npm run dev` is the usual culprit.
+   */
+  if (await isPortLive(port)) {
+    throw new Error(
+      `something is already listening on :${port}, and it is not ours.\n` +
+        `  The suite must control its own server (rate limits off, billing off, dev mailer on).\n` +
+        `  Stop your dev server, or run with TEST_PORT set to a free port.`
+    );
+  }
 
   // Fresh log per run: the mail-link readers scan for the *last* match, and a
   // stale log would hand a previous run's token to this one.
@@ -80,6 +104,18 @@ export async function startServer({ port = 3000, env = {} } = {}) {
 
   await waitForHealth(`http://localhost:${port}/health`);
   return child;
+}
+
+/** Is anything answering on this port right now? */
+async function isPortLive(port) {
+  try {
+    const res = await fetch(`http://localhost:${port}/health`, {
+      signal: AbortSignal.timeout(1000),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 async function waitForHealth(url, timeout = 20_000) {
