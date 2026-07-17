@@ -1,3 +1,5 @@
+import type { Limits } from './limits';
+
 const BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
 export interface MemberInfo {
@@ -13,6 +15,41 @@ export interface AuthResponse {
   pubkey: string;
   signPubkey: string;
   vaultSalt: string;
+  emailPending?: boolean;
+}
+
+/** The mask, never the address. The server does not expose the plaintext. */
+export interface EmailState {
+  mask: string | null;
+  verified: boolean;
+  pendingMask?: string | null;
+}
+
+export interface Badge {
+  active: boolean;
+  /** When the badge was granted -- the record of when they subscribed. */
+  since: string;
+  until: string;
+}
+
+export interface MeResponse {
+  userId: string;
+  pubkey: string;
+  signPubkey: string;
+  vaultSalt: string;
+  email: { mask: string; verified: boolean } | null;
+  badge: Badge | null;
+}
+
+export interface RecoveryBlobResponse {
+  ciphertext: string;
+  nonce: string;
+  salt: string;
+  updatedAt: string;
+}
+
+export interface ResetResponse extends AuthResponse {
+  needsRecoveryCode: true;
 }
 
 export interface ChannelSummary {
@@ -72,11 +109,13 @@ export const api = {
     password: string,
     pubkey: string,
     signPubkey: string,
-    vaultSalt: string
+    vaultSalt: string,
+    /** Optional. An account without one is fully functional -- just unrecoverable by mail. */
+    email?: string
   ) =>
     request<AuthResponse>('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ username, password, pubkey, signPubkey, vaultSalt }),
+      body: JSON.stringify({ username, password, pubkey, signPubkey, vaultSalt, ...(email ? { email } : {}) }),
     }),
 
   login: (username: string, password: string) =>
@@ -85,8 +124,104 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }),
 
-  me: (token: string) =>
-    request<Omit<AuthResponse, 'token'>>('/auth/me', {}, token),
+  me: (token: string) => request<MeResponse>('/auth/me', {}, token),
+
+  /* --- recovery blob --- */
+
+  /**
+   * Park the recovery blob. Ciphertext only: it is sealed under the recovery
+   * code, which never leaves this device.
+   */
+  putRecoveryBlob: (token: string, blob: { ciphertext: string; nonce: string; salt: string }) =>
+    request<{ ok: true }>('/account/recovery-blob', { method: 'PUT', body: JSON.stringify(blob) }, token),
+
+  getRecoveryBlob: (token: string) =>
+    request<RecoveryBlobResponse>('/account/recovery-blob', {}, token),
+
+  deleteRecoveryBlob: (token: string) =>
+    request<{ ok: true }>('/account/recovery-blob', { method: 'DELETE' }, token),
+
+  /* --- limits --- */
+
+  /**
+   * Tier limits, from the only authority that matters.
+   *
+   * Never hardcode these client-side: the server enforces them, and a client
+   * that believes the wrong cap produces uploads that die at 99%.
+   */
+  limits: (token: string) => request<Limits>('/account/limits', {}, token),
+
+  /* --- email --- */
+
+  getEmail: (token: string) => request<EmailState>('/account/email', {}, token),
+
+  /** Password-gated: a hijacked session that can swap the address owns the account. */
+  setEmail: (token: string, email: string, password: string) =>
+    request<{ ok: true; pendingMask: string }>(
+      '/account/email',
+      { method: 'POST', body: JSON.stringify({ email, password }) },
+      token
+    ),
+
+  verifyEmail: (token: string) =>
+    request<{ ok: true; mask: string }>('/account/email/verify', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    }),
+
+  removeEmail: (token: string, password: string) =>
+    request<{ ok: true }>(
+      '/account/email',
+      { method: 'DELETE', body: JSON.stringify({ password }) },
+      token
+    ),
+
+  /* --- recovery --- */
+
+  /**
+   * Request a reset link.
+   *
+   * Always resolves the same way whether or not the address is registered --
+   * the server refuses to confirm which addresses have accounts. Do not add a
+   * "no account found" branch to the caller; there is nothing to branch on.
+   */
+  requestReset: (email: string) =>
+    request<{ ok: true; message: string }>('/recovery/request', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
+  resetPassword: (token: string, password: string, vaultSalt: string) =>
+    request<ResetResponse>('/recovery/reset', {
+      method: 'POST',
+      body: JSON.stringify({ token, password, vaultSalt }),
+    }),
+
+  /* --- billing --- */
+
+  billingStatus: (token: string) =>
+    request<{ badge: Badge | null; billingEnabled: boolean; portalUrl: string | null }>(
+      '/billing/status',
+      {},
+      token
+    ),
+
+  /** Anonymous by design: no session travels with the checkout. */
+  startCheckout: () => request<{ url: string }>('/billing/checkout', { method: 'POST' }),
+
+  /**
+   * Confirm a completed checkout.
+   *
+   * Resolves to `{ pending: true }` (HTTP 202) while Stripe's webhook has not
+   * landed yet -- 202 is a success status, so this does NOT throw and the caller
+   * must check the flag. The redirect and the webhook race by design; Stripe
+   * promises no ordering between them.
+   */
+  redemptionCode: (sessionId: string) =>
+    request<{ mailed?: true; pending?: true }>(`/billing/code/${encodeURIComponent(sessionId)}`),
+
+  redeem: (token: string, code: string) =>
+    request<{ badge: Badge }>('/billing/redeem', { method: 'POST', body: JSON.stringify({ code }) }, token),
 
   createChannel: (token: string) =>
     request<{ channelId: string; code: string; codeExpiresAt: string; members: MemberInfo[] }>(

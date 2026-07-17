@@ -1,7 +1,7 @@
 import { WebSocketServer } from 'ws';
 import { pool } from '../db.js';
 import { config } from '../config.js';
-import { verifyToken } from '../middleware/auth.js';
+import { verifyToken, epochValid } from '../middleware/auth.js';
 
 // userId -> Set<ws>. A Set, not a single socket: the old Map held one socket
 // per user, so opening a second tab silently evicted the first tab's delivery
@@ -36,9 +36,35 @@ function sendTo(userId, payload) {
   return delivered;
 }
 
+/**
+ * Drop every live socket for an account.
+ *
+ * The handshake epoch check only gates *new* connections. A socket opened before
+ * a password reset stays open and keeps receiving relayed messages -- the reset
+ * would lock an attacker out of HTTP while leaving them subscribed to the very
+ * conversations it was meant to protect. Called by the reset path.
+ *
+ * 4001 rather than a normal close so the client can tell "your session was
+ * revoked" from "the network blipped" and prompt for a password instead of
+ * silently reconnecting in a loop.
+ */
+export function disconnectUser(userId) {
+  for (const ws of socketsFor(userId)) {
+    try {
+      ws.close(4001, 'session expired');
+    } catch {
+      // Already closing; the close handler cleans up the registry.
+    }
+  }
+}
+
 const B64 = /^[A-Za-z0-9_-]+$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const KINDS = new Set(['message', 'profile']);
+// The relay routes these; it cannot read any of them. 'reaction' is a separate
+// kind rather than a mutation of a stored message because the relay holds no
+// message to mutate -- it holds ciphertext addressed to a recipient. The client
+// folds reactions into the target when it decrypts them.
+const KINDS = new Set(['message', 'profile', 'reaction']);
 
 function validCiphertext(value, max = config.limits.maxEnvelopeBytes) {
   return typeof value === 'string' && value.length > 0 && value.length <= max && B64.test(value);
@@ -101,12 +127,23 @@ export function attachRelay(server) {
       // is *present* lets an invalid one complete the handshake and allocate a
       // socket before being closed -- an unauthenticated caller should never
       // get that far.
+      let claims;
       try {
-        info.req.userId = verifyToken(token).sub;
+        claims = verifyToken(token);
       } catch {
         return done(false, 401, 'invalid token');
       }
-      done(true);
+
+      // The signature being valid is not enough: a token from before a password
+      // reset still verifies. `done` may be called asynchronously, so the epoch
+      // check happens here rather than after the socket is allocated.
+      epochValid(claims)
+        .then((ok) => {
+          if (!ok) return done(false, 401, 'session expired');
+          info.req.userId = claims.sub;
+          done(true);
+        })
+        .catch(() => done(false, 500, 'internal error'));
     },
 
     handleProtocols(protocols) {

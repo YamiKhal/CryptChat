@@ -5,8 +5,10 @@ import {
   openEnvelope,
   wrapChannelKeyForRecipient,
   unwrapChannelKey,
+  isSingleEmoji,
   Attachment,
   LinkPreview,
+  ReplyRef,
 } from './crypto';
 import { BinaryAsset } from './binary';
 import { Vault, StoredMessage } from './vault';
@@ -36,6 +38,39 @@ export interface SendPayload {
   asset?: BinaryAsset;
   attachments?: Attachment[];
   preview?: LinkPreview;
+  replyTo?: ReplyRef;
+}
+
+interface ParkedReaction {
+  channelId: string;
+  targetId: string;
+  emoji: string;
+  senderId: string;
+  removed: boolean;
+}
+
+/**
+ * Apply any parked reactions now that `messageId` exists locally.
+ *
+ * Mutates the parked list in place, removing what it applied.
+ */
+async function drainParked(
+  parked: { current: ParkedReaction[] },
+  vault: Vault,
+  channelId: string,
+  messageId: string
+): Promise<boolean> {
+  const ready = parked.current.filter((r) => r.channelId === channelId && r.targetId === messageId);
+  if (ready.length === 0) return false;
+
+  parked.current = parked.current.filter(
+    (r) => !(r.channelId === channelId && r.targetId === messageId)
+  );
+
+  for (const r of ready) {
+    await vault.applyReactionToMessage(channelId, r.targetId, r.emoji, r.senderId, r.removed);
+  }
+  return true;
 }
 
 type Incoming =
@@ -63,6 +98,22 @@ export function useRelay({
   handlers.current = { onMessage, onChannelKey, onKeyChangeWarning };
   const vaultRef = useRef(vault);
   vaultRef.current = vault;
+
+  /**
+   * Reactions whose target message has not arrived yet.
+   *
+   * In-memory only, and deliberately: these are worth a few seconds of patience
+   * while a queue flushes, not a permanent store. Persisting them would mean
+   * carrying reactions for messages that may never arrive (a member who left, a
+   * channel we lost the key to) with nothing to ever clear them.
+   *
+   * Bounded, because it is fed by the network -- a peer that spams reactions for
+   * message ids that do not exist would otherwise grow this without limit.
+   */
+  const parkedReactions = useRef<
+    { channelId: string; targetId: string; emoji: string; senderId: string; removed: boolean }[]
+  >([]);
+  const MAX_PARKED = 200;
 
   const handleIncomingMessage = useCallback(async (data: Extract<Incoming, { type: 'message' }>) => {
     const v = vaultRef.current;
@@ -99,6 +150,43 @@ export function useRelay({
       return true;
     }
 
+    if (envelope.kind === 'reaction') {
+      // Unverified reactions are dropped outright rather than shown with a
+      // warning. A message body gets badged "unverified" because the user needs
+      // to see what was said before judging it; a reaction is a single glyph
+      // whose entire meaning is "this person reacted". If we cannot confirm the
+      // person, there is nothing left worth rendering.
+      if (!verified || !envelope.reaction) return true;
+
+      const { targetId, emoji, removed } = envelope.reaction;
+      const updated = await v.applyReactionToMessage(
+        data.channelId,
+        targetId,
+        emoji,
+        data.senderId,
+        removed
+      );
+
+      // Null means the target has not arrived yet -- normal when a reaction was
+      // queued while we were offline, or we joined mid-conversation. Park it so
+      // it lands when the message does, instead of silently vanishing.
+      if (updated === null) {
+        // Drop the oldest rather than growing without bound: a peer can send
+        // reactions for ids that will never exist.
+        if (parkedReactions.current.length >= MAX_PARKED) parkedReactions.current.shift();
+        parkedReactions.current.push({
+          channelId: data.channelId,
+          targetId,
+          emoji,
+          senderId: data.senderId,
+          removed,
+        });
+      } else {
+        handlers.current.onChannelKey?.(data.channelId);
+      }
+      return true;
+    }
+
     const message: StoredMessage = {
       id: data.messageId,
       channelId: data.channelId,
@@ -106,16 +194,22 @@ export function useRelay({
       displayName: envelope.displayName,
       body: envelope.body,
       asset: envelope.avatar,
-      // Attachment keys and the preview are inside the signature. If `verified`
-      // is false the UI badges the whole message as untrusted, which covers
-      // these too -- a forged preview is a phishing surface, not a cosmetic bug.
+      // Attachment keys, the preview, and the reply reference are all inside the
+      // signature. If `verified` is false the UI badges the whole message as
+      // untrusted, which covers these too -- a forged preview is a phishing
+      // surface, and a forged reply target misattributes a conversation.
       attachments: envelope.attachments,
       preview: envelope.preview,
+      replyTo: envelope.replyTo,
       createdAt: envelope.sentAt || data.createdAt,
       verified,
     };
 
     await v.appendMessage(message);
+
+    // A reaction that arrived before its target can now be applied.
+    await drainParked(parkedReactions, v, data.channelId, message.id);
+
     handlers.current.onMessage?.(message);
     return true;
   }, []);
@@ -364,6 +458,7 @@ export function useRelay({
           avatar: payload.asset,
           attachments: payload.attachments,
           preview: payload.preview,
+          replyTo: payload.replyTo,
           sentAt,
         },
         channelId,
@@ -396,12 +491,68 @@ export function useRelay({
         asset: payload.asset,
         attachments: payload.attachments,
         preview: payload.preview,
+        replyTo: payload.replyTo,
         createdAt: sentAt,
         verified: true,
         pending: ws?.readyState !== WebSocket.OPEN,
       };
       await v.appendMessage(local);
       return local;
+    },
+    [userId]
+  );
+
+  /**
+   * Toggle a reaction on a message.
+   *
+   * Sent as its own signed envelope, not a mutation of the target: the relay has
+   * no message to mutate, only ciphertext it is routing, and the reaction has to
+   * be attributable to whoever sent it. `removed` is signed too, so a relay
+   * cannot replay an old "add" to undo someone's removal.
+   *
+   * The local copy is applied optimistically. If the socket is down the reaction
+   * still shows locally but never reaches anyone -- the same tradeoff pending
+   * messages already make, and the UI marks the connection state.
+   */
+  const sendReaction = useCallback(
+    async (channelId: string, targetId: string, emoji: string, removed: boolean) => {
+      const v = vaultRef.current;
+      const ws = wsRef.current;
+      if (!v || !userId) return;
+
+      if (!isSingleEmoji(emoji)) throw new Error('reactions must be a single emoji');
+
+      const channel = v.getChannel(channelId);
+      if (!channel?.hasKey) throw new Error('no key for this channel yet');
+
+      const sealed = await createEnvelope(
+        {
+          kind: 'reaction',
+          body: '',
+          displayName: v.profile.displayName,
+          reaction: { targetId, emoji, removed },
+          sentAt: new Date().toISOString(),
+        },
+        channelId,
+        userId,
+        v.identity.signPrivateKey,
+        channel.key
+      );
+
+      if (ws?.readyState === WebSocket.OPEN) {
+        ws.send(
+          JSON.stringify({
+            type: 'send',
+            channelId,
+            clientId: crypto.randomUUID(),
+            kind: 'reaction',
+            ciphertext: sealed.ciphertext,
+            nonce: sealed.nonce,
+          })
+        );
+      }
+
+      await v.applyReactionToMessage(channelId, targetId, emoji, userId, removed);
     },
     [userId]
   );
@@ -414,5 +565,12 @@ export function useRelay({
     }
   }, [broadcastProfile]);
 
-  return { connected, send, broadcastProfile, broadcastProfileEverywhere, offerKeyTo };
+  return {
+    connected,
+    send,
+    sendReaction,
+    broadcastProfile,
+    broadcastProfileEverywhere,
+    offerKeyTo,
+  };
 }

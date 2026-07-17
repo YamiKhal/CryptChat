@@ -1,5 +1,5 @@
 import { useState, FormEvent, useRef, ChangeEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useSession } from '../lib/session';
 import { EncryptedBundle } from '../lib/crypto';
 import Avatar from '../components/Avatar';
@@ -14,9 +14,16 @@ export default function Auth() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [email, setEmail] = useState('');
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // Shown once, after registration, before the app is reachable. Not a toast:
+  // the phrase is the only route back into the account and it exists nowhere
+  // else, so it gets a screen and an explicit acknowledgement.
+  const [recoveryPhrase, setRecoveryPhrase] = useState('');
+  const [phraseAcknowledged, setPhraseAcknowledged] = useState(false);
 
   const [bundle, setBundle] = useState<EncryptedBundle | null>(null);
   const [bundlePassphrase, setBundlePassphrase] = useState('');
@@ -73,7 +80,16 @@ export default function Auth() {
       if (locked) {
         await session.unlock(password, remember);
       } else if (mode === 'register') {
-        await session.register(username, password);
+        const { recoveryPhrase: phrase } = await session.register(
+          username,
+          password,
+          email.trim() || undefined
+        );
+        // Deliberately does NOT navigate. The user is registered and unlocked,
+        // but sending them straight to the app would bury the one screen that
+        // shows the recovery phrase, and it can never be shown again.
+        setRecoveryPhrase(phrase);
+        return;
       } else {
         await session.login(username, password, remember);
       }
@@ -97,7 +113,61 @@ export default function Auth() {
           </p>
         </header>
 
-        {needsImport ? (
+        {recoveryPhrase ? (
+          <div className="card space-y-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted">
+              Your recovery code
+            </h2>
+
+            <p className="rounded border border-warn/30 bg-warn/10 p-4 text-xs text-warn">
+              Write these 24 words down and keep them somewhere safe. This is the{' '}
+              <strong>only</strong> way back into your account if you forget your password or lose
+              this device. We cannot show them again and we cannot reset them — the server never
+              sees them.
+            </p>
+
+            <ol className="grid grid-cols-3 gap-x-3 gap-y-1 rounded border border-border bg-surface-raised p-4">
+              {recoveryPhrase.split(' ').map((word, i) => (
+                <li key={i} className="flex gap-1.5 font-mono text-xs">
+                  <span className="w-4 shrink-0 text-right text-muted">{i + 1}</span>
+                  <span className="truncate">{word}</span>
+                </li>
+              ))}
+            </ol>
+
+            <button
+              type="button"
+              className="btn-ghost w-full text-xs"
+              onClick={() => navigator.clipboard?.writeText(recoveryPhrase)}
+            >
+              copy to clipboard
+            </button>
+
+            <label className="flex items-start gap-2 text-xs text-muted">
+              <input
+                type="checkbox"
+                checked={phraseAcknowledged}
+                onChange={(e) => setPhraseAcknowledged(e.target.checked)}
+                className="mt-0.5 accent-primary"
+              />
+              <span>
+                I have written down my recovery code. I understand that without it, a forgotten
+                password means my channels are gone permanently.
+              </span>
+            </label>
+
+            <button
+              className="btn-primary w-full"
+              disabled={!phraseAcknowledged}
+              onClick={() => {
+                setRecoveryPhrase('');
+                navigate('/channels');
+              }}
+            >
+              Continue
+            </button>
+          </div>
+        ) : needsImport ? (
           <form onSubmit={handleImport} className="card space-y-4">
             <div className="flex items-center gap-3">
               <Avatar name={session.account!.username} size="md" />
@@ -223,9 +293,31 @@ export default function Auth() {
                   onChange={(e) => setConfirm(e.target.value)}
                 />
               </label>
+
+              <label className="block space-y-1">
+                <span className="text-xs text-muted">
+                  email <span className="text-muted/70">— optional</span>
+                </span>
+                <input
+                  className="field"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="leave blank to stay anonymous"
+                />
+              </label>
+
+              <p className="rounded border border-info/30 bg-info/10 p-4 text-xs text-info">
+                An email lets you reset a forgotten password. It is encrypted, never shown to
+                anyone, and never displayed in full — not even to you. You can add or remove it
+                later in Settings. Skipping it costs you nothing except password reset.
+              </p>
+
               <p className="rounded border border-warn/30 bg-warn/10 p-4 text-xs text-warn">
-                This password also encrypts your keys on this device. There is no reset: if you
-                forget it, your channels are unrecoverable. Minimum 12 characters.
+                This password also encrypts your keys on this device. Minimum 12 characters. After
+                you register we will show you a 24-word recovery code — that code, not your email,
+                is what restores your channels.
               </p>
             </>
           )}
@@ -259,16 +351,27 @@ export default function Auth() {
               use a different account
             </button>
           ) : (
-            <button
-              type="button"
-              className="w-full text-xs text-muted hover:text-foreground"
-              onClick={() => {
-                setMode(mode === 'login' ? 'register' : 'login');
-                setError('');
-              }}
-            >
-              {mode === 'login' ? 'No identity? Create one' : 'Have an identity? Log in'}
-            </button>
+            <>
+              <button
+                type="button"
+                className="w-full text-xs text-muted hover:text-foreground"
+                onClick={() => {
+                  setMode(mode === 'login' ? 'register' : 'login');
+                  setError('');
+                }}
+              >
+                {mode === 'login' ? 'No identity? Create one' : 'Have an identity? Log in'}
+              </button>
+
+              {mode === 'login' && (
+                <Link
+                  to="/recover"
+                  className="block w-full text-center text-xs text-muted hover:text-foreground"
+                >
+                  Forgot your password?
+                </Link>
+              )}
+            </>
           )}
         </form>
         )}

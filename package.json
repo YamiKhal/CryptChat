@@ -12,7 +12,15 @@
     "dev:backend": "npm --prefix backend run dev",
     "dev:frontend": "npm --prefix frontend run dev",
     "build": "npm --prefix frontend run build",
-    "start": "npm --prefix backend start"
+    "start": "npm --prefix backend start",
+
+    "test": "npm run db:up && npm run test:frontend && npm run test:backend",
+    "test:frontend": "npm --prefix frontend run test",
+    "test:backend": "npm --prefix backend run test",
+    "test:unit": "npm --prefix frontend run test && npm --prefix backend run test:unit",
+    "test:flows": "npm run db:up && npm --prefix backend run test:flows",
+    "typecheck": "npm --prefix frontend run typecheck",
+    "verify": "npm run typecheck && npm run test && npm run build"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

@@ -1,9 +1,11 @@
 import { Bytes, wipe, base64UrlToBytes, bytesToBase64Url, BinaryAsset } from './binary';
+import { applyReaction } from './limits';
 import {
   Identity,
   Sealed,
   Attachment,
   LinkPreview,
+  ReplyRef,
   sealWithKey,
   openWithKey,
   deriveVaultKey,
@@ -108,6 +110,17 @@ export interface StoredMessage {
   attachments?: Attachment[];
   /** Sender-built preview. Rendering it makes no network request. */
   preview?: LinkPreview;
+  /** The replier's signed snapshot of what they answered. */
+  replyTo?: ReplyRef;
+  /**
+   * emoji -> senderIds who reacted with it.
+   *
+   * Derived state: rebuilt by folding in 'reaction' envelopes as they arrive.
+   * A reaction can land before the message it targets (queued while offline, or
+   * delivered out of order), so orphans are parked in `pendingReactions` on the
+   * channel rather than dropped.
+   */
+  reactions?: Record<string, string[]>;
   createdAt: string;
   /** Signature checked against the pinned key. False means "do not trust attribution". */
   verified: boolean;
@@ -407,6 +420,35 @@ export class Vault {
     if (index === -1) return;
     messages[index] = { ...messages[index], ...patch };
     await this.saveMessages(channelId, messages);
+  }
+
+  /**
+   * Fold a reaction into its target message.
+   *
+   * Returns the updated transcript, or null when the target is not here yet.
+   *
+   * Out-of-order delivery is normal, not exceptional: a reaction to a message
+   * you have not received (queued while the sender was offline, or you joined
+   * mid-conversation) arrives with nothing to attach to. The caller parks those
+   * rather than dropping them, so the reaction appears when the message does.
+   */
+  async applyReactionToMessage(
+    channelId: string,
+    targetId: string,
+    emoji: string,
+    senderId: string,
+    removed: boolean
+  ): Promise<StoredMessage[] | null> {
+    const messages = await this.loadMessages(channelId);
+    const index = messages.findIndex((m) => m.id === targetId);
+    if (index === -1) return null;
+
+    messages[index] = {
+      ...messages[index],
+      reactions: applyReaction(messages[index].reactions, emoji, senderId, removed),
+    };
+    await this.saveMessages(channelId, messages);
+    return messages;
   }
 
   async clearMessages(channelId: string): Promise<void> {

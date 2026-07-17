@@ -124,3 +124,135 @@ CREATE TABLE IF NOT EXISTS login_attempts (
   locked_until TIMESTAMPTZ,
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- ===================================================================
+-- Account layer: email, recovery, billing.
+--
+-- Everything above this line is zero-knowledge and stays that way. Everything
+-- below exists because a product that takes money needs a mailbox it can reach
+-- and a badge it can grant. Read IDENTITY.md before extending any of it.
+--
+-- Note what is still absent, deliberately: there is no last_login_at, no
+-- last_active_at, and no activity column of any kind. The server does not know
+-- when anyone was online and is not going to start.
+-- ===================================================================
+
+-- Session generation. Bumped whenever the password changes, and carried in every
+-- JWT as `epoch`.
+--
+-- Without this a password reset does not actually take the account back: tokens
+-- are stateless and live for TOKEN_TTL (7d), so an attacker holding a session
+-- keeps read/write access for a week *after* the victim resets -- which is
+-- exactly the window the reset exists to close. Requiring the claim to match
+-- turns a reset into an immediate revocation of every other session.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS token_epoch INT NOT NULL DEFAULT 0;
+
+-- Optional email. Encrypted at rest under a server-held key (envelope: the DEK
+-- is per-row and wrapped by EMAIL_MASTER_KEY). The server *can* read this -- it
+-- must, to send to it -- but does so only in the outbound mail path, and no API
+-- returns anything but `email_mask`.
+--
+-- email_hash is an HMAC under EMAIL_INDEX_PEPPER, not a bare digest: emails are
+-- low-entropy enough that a plain sha256 column lets anyone with a dump confirm
+-- whether a given person has an account. The pepper is not in the database.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_hash TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_ct TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_dek TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_mask TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ;
+
+-- Partial: an address may be attached to at most one account, but "no email" is
+-- the common case and NULLs must not collide with each other.
+CREATE UNIQUE INDEX IF NOT EXISTS users_email_hash_idx
+  ON users (email_hash) WHERE email_hash IS NOT NULL;
+
+-- Marks rows whose username_hash is still the legacy bare sha256. Login rewrites
+-- them to the HMAC form on the next successful password check; until then lookup
+-- falls back. Without the flag there is no way to tell the two hash shapes apart
+-- -- both are 64 hex chars.
+--
+-- The two statements do different jobs and the order matters. The first runs
+-- exactly once (IF NOT EXISTS makes later boots a no-op) and backfills every
+-- pre-existing row to TRUE, which is correct: those rows predate the HMAC by
+-- definition. The second flips the default so rows inserted from now on are
+-- FALSE. Doing this as an UPDATE instead would re-run on every boot and mark
+-- freshly-registered HMAC accounts as legacy.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS username_hash_legacy BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE users ALTER COLUMN username_hash_legacy SET DEFAULT FALSE;
+
+-- The only copy of a user's keys that a never-seen-before device can reach.
+--
+-- Sealed client-side under Argon2id(recovery code), where the code is 256 bits
+-- of CSPRNG output shown once at registration. The server holding this is safe
+-- in a way that holding the vault would not be: the vault is sealed under a
+-- human-chosen password and would be an offline cracking target, whereas there
+-- is no dictionary for 256 random bits.
+--
+-- No verifier for the code is stored -- not even a hash. A verifier would hand
+-- anyone with a dump an offline oracle to grind against. The ciphertext is the
+-- check: a wrong code fails the Poly1305 tag.
+CREATE TABLE IF NOT EXISTS recovery_blobs (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  ciphertext TEXT NOT NULL,
+  nonce TEXT NOT NULL,
+  -- Argon2id salt for the recovery code. Public by design, like vault_salt: the
+  -- client needs it before it can derive anything.
+  salt TEXT NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Mailed single-use tokens: address confirmation and password reset.
+--
+-- Stored as sha256(token). The token is 256 bits of CSPRNG output, so a plain
+-- digest is right here -- there is nothing to grind, and unlike a password it
+-- needs no KDF.
+CREATE TABLE IF NOT EXISTS email_tokens (
+  token_hash TEXT PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  purpose TEXT NOT NULL,
+  -- For 'verify': the pending address, encrypted. It is written to users only
+  -- when the link is used, so typoing a stranger's address does not attach it to
+  -- your account until they confirm it (and they never will).
+  email_ct TEXT,
+  email_dek TEXT,
+  email_hash TEXT,
+  email_mask TEXT,
+  expires_at TIMESTAMPTZ NOT NULL,
+  consumed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS email_tokens_user_idx ON email_tokens (user_id, purpose);
+CREATE INDEX IF NOT EXISTS email_tokens_expires_idx ON email_tokens (expires_at);
+
+-- A paid subscription, deliberately not joined to a payment identity.
+--
+-- Purchase happens logged out. Stripe's metadata carries `id` from this table
+-- and nothing else -- no user id, no username. The buyer gets a redemption code
+-- and attaches the badge themselves.
+--
+-- Honest limit: Stripe knows (payer email, id) and this table knows (id,
+-- user_id). Neither side alone links a human to an account; anyone holding both
+-- joins them on `id` immediately. The claim is "our database contains no link",
+-- not "there is no link".
+CREATE TABLE IF NOT EXISTS entitlements (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- HMAC of the redemption code. Nulled once redeemed: it has no further use and
+  -- keeping it is keeping a credential.
+  redeem_hash TEXT UNIQUE,
+  -- Null until redeemed. This column is the entire user<->payment link.
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'unredeemed',
+  granted_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS entitlements_user_idx ON entitlements (user_id, status);
+
+-- Stripe retries webhooks and does not promise exactly-once. Without this, a
+-- retried invoice.paid extends the subscription twice.
+CREATE TABLE IF NOT EXISTS billing_events (
+  event_id TEXT PRIMARY KEY,
+  received_at TIMESTAMPTZ DEFAULT now()
+);

@@ -1,6 +1,18 @@
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode, useCallback } from 'react';
 import { api } from './api';
-import { generateIdentity, Identity, importKeyBundle, EncryptedBundle } from './crypto';
+import {
+  generateIdentity,
+  Identity,
+  importKeyBundle,
+  EncryptedBundle,
+  generateRecoveryCode,
+  parseRecoveryCode,
+  sealRecoveryBlob,
+  openRecoveryBlob,
+  generateSalt,
+  KeyBundle,
+} from './crypto';
+import { wipe } from './binary';
 import { clearImageCache } from './blob';
 import {
   Vault,
@@ -46,11 +58,25 @@ interface SessionApi extends SessionState {
   accounts: AccountDescriptor[];
   /** True when the active account has no vault on this device (needs an import). */
   needsImport: boolean;
-  register(username: string, password: string): Promise<void>;
+  /**
+   * Returned once, by `register`, and never again. The caller MUST show it and
+   * make the user confirm they wrote it down -- it is not stored anywhere and
+   * cannot be reissued.
+   */
+  register(username: string, password: string, email?: string): Promise<{ recoveryPhrase: string }>;
   login(username: string, password: string, remember: boolean): Promise<void>;
   unlock(password: string, remember: boolean): Promise<void>;
   /** Rebuild this device's vault from an exported key file. */
   importIdentity(bundle: EncryptedBundle, passphrase: string, password: string): Promise<void>;
+  /**
+   * Rebuild this device's vault from the server-held recovery blob.
+   *
+   * The counterpart to `importIdentity` for people who have their recovery code
+   * but no key file. This is the whole point of the recovery code existing.
+   */
+  recoverWithCode(phrase: string, password: string): Promise<void>;
+  /** Re-seal and re-upload the recovery blob. Call after the channel set changes. */
+  syncRecoveryBlob(phrase: string): Promise<void>;
   lock(): void;
   logout(): void;
   selectAccount(userId: string): void;
@@ -110,41 +136,176 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const register = useCallback(async (username: string, password: string) => {
-    const identity: Identity = await generateIdentity();
+  const register = useCallback(
+    async (username: string, password: string, email?: string) => {
+      const identity: Identity = await generateIdentity();
 
-    const res = await api.register(
-      username,
-      password,
-      identity.publicKey,
-      identity.signPublicKey,
-      identity.vaultSalt
-    );
+      const res = await api.register(
+        username,
+        password,
+        identity.publicKey,
+        identity.signPublicKey,
+        identity.vaultSalt,
+        email
+      );
 
-    const account: AccountDescriptor = {
-      userId: res.userId,
-      username,
-      publicKey: identity.publicKey,
-      signPublicKey: identity.signPublicKey,
-      vaultSalt: identity.vaultSalt,
-      lastUsedAt: new Date().toISOString(),
-    };
-    saveAccount(account);
+      const account: AccountDescriptor = {
+        userId: res.userId,
+        username,
+        publicKey: identity.publicKey,
+        signPublicKey: identity.signPublicKey,
+        vaultSalt: identity.vaultSalt,
+        lastUsedAt: new Date().toISOString(),
+      };
+      saveAccount(account);
 
-    const vault = await Vault.create(res.userId, password, {
-      identity,
-      channels: {},
-      contacts: {},
-      profile: { displayName: username, updatedAt: new Date().toISOString() },
-    });
-    await vault.rememberForSession();
+      const vault = await Vault.create(res.userId, password, {
+        identity,
+        channels: {},
+        contacts: {},
+        profile: { displayName: username, updatedAt: new Date().toISOString() },
+      });
+      await vault.rememberForSession();
 
-    sessionStorage.setItem(tokenKey(res.userId), res.token);
-    localStorage.setItem(ACTIVE_KEY, res.userId);
+      sessionStorage.setItem(tokenKey(res.userId), res.token);
+      localStorage.setItem(ACTIVE_KEY, res.userId);
 
-    setAccounts(listAccounts());
-    setState({ status: 'unlocked', account, token: res.token, vault });
-  }, []);
+      // The recovery code, generated here and shown once. Without it, an account
+      // is only ever recoverable from a key file the user remembered to export
+      // -- which, in practice, nobody does before they need it.
+      const recovery = await generateRecoveryCode();
+      try {
+        const blob = await sealRecoveryBlob(
+          { userId: res.userId, identity, channels: [] },
+          recovery.entropy
+        );
+        // Best-effort: a failed upload must not fail registration, but it does
+        // mean the phrase we are about to show recovers nothing. Surface it
+        // rather than handing the user a code that silently does not work.
+        await api.putRecoveryBlob(res.token, blob);
+      } finally {
+        wipe(recovery.entropy);
+      }
+
+      setAccounts(listAccounts());
+      setState({ status: 'unlocked', account, token: res.token, vault });
+
+      return { recoveryPhrase: recovery.phrase };
+    },
+    []
+  );
+
+  /**
+   * Re-seal the recovery blob against the vault's current contents.
+   *
+   * Needed whenever the channel set changes: a blob sealed at registration knows
+   * about zero channels, so recovering from it would restore an identity with no
+   * conversations -- which reads to the user as "recovery lost my data". Takes
+   * the phrase because the entropy is never persisted; only the user has it.
+   */
+  const syncRecoveryBlob = useCallback(
+    async (phrase: string) => {
+      if (!state.vault || !state.token || !state.account) throw new Error('unlock first');
+
+      const entropy = await parseRecoveryCode(phrase);
+      try {
+        const data = state.vault.snapshot();
+        const blob = await sealRecoveryBlob(
+          {
+            userId: state.account.userId,
+            identity: data.identity,
+            channels: Object.values(data.channels)
+              .filter((c) => c.hasKey)
+              .map((c) => ({ channelId: c.channelId, code: c.code, key: c.key })),
+          },
+          entropy
+        );
+        await api.putRecoveryBlob(state.token, blob);
+      } finally {
+        wipe(entropy);
+      }
+    },
+    [state.vault, state.token, state.account]
+  );
+
+  /**
+   * Rebuild the vault from the server-held blob using the recovery code.
+   *
+   * Runs after a password reset, on a device with no vault. The identity that
+   * comes back is the *same* keypair the account has always had -- peers have it
+   * pinned, so generating a fresh one here would show every contact a key change
+   * and break every existing channel.
+   */
+  const recoverWithCode = useCallback(
+    async (phrase: string, password: string) => {
+      if (!state.account) throw new Error('log in first');
+      const token = state.token ?? sessionStorage.getItem(tokenKey(state.account.userId));
+      if (!token) throw new Error('log in first');
+
+      const entropy = await parseRecoveryCode(phrase);
+      try {
+        const blob = await api.getRecoveryBlob(token);
+        const opened: KeyBundle = await openRecoveryBlob(blob, entropy);
+
+        if (opened.userId !== state.account.userId) {
+          throw new Error('this recovery code belongs to a different identity');
+        }
+
+        const channels: Record<string, StoredChannel> = {};
+        for (const channel of opened.channels) {
+          channels[channel.channelId] = {
+            channelId: channel.channelId,
+            code: channel.code,
+            key: channel.key,
+            hasKey: true,
+            joinedAt: new Date().toISOString(),
+          };
+        }
+
+        // The blob carries the vault salt from whenever it was sealed, but a
+        // password reset rotated it server-side. Three places have to agree on
+        // this value or the vault silently fails to reopen: Vault.create seals
+        // with identity.vaultSalt, Vault.unlock derives from the account
+        // descriptor's, and a login on another device is handed the server's.
+        // The account descriptor holds the post-reset value, so it wins.
+        //
+        // Safe to overwrite: a KDF salt is not a secret and carries no identity.
+        // The keypairs are what must survive intact, and they do.
+        const identity: Identity = { ...opened.identity, vaultSalt: state.account.vaultSalt };
+
+        const vault = await Vault.create(state.account.userId, password, {
+          identity,
+          channels,
+          contacts: {},
+          profile: { displayName: state.account.username, updatedAt: new Date().toISOString() },
+        });
+        await vault.rememberForSession();
+
+        const account: AccountDescriptor = {
+          ...state.account,
+          publicKey: identity.publicKey,
+          signPublicKey: identity.signPublicKey,
+          vaultSalt: identity.vaultSalt,
+          lastUsedAt: new Date().toISOString(),
+        };
+        saveAccount(account);
+        setAccounts(listAccounts());
+
+        // Re-park the blob carrying the rotated salt, so the next recovery does
+        // not have to fix this up again.
+        const resealed = await sealRecoveryBlob(
+          { userId: account.userId, identity, channels: opened.channels },
+          entropy
+        );
+        await api.putRecoveryBlob(token, resealed);
+
+        setState((s) => ({ ...s, status: 'unlocked', account, token, vault }));
+      } finally {
+        wipe(entropy);
+      }
+    },
+    [state.account, state.token]
+  );
 
   const login = useCallback(async (username: string, password: string, remember: boolean) => {
     const res = await api.login(username, password);
@@ -306,6 +467,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       login,
       unlock,
       importIdentity,
+      recoverWithCode,
+      syncRecoveryBlob,
       lock,
       logout,
       selectAccount,
@@ -319,6 +482,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       login,
       unlock,
       importIdentity,
+      recoverWithCode,
+      syncRecoveryBlob,
       lock,
       logout,
       selectAccount,

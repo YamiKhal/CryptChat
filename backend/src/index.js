@@ -3,6 +3,9 @@ import http from 'http';
 import cors from 'cors';
 import { config } from './config.js';
 import authRoutes from './routes/auth.js';
+import accountRoutes from './routes/account.js';
+import recoveryRoutes from './routes/recovery.js';
+import billingRoutes from './routes/billing.js';
 import channelRoutes from './routes/channels.js';
 import blobRoutes, { startBlobReaper } from './routes/blobs.js';
 import unfurlRoutes from './routes/unfurl.js';
@@ -20,9 +23,20 @@ if (config.isProd) app.set('trust proxy', 1);
 
 app.use(securityHeaders());
 app.use(cors(corsOptions()));
-app.use(express.json({ limit: config.limits.maxJsonBytes }));
+
+// The Stripe webhook verifies a signature over the exact bytes Stripe sent, so
+// it must reach its handler unparsed -- express.json would reparse and
+// reserialize the body and every signature would fail. The route mounts its own
+// express.raw; this skip is what lets it see the original bytes.
+app.use((req, res, next) => {
+  if (req.path === '/billing/webhook') return next();
+  express.json({ limit: config.limits.maxJsonBytes })(req, res, next);
+});
 
 app.use('/auth', authRoutes);
+app.use('/account', accountRoutes);
+app.use('/recovery', recoveryRoutes);
+app.use('/billing', billingRoutes);
 app.use('/channel', channelRoutes);
 // Chunk uploads arrive as application/octet-stream and are parsed by
 // express.raw inside the router. express.json above ignores them -- it only

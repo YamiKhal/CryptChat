@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import crypto from 'crypto';
 
 dotenv.config();
 
@@ -32,6 +33,129 @@ const corsOrigin = process.env.CORS_ORIGIN || (isProd ? '' : 'http://localhost:5
 if (isProd && (!corsOrigin || corsOrigin === '*')) {
   console.error('FATAL: CORS_ORIGIN must be an explicit origin in production, not "*" or empty.');
   process.exit(1);
+}
+
+/**
+ * A 32-byte key or pepper for the account layer.
+ *
+ * In production these must be set explicitly and independently: they protect
+ * different things (a reversible address, a search index, a payment code) and
+ * sharing one key across them means one leak is three leaks.
+ *
+ * In development they are derived from JWT_SECRET via HKDF with a per-use label,
+ * so `npm run dev` needs no extra setup and each derived key is still
+ * independent of the others. This is a dev-only affordance -- deriving key
+ * material from the session-signing secret in production would tie the blast
+ * radius of a JWT_SECRET leak to the email store, so it is a boot failure there.
+ */
+function secretKey(name, label) {
+  const configured = process.env[name];
+
+  if (configured) {
+    const raw = Buffer.from(configured, 'base64');
+    if (raw.length !== 32) {
+      console.error(
+        `FATAL: ${name} must be exactly 32 bytes, base64-encoded (got ${raw.length}). Generate one with:\n` +
+          `  node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`
+      );
+      process.exit(1);
+    }
+    return raw;
+  }
+
+  if (isProd) {
+    console.error(
+      `FATAL: ${name} is not set. Refusing to start.\n` +
+        `  It protects stored account data and must not be derived from JWT_SECRET in production.\n` +
+        `  node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`
+    );
+    process.exit(1);
+  }
+
+  return Buffer.from(crypto.hkdfSync('sha256', JWT_SECRET, '', `cryptchat-dev-${label}`, 32));
+}
+
+// A reset link that points at the wrong origin mails users to an attacker's
+// host, so this is explicit in production rather than inferred from a header.
+const publicAppUrl = (
+  process.env.PUBLIC_APP_URL || (isProd ? '' : 'http://localhost:5173')
+).replace(/\/$/, '');
+
+if (isProd && !publicAppUrl) {
+  console.error('FATAL: PUBLIC_APP_URL must be set in production. It builds the links in outbound mail.');
+  process.exit(1);
+}
+
+// Mail is what makes recovery and verification real. Without a provider the
+// mailer logs to the console, which is fine locally and a silent hole in prod.
+const mailApiKey = process.env.MAIL_API_KEY || '';
+const mailFrom = process.env.MAIL_FROM || '';
+
+if (isProd && (!mailApiKey || !mailFrom)) {
+  console.error(
+    'FATAL: MAIL_API_KEY and MAIL_FROM must be set in production, or verification and password reset mail silently goes nowhere.'
+  );
+  process.exit(1);
+}
+
+/**
+ * A configured key with a placeholder MAIL_FROM is the failure mode to catch.
+ *
+ * `.env.example` ships `noreply@yourdomain.example`. Copy the file, paste a real
+ * API key, forget the From line, and every send fails 403 at the provider --
+ * hours after boot, inside a background mail send nobody is watching, on a
+ * registration that already returned 200. Fail here instead, where the cause is
+ * still in front of you.
+ */
+if (mailApiKey && /yourdomain\.example|example\.com>?$|@localhost/i.test(mailFrom)) {
+  console.error(
+    `FATAL: MAIL_API_KEY is set but MAIL_FROM is still a placeholder (${mailFrom}).\n` +
+      '  Providers reject any From address at a domain you have not verified, so every\n' +
+      '  verification and password-reset mail would fail with a 403 nobody sees.\n' +
+      '  Set MAIL_FROM to an address at the domain you verified, e.g. CryptChat <noreply@yourdomain.com>'
+  );
+  process.exit(1);
+}
+
+// Rate limits are a security control, not a nuisance: they are what keep
+// /auth/login from being a cheap guessing oracle and an Argon2id CPU-exhaustion
+// vector. The test suite needs them off (it registers dozens of accounts in
+// seconds), so the switch exists -- and production refuses to boot with it,
+// because an ops mistake here would be invisible until it was exploited.
+const rateLimitsEnabled = process.env.DISABLE_RATE_LIMITS !== 'true';
+
+if (isProd && !rateLimitsEnabled) {
+  console.error(
+    'FATAL: DISABLE_RATE_LIMITS is set in production. Refusing to start.\n' +
+      '  Rate limits are what stop credential guessing and CPU exhaustion via Argon2id.'
+  );
+  process.exit(1);
+}
+
+// Billing is optional -- the app is complete without it. But a half-configured
+// Stripe is worse than none: checkout would take money and the webhook that
+// grants the entitlement would never verify, so the buyer pays and gets nothing.
+if (process.env.STRIPE_SECRET_KEY) {
+  const missing = ['STRIPE_WEBHOOK_SECRET', 'STRIPE_PRICE_ID'].filter((n) => !process.env[n]);
+  if (missing.length) {
+    console.error(
+      `FATAL: STRIPE_SECRET_KEY is set but ${missing.join(' and ')} ${missing.length > 1 ? 'are' : 'is'} missing.\n` +
+        '  A checkout without a verified webhook charges the customer and never grants the entitlement.'
+    );
+    process.exit(1);
+  }
+
+  // A warning, not a boot failure: billing genuinely works without it. But we
+  // hold no customer id by design, so this link is the ONLY route a subscriber
+  // has to cancel. Without it, "how do I cancel" is a support ticket -- and in
+  // several jurisdictions, cancellation has to be as easy as signing up.
+  if (!process.env.STRIPE_PORTAL_URL) {
+    console.warn(
+      'WARNING: STRIPE_PORTAL_URL is not set. Subscribers will have no way to cancel.\n' +
+        '  Stripe Dashboard > Settings > Billing > Customer portal > share the login link.\n' +
+        '  We store no Stripe customer id (by design), so we cannot offer cancellation ourselves.'
+    );
+  }
 }
 
 export const config = {
@@ -68,6 +192,75 @@ export const config = {
   auth: {
     maxFailures: 8,
     lockoutMinutes: 15,
+  },
+
+  /**
+   * Rate limiting, on unless explicitly disabled outside production.
+   *
+   * The test suite registers dozens of accounts in seconds, which the
+   * registration limiter exists to stop -- so it needs a way off. That switch is
+   * a genuine hazard: rate limits are what keep /auth/login from being both a
+   * guessing oracle and a CPU-exhaustion vector, and an ops mistake that
+   * disabled them in production would be silent. Hence the boot guard above:
+   * production refuses to start with this set, rather than trusting nobody
+   * copies it into the wrong .env.
+   */
+  rateLimitsEnabled,
+
+  publicAppUrl,
+
+  mail: {
+    apiKey: mailApiKey,
+    from: mailFrom || 'CryptChat <noreply@localhost>',
+  },
+
+  // The account layer, and nothing below it. See IDENTITY.md.
+  identity: {
+    // Wraps the per-row data key that encrypts an address. The only key in this
+    // process that can reverse stored user data.
+    emailMasterKey: secretKey('EMAIL_MASTER_KEY', 'email-master'),
+
+    // Blind-index peppers. Separate from the master key: an index leak must not
+    // imply a decryption capability, and vice versa.
+    emailIndexPepper: secretKey('EMAIL_INDEX_PEPPER', 'email-index'),
+    usernameIndexPepper: secretKey('USERNAME_INDEX_PEPPER', 'username-index'),
+    redeemPepper: secretKey('REDEEM_PEPPER', 'redeem-index'),
+
+    verifyTtlHours: 24,
+    // Much shorter than verification: this one hands over the account.
+    resetTtlMinutes: 30,
+  },
+
+  billing: {
+    // Absent = billing routes 404 rather than half-working. The app is fully
+    // usable without it; premium is additive.
+    enabled: Boolean(process.env.STRIPE_SECRET_KEY),
+    secretKey: process.env.STRIPE_SECRET_KEY || '',
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
+    priceId: process.env.STRIPE_PRICE_ID || '',
+
+    /**
+     * Stripe's hosted Customer Portal *login* page.
+     *
+     * The only way a user can cancel, and the only way that is consistent with
+     * this design. Normally an app cancels by calling Stripe with the customer
+     * id it stored -- we deliberately store none, so we cannot, and a cancel
+     * button here would require exactly the payment-to-account link we refuse to
+     * keep.
+     *
+     * The login page sidesteps it: the user enters the address they paid with,
+     * Stripe mails them a magic link, and they cancel there. We are not in the
+     * loop at all; we only learn the outcome from the
+     * customer.subscription.deleted webhook.
+     *
+     * Not fatal if unset -- billing still works -- but users then have no way to
+     * cancel without emailing support, so the boot warning is loud.
+     */
+    portalUrl: process.env.STRIPE_PORTAL_URL || '',
+
+    // Grace beyond the paid period, so a late webhook or a retried card does not
+    // strip someone's badge mid-conversation.
+    graceDays: Number(process.env.BILLING_GRACE_DAYS) || 3,
   },
 
   blob: {

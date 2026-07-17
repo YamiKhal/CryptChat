@@ -1,7 +1,33 @@
 # CryptChat
 
 Monorepo: `backend/` (Express + ws + Postgres) and `frontend/` (Vite + React).
-Deployment lives in [DEPLOY.md](DEPLOY.md).
+
+| doc | what it covers |
+| --- | --- |
+| [DEPLOY.md](DEPLOY.md) | deployment |
+| [TESTING.md](TESTING.md) | how to run and add tests |
+| [IDENTITY.md](IDENTITY.md) | email, recovery, and billing — what we accepted, refused, and why |
+| [stripe.md](stripe.md) | Stripe setup, start to finish |
+
+## Tiers
+
+Premium is additive; nothing in the core product depends on it, and billing can
+be switched off entirely (leave `STRIPE_SECRET_KEY` blank and the routes 404).
+
+| | free | supporter |
+| --- | --- | --- |
+| File uploads | 20MB | 50MB |
+| Characters per message | 1,000 | 4,000 |
+| Uploads at all | needs a confirmed email | included |
+
+Uploading is gated on a confirmed email **or** a subscription. An open upload
+endpoint on anonymous accounts is a free, unattributable file host; a verified
+mailbox or a payment is the thread back to a person that makes abuse actionable.
+
+The character limit is a **product** limit, not a security boundary, and cannot
+be otherwise: the relay only sees ciphertext, so it caps *bytes* and the client
+counts characters. A patched client can exceed it. The byte ceiling is the real
+resource guard.
 
 ## Local development
 
@@ -26,6 +52,16 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 `CORS_ORIGIN` must also be an explicit origin (not `*`) when
 `NODE_ENV=production`. It gates both CORS and the WebSocket handshake.
 
+Local development needs nothing else. The account-layer keys
+(`EMAIL_MASTER_KEY`, the index peppers) are derived from `JWT_SECRET` when
+unset, and with no `MAIL_API_KEY` the mailer prints verification and reset links
+straight to the terminal instead of sending them.
+
+**Production requires all of them explicitly** and refuses to boot otherwise —
+deriving the email store's key from the token-signing secret would tie one
+leaked `JWT_SECRET` to every stored address. See `backend/.env.example` and
+[IDENTITY.md](IDENTITY.md).
+
 Then boot **everything** from the repo root with one command:
 
 ```
@@ -48,6 +84,9 @@ is no manual DB setup. `Ctrl+C` stops both.
 | `npm run dev`           | Start db + backend + frontend together              |
 | `npm run dev:backend`   | Backend only                                        |
 | `npm run dev:frontend`  | Frontend only                                       |
+| `npm run verify`        | Typecheck + every test + build. Run before pushing. |
+| `npm test`              | Frontend + backend suites                           |
+| `npm run test:unit`     | Fast, no server or database needed                  |
 | `npm run db:up`         | Start Postgres in the background                     |
 | `npm run db:down`       | Stop Postgres                                        |
 | `npm run db:reset`      | Wipe the DB volume and start fresh                  |
@@ -65,15 +104,26 @@ Runs Postgres + backend. Frontend is run separately (`npm run dev:frontend`).
 
 ## What the server knows
 
-Nothing that identifies you or your messages. It stores `sha256(username)`, an
-Argon2id password verifier, two public keys, and ciphertext it cannot open.
-Display names and avatars are **not** server-side — they travel inside the
-end-to-end encrypted envelope and are only ever sent to people who already hold
-the channel key.
+Nothing about your messages. It stores an HMAC of your username, an Argon2id
+password verifier, two public keys, and ciphertext it cannot open. Display names
+and avatars are **not** server-side — they travel inside the end-to-end
+encrypted envelope and are only ever sent to people who already hold the channel
+key.
 
 The relay does see metadata it cannot avoid seeing: which user IDs share a
 channel, when they send, and the **size** of messages and files. It also learns
 any URL you explicitly ask it to preview (see [Link previews](#link-previews)).
+
+**One exception, and it is a real one:** if you add an optional email address,
+the server *can* read it. It is encrypted at rest and no API ever returns it —
+Settings shows only a mask like `ab•••••••@outlook.com` — but the mail path
+decrypts it, so the honest claim is "we never expose it", not "we cannot read
+it". An account without an address is fully functional; it just cannot have its
+password reset by mail. Nothing about email touches messages, channels, or keys.
+
+What the server still does **not** know, deliberately: when you last logged in.
+There is no activity column anywhere in the schema, for subscribers or anyone
+else. See [IDENTITY.md](IDENTITY.md) §3.3 for why that stayed out.
 
 ## Key exchange
 
@@ -104,9 +154,28 @@ UI rather than silently accepted. Unverified messages render an
 Compare fingerprints (Settings → identity) out of band to confirm nobody
 swapped keys in between.
 
+### Replies and reactions
+
+Both live **inside** the signed envelope, not alongside it. A reply carries the
+replier's snapshot of what they answered (id, author, a clipped excerpt) and a
+reaction is its own envelope naming its target — so a relay can neither repoint
+a reply at a different message nor move a reaction onto one. The `removed` flag
+on a reaction is signed too, which stops a replayed "add" from undoing someone's
+removal.
+
+The quoted excerpt is the **replier's** claim about the original, taken at reply
+time, and the UI renders it as such. That is deliberate: it has to survive the
+recipient never having received the original (joined late, cleared history), and
+it puts the replier on the record for what they quoted.
+
+Envelopes are **v3**. v2 is still accepted for reading — messages already in a
+vault were signed under the v2 field list, and refusing them would silently
+destroy every existing transcript.
+
 ## File attachments
 
-Any file type, up to **50MB**. Files never travel in the message envelope —
+Any file type, up to **50MB** for supporters and **20MB** on the free tier
+(see [Tiers](#tiers)). Files never travel in the message envelope —
 base64 would add 33%, and the relay duplicates each queued message *per
 recipient*. Instead:
 
@@ -204,7 +273,33 @@ encrypted key file (Settings → export keys) and import it there. Use a
 different passphrase for the file than your login password — the file leaves
 the device.
 
-There is no password reset. Forgetting it means the vault is unrecoverable.
+### Recovery
+
+Registration shows a **24-word recovery code**, once. It wraps a copy of your
+keys and channel keys, which is uploaded to the server sealed under that code.
+
+The server holding that blob is safe in a way that holding your vault would not
+be: the vault is sealed under a human-chosen password and would be an offline
+cracking target, while the recovery blob is sealed under 256 bits of CSPRNG
+output. There is no dictionary for that — it is ciphertext the server cannot
+attack, the same standard it already meets for every message it relays. The code
+itself is never transmitted, and no verifier for it is stored (a verifier would
+be an offline oracle to grind against).
+
+Recovery needs **both factors**, because each covers what the other cannot:
+
+| factor | what it does | what it cannot do |
+| --- | --- | --- |
+| email | proves you control the mailbox, so the server accepts a new password | decrypt anything |
+| recovery code | decrypts your keys and channels | log you in |
+
+A password reset without the code gets you a working login into an account with
+**no channels and no history** — the app says so plainly rather than letting you
+discover it. Lose the code and forget the password, and the vault is gone; that
+part has not changed.
+
+Full design, including what we refused to build and why:
+[IDENTITY.md](IDENTITY.md).
 
 > **Note:** the frontend depends on `libsodium-wrappers-sumo`, not
 > `libsodium-wrappers`. The standard build omits `crypto_pwhash` (Argon2id),

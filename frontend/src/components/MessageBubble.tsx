@@ -5,6 +5,9 @@ import { segmentize } from "../lib/links";
 import Avatar from "./Avatar";
 import AttachmentCard from "./AttachmentCard";
 import LinkPreviewCard from "./LinkPreviewCard";
+import ReactionBar from "./ReactionBar";
+import Badge from "./Badge";
+import { ReplyQuote } from "./ReplyRefCard";
 
 /**
  * Render a message body with clickable links.
@@ -44,6 +47,18 @@ interface MessageBubbleProps {
   grouped: boolean;
   avatar?: BinaryAsset;
   keyChanged: boolean;
+  /** Set when the sender holds an active subscription. */
+  supporter?: boolean;
+  selfId: string;
+  nameFor: (userId: string) => string;
+  onToggleReaction: (emoji: string) => void;
+  onJumpToReply: (messageId: string) => void;
+  /** False when the replied-to message is not in this device's transcript. */
+  replyTargetExists: boolean;
+  /** Spread onto the row to arm right-click / long-press. */
+  contextHandlers?: Record<string, unknown>;
+  /** Briefly ring the bubble after a reply jump lands on it. */
+  highlighted?: boolean;
 }
 
 /** Decodes an attached image back to an object URL for the life of the bubble. */
@@ -83,6 +98,14 @@ export default function MessageBubble({
   grouped,
   avatar,
   keyChanged,
+  supporter,
+  selfId,
+  nameFor,
+  onToggleReaction,
+  onJumpToReply,
+  replyTargetExists,
+  contextHandlers,
+  highlighted,
 }: MessageBubbleProps) {
   const time = new Date(message.createdAt).toLocaleTimeString([], {
     hour: "2-digit",
@@ -91,13 +114,16 @@ export default function MessageBubble({
 
   return (
     <div
+      id={`msg-${message.id}`}
+      {...contextHandlers}
       className={`
     flex
     w-full
     min-w-0
     gap-2
+    scroll-mt-4
     ${isSelf ? "flex-row-reverse" : "flex-row"}
-    ${grouped ? "mt-0.5" : "mt-3"} ${grouped ? "mt-0.5" : "mt-3"}`}
+    ${grouped ? "mt-0.5" : "mt-3"}`}
     >
       <div className="w-6 flex-none">
         {!grouped && (
@@ -123,6 +149,7 @@ export default function MessageBubble({
             <span className="text-[11px] font-medium text-foreground/80">
               {message.displayName}
             </span>
+            {supporter && <Badge size="sm" />}
             <span className="text-[10px] text-muted">{time}</span>
 
             {/* An unverified signature means the claimed author cannot be
@@ -161,8 +188,21 @@ export default function MessageBubble({
       isSelf
         ? "bg-primary/15 text-foreground border border-primary/30"
         : "bg-surface-raised text-foreground border border-border"
-    } ${message.pending ? "opacity-60" : ""}`}
+    } ${message.pending ? "opacity-60" : ""} ${
+      highlighted ? "ring-2 ring-primary/70 transition-shadow" : ""
+    }`}
         >
+          {/* The quote is the replier's signed snapshot, so it belongs inside
+              their bubble -- it is something they said, not a live view of the
+              original. */}
+          {message.replyTo && (
+            <ReplyQuote
+              reply={message.replyTo}
+              missing={!replyTargetExists}
+              onJump={() => onJumpToReply(message.replyTo!.id)}
+            />
+          )}
+
           {message.body &&
             (!message.preview ||
               (message.preview && message.preview!.kind === "youtube")) && (
@@ -180,6 +220,15 @@ export default function MessageBubble({
             <p className="mt-1 text-[10px] text-muted">queued — not yet sent</p>
           )}
         </div>
+
+        {message.reactions && (
+          <ReactionBar
+            reactions={message.reactions}
+            selfId={selfId}
+            nameFor={nameFor}
+            onToggle={onToggleReaction}
+          />
+        )}
       </div>
     </div>
   );

@@ -10,7 +10,10 @@ import {
   EncryptedBundle,
 } from '../lib/crypto';
 import { saveAccount, Vault } from '../lib/vault';
+import { Crown, ExternalLink } from 'lucide-react';
+import { api, EmailState, Badge as BadgeState } from '../lib/api';
 import Avatar from '../components/Avatar';
+import Badge from '../components/Badge';
 
 export default function Settings() {
   const session = useSession();
@@ -30,6 +33,16 @@ export default function Settings() {
   const [importFile, setImportFile] = useState<EncryptedBundle | null>(null);
   const [importPassword, setImportPassword] = useState('');
 
+  // null = not loaded yet, distinct from "loaded and there is no address".
+  const [email, setEmail] = useState<EmailState | null>(null);
+  const [emailInput, setEmailInput] = useState('');
+  const [emailPassword, setEmailPassword] = useState('');
+  const [badge, setBadge] = useState<BadgeState | null>(null);
+  // Stripe's hosted portal login page: the only route to cancelling, since we
+  // hold no customer id to cancel with.
+  const [portalUrl, setPortalUrl] = useState<string | null>(null);
+  const [redeemCode, setRedeemCode] = useState('');
+
   const avatarInput = useRef<HTMLInputElement>(null);
   const bundleInput = useRef<HTMLInputElement>(null);
 
@@ -40,6 +53,33 @@ export default function Settings() {
     setAlwaysPreview(vault.preferences.alwaysPreviewLinks);
     keyFingerprint(vault.identity.signPublicKey).then(setFingerprint);
   }, [vault]);
+
+  // Account-layer state lives on the server, not in the vault, so it is fetched
+  // rather than read locally. Failures are left silent: this is supplementary
+  // information and an unreachable billing endpoint should not present itself as
+  // a broken settings page.
+  useEffect(() => {
+    if (!session.token) return;
+    let cancelled = false;
+
+    api
+      .getEmail(session.token)
+      .then((res) => !cancelled && setEmail(res))
+      .catch(() => !cancelled && setEmail({ mask: null, verified: false }));
+
+    api
+      .billingStatus(session.token)
+      .then((res) => {
+        if (cancelled) return;
+        setBadge(res.badge);
+        setPortalUrl(res.portalUrl);
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session.token]);
 
   if (!vault || !account) {
     return (
@@ -100,6 +140,64 @@ export default function Settings() {
       await broadcastProfileEverywhere();
       session.refresh();
       setStatus({ kind: 'ok', text: 'Profile saved and sent to your channels.' });
+    } catch (err) {
+      setStatus({ kind: 'error', text: (err as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSetEmail() {
+    setStatus(null);
+    setBusy(true);
+    try {
+      const res = await api.setEmail(session.token!, emailInput.trim(), emailPassword);
+      setEmail((e) => ({ ...(e ?? { mask: null, verified: false }), pendingMask: res.pendingMask }));
+      setEmailInput('');
+      setEmailPassword('');
+      setStatus({
+        kind: 'ok',
+        text: 'Confirmation link sent. The address is not attached until you use it.',
+      });
+    } catch (err) {
+      setStatus({ kind: 'error', text: (err as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRemoveEmail() {
+    setStatus(null);
+    // Losing the address means losing password reset entirely, and the recovery
+    // code alone cannot get you back in -- worth one confirmation.
+    if (
+      !confirm(
+        'Remove your email?\n\nYou will no longer be able to reset a forgotten password. Your recovery code alone cannot log you in.'
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.removeEmail(session.token!, emailPassword);
+      setEmail({ mask: null, verified: false });
+      setEmailPassword('');
+      setStatus({ kind: 'ok', text: 'Address removed. The stored ciphertext is gone.' });
+    } catch (err) {
+      setStatus({ kind: 'error', text: (err as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRedeem() {
+    setStatus(null);
+    setBusy(true);
+    try {
+      const res = await api.redeem(session.token!, redeemCode.trim());
+      setBadge(res.badge);
+      setRedeemCode('');
+      setStatus({ kind: 'ok', text: 'Badge activated.' });
     } catch (err) {
       setStatus({ kind: 'error', text: (err as Error).message });
     } finally {
@@ -344,6 +442,167 @@ export default function Settings() {
           Read this to a contact over another channel. If it matches what they see next to your
           name, no one swapped keys in between.
         </p>
+      </section>
+
+      {/* email */}
+      <section className="card space-y-3">
+        <h2 className="text-xs uppercase tracking-wider text-muted">email</h2>
+
+        {email === null ? (
+          <p className="text-xs text-muted">loading…</p>
+        ) : email.mask ? (
+          <div className="space-y-1 text-xs">
+            <p className="text-muted">on file</p>
+            <p className="flex items-center gap-2 font-mono">
+              {email.mask}
+              {email.verified ? (
+                <span className="tag bg-ok/10 text-ok">verified</span>
+              ) : (
+                <span className="tag bg-warn/10 text-warn">unconfirmed</span>
+              )}
+            </p>
+          </div>
+        ) : (
+          <p className="text-xs text-muted">No email on this account.</p>
+        )}
+
+        {email?.pendingMask && (
+          <p className="rounded border border-info/30 bg-info/10 p-4 text-xs text-info">
+            Waiting on confirmation for <span className="font-mono">{email.pendingMask}</span>. The
+            link expires in 24 hours.
+          </p>
+        )}
+
+        <p className="text-[11px] text-muted">
+          Shown partially on purpose — the full address is encrypted and the server only decrypts it
+          to send you mail. Nobody can read it back out, including you. It exists so you can reset a
+          forgotten password; it cannot decrypt your channels, and an account without one works
+          exactly the same otherwise.
+        </p>
+
+        <label className="block space-y-1">
+          <span className="text-xs text-muted">{email?.mask ? 'change to' : 'add an address'}</span>
+          <input
+            className="field"
+            type="email"
+            autoComplete="email"
+            value={emailInput}
+            onChange={(e) => setEmailInput(e.target.value)}
+          />
+        </label>
+
+        <label className="block space-y-1">
+          <span className="text-xs text-muted">your account password</span>
+          <input
+            className="field"
+            type="password"
+            autoComplete="current-password"
+            value={emailPassword}
+            onChange={(e) => setEmailPassword(e.target.value)}
+          />
+        </label>
+
+        <p className="text-[11px] text-muted">
+          Your password is required here because anyone who could silently swap this address could
+          take the account by resetting it.
+        </p>
+
+        <button
+          className="btn-ghost w-full text-xs"
+          disabled={busy || !emailInput.trim() || !emailPassword}
+          onClick={handleSetEmail}
+        >
+          {email?.mask ? 'change address' : 'add address'}
+        </button>
+
+        {email?.mask && (
+          <button
+            className="w-full text-xs text-error hover:underline"
+            disabled={busy || !emailPassword}
+            onClick={handleRemoveEmail}
+          >
+            remove my address
+          </button>
+        )}
+      </section>
+
+      {/* subscription */}
+      <section className="card space-y-3">
+        <h2 className="text-xs uppercase tracking-wider text-muted">subscription</h2>
+
+        {badge ? (
+          <>
+            <p className="flex items-center gap-2 text-xs">
+              <Badge since={badge.since} size="md" withLabel />
+              <span className="text-muted">since {new Date(badge.since).toLocaleDateString()}</span>
+            </p>
+            <p className="text-[11px] text-muted">
+              Your badge is the only record. We store no payment details and your account is not
+              linked to your payment in our database — the badge and the purchase are connected only
+              by a random code you redeemed.
+            </p>
+
+            {portalUrl ? (
+              <>
+                <a
+                  href={portalUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-ghost block w-full text-center text-xs"
+                >
+                  <span className="inline-flex items-center gap-1.5">
+                    Manage or cancel
+                    <ExternalLink size={11} aria-hidden="true" />
+                  </span>
+                </a>
+                <p className="text-[11px] text-muted">
+                  Cancelling happens on Stripe, not here — enter the email you paid with and they
+                  will send you a link. We cannot do it for you: we never stored who paid, which is
+                  the point. Your badge stays until{' '}
+                  {new Date(badge.until).toLocaleDateString()} either way — you paid for that time.
+                </p>
+              </>
+            ) : (
+              <p className="rounded border border-warn/30 bg-warn/10 p-3 text-[11px] text-warn">
+                Cancellation is not configured on this deployment. Contact support to cancel.
+              </p>
+            )}
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-muted">No subscription on this account.</p>
+            <label className="block space-y-1">
+              <span className="text-xs text-muted">redemption code</span>
+              <input
+                className="field font-mono"
+                value={redeemCode}
+                onChange={(e) => setRedeemCode(e.target.value)}
+                placeholder="XXXXX-XXXXX-XXXXX-XXXXX"
+                autoCapitalize="characters"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+            </label>
+            <button
+              className="btn-ghost w-full text-xs"
+              disabled={busy || !redeemCode.trim()}
+              onClick={handleRedeem}
+            >
+              redeem
+            </button>
+            <p className="text-[11px] text-muted">
+              Subscriptions are bought logged out and redeemed with a code, so the payment is never
+              tied to this account on our side.
+            </p>
+
+            <Link to="/subscribe" className="btn-primary block w-full text-center text-xs">
+              <span className="inline-flex items-center gap-1.5">
+                <Crown size={13} className="fill-warn/25" aria-hidden="true" />
+                Become a supporter
+              </span>
+            </Link>
+          </>
+        )}
       </section>
 
       {/* export */}

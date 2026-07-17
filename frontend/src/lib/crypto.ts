@@ -7,6 +7,7 @@ import {
   Bytes,
   stringToBytes,
   bytesToString,
+  bytesToBase64Url,
   concatBytes,
   wipe,
   BinaryAsset,
@@ -45,7 +46,15 @@ function fromB64(value: string): Bytes {
   return sodium.from_base64(value, B64);
 }
 
-export const ENVELOPE_VERSION = 2;
+/**
+ * Bumped to 3 when replies and reactions landed.
+ *
+ * We still *verify* v2 (see canonicalBytes): messages already sitting in a
+ * vault were signed under the v2 field list, and refusing to open them would
+ * silently destroy every existing transcript. New envelopes are always v3.
+ */
+export const ENVELOPE_VERSION = 3;
+const SUPPORTED_VERSIONS = new Set([2, 3]);
 
 /* ------------------------------------------------------------------ */
 /* identity                                                            */
@@ -249,14 +258,49 @@ export interface LinkPreview {
   image?: BinaryAsset;
 }
 
+/**
+ * What a reply points at.
+ *
+ * The excerpt and display name are *snapshots taken by the replier*, not looked
+ * up at render time. That is deliberate: the quoted text has to be what the
+ * replier was actually looking at, and it has to survive the recipient not
+ * having the original message (joined late, cleared their history, or the
+ * sender deleted it locally). It also means the quote is covered by the
+ * replier's signature -- they are on the record for what they claim was said.
+ *
+ * Consequence worth knowing: the excerpt is the *replier's* claim about the
+ * original, so the UI must render it as a quote attributed to them, never as
+ * authoritative text from the original author. `id` is what the UI resolves
+ * against the local transcript to scroll to the real thing.
+ */
+export interface ReplyRef {
+  id: string;
+  senderId: string;
+  displayName: string;
+  /** Empty when the target had no text (a bare image or file). */
+  excerpt: string;
+  kind: 'text' | 'image' | 'file';
+}
+
+/** A reaction is its own envelope, not a mutation of the target. */
+export interface ReactionRef {
+  targetId: string;
+  /** A single emoji. Validated on the way in -- see isSingleEmoji. */
+  emoji: string;
+  /** Toggling off is a signed act too, or a relay could replay the add. */
+  removed: boolean;
+}
+
 export interface EnvelopeContent {
   v: number;
-  kind: 'message' | 'profile';
+  kind: 'message' | 'profile' | 'reaction';
   body: string;
   displayName: string;
   avatar?: BinaryAsset;
   attachments?: Attachment[];
   preview?: LinkPreview;
+  replyTo?: ReplyRef;
+  reaction?: ReactionRef;
   sentAt: string;
 }
 
@@ -331,7 +375,39 @@ function canonicalBytes(env: Omit<SignedEnvelope, 'sig'>): Bytes {
     );
   }
 
-  const parts: Bytes[] = [stringToBytes('darkchat-envelope-v2')];
+  // v3 fields are appended, never interleaved, and the domain string changes
+  // with the version. Both matter: a v2 envelope must produce byte-identical
+  // input to what it was signed over, or every message already in a vault stops
+  // verifying and the UI marks the entire history "unverified".
+  if (env.v >= 3) {
+    // Reply metadata is signed. Without this a relay could repoint a reply at a
+    // different message, or forge one, and make someone appear to be answering
+    // something they never saw.
+    fields.push(env.replyTo ? '1' : '0');
+    if (env.replyTo) {
+      fields.push(
+        env.replyTo.id,
+        env.replyTo.senderId,
+        env.replyTo.displayName,
+        env.replyTo.excerpt,
+        env.replyTo.kind
+      );
+    }
+
+    // Same for reactions: the target and the toggle state are both signed, so a
+    // relay can neither move a reaction onto another message nor replay an old
+    // "add" to undo someone's removal.
+    fields.push(env.reaction ? '1' : '0');
+    if (env.reaction) {
+      fields.push(
+        env.reaction.targetId,
+        env.reaction.emoji,
+        env.reaction.removed ? '1' : '0'
+      );
+    }
+  }
+
+  const parts: Bytes[] = [stringToBytes(`darkchat-envelope-v${env.v}`)];
   for (const field of fields) {
     const bytes = stringToBytes(field);
     const len = new Uint8Array(4);
@@ -363,6 +439,75 @@ export async function createEnvelope(
   return sealWithKey(JSON.stringify(envelope), channelKeyB64);
 }
 
+/**
+ * Bound on a quoted excerpt. A reply carries the replier's snapshot of the
+ * original, and without a cap that field is an arbitrary-length string a peer
+ * can push into every recipient's vault.
+ */
+export const MAX_REPLY_EXCERPT = 140;
+
+/**
+ * One emoji. Not "a short string" -- a peer picks this and it is rendered
+ * verbatim next to a message, so anything that is not a single pictograph is
+ * refused rather than displayed.
+ *
+ * Uses Intl.Segmenter where available: an emoji like a flag or a skin-toned
+ * family is several code points joined by ZWJ, so counting `.length` or even
+ * [...spread] rejects perfectly ordinary emoji. Falls back to a code-point cap
+ * on engines without it (bounded, if slightly permissive).
+ */
+export function isSingleEmoji(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 40) return false;
+
+  // No control characters, and no bidi overrides -- a U+202E inside a reaction
+  // would reorder the text rendered around it. This field is a pictograph, not
+  // a text channel, so anything structural is refused outright.
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001F\u007F\u202A-\u202E\u2066-\u2069]/.test(value)) return false;
+
+  if (typeof Intl.Segmenter !== 'undefined') {
+    const graphemes = [...new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(value)];
+    if (graphemes.length !== 1) return false;
+  } else if ([...value].length > 8) {
+    // No Segmenter: fall back to a code-point cap. Bounded, if permissive -- a
+    // ZWJ sequence like a family emoji is legitimately several code points.
+    return false;
+  }
+
+  return /\p{Extended_Pictographic}/u.test(value);
+}
+
+function isValidReplyRef(value: unknown): value is ReplyRef {
+  const r = value as ReplyRef;
+  return (
+    typeof r === 'object' &&
+    r !== null &&
+    typeof r.id === 'string' &&
+    r.id.length > 0 &&
+    r.id.length <= 64 &&
+    typeof r.senderId === 'string' &&
+    r.senderId.length <= 64 &&
+    typeof r.displayName === 'string' &&
+    r.displayName.length <= 64 &&
+    typeof r.excerpt === 'string' &&
+    r.excerpt.length <= MAX_REPLY_EXCERPT &&
+    (r.kind === 'text' || r.kind === 'image' || r.kind === 'file')
+  );
+}
+
+function isValidReactionRef(value: unknown): value is ReactionRef {
+  const r = value as ReactionRef;
+  return (
+    typeof r === 'object' &&
+    r !== null &&
+    typeof r.targetId === 'string' &&
+    r.targetId.length > 0 &&
+    r.targetId.length <= 64 &&
+    typeof r.removed === 'boolean' &&
+    isSingleEmoji(r.emoji)
+  );
+}
+
 export interface OpenedEnvelope {
   envelope: SignedEnvelope;
   verified: boolean;
@@ -388,9 +533,23 @@ export async function openEnvelope(
   const envelope = JSON.parse(json) as SignedEnvelope;
 
   if (typeof envelope !== 'object' || envelope === null) throw new Error('malformed envelope');
-  if (envelope.v !== ENVELOPE_VERSION) throw new Error(`unsupported envelope version ${envelope.v}`);
+  // v2 is still accepted for reading: it is what every message already in a
+  // vault was signed under. Only v3 is ever written.
+  if (!SUPPORTED_VERSIONS.has(envelope.v)) {
+    throw new Error(`unsupported envelope version ${envelope.v}`);
+  }
   if (typeof envelope.body !== 'string' || typeof envelope.displayName !== 'string') {
     throw new Error('malformed envelope');
+  }
+
+  // A peer controls these. Validating shape here keeps malformed or hostile
+  // structures out of the UI, which would otherwise render whatever it was
+  // handed.
+  if (envelope.replyTo && !isValidReplyRef(envelope.replyTo)) {
+    throw new Error('malformed reply reference');
+  }
+  if (envelope.reaction && !isValidReactionRef(envelope.reaction)) {
+    throw new Error('malformed reaction');
   }
 
   // The transport's claim about the sender and channel must match what the
@@ -567,6 +726,164 @@ export async function importKeyBundle(
     ).catch(() => {
       throw new Error('wrong passphrase or corrupted key file');
     });
+    return JSON.parse(json) as KeyBundle;
+  } finally {
+    wipe(key);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* recovery code                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The recovery code: 256 bits of CSPRNG output, rendered as 24 words.
+ *
+ * This is what makes recovery possible at all. The vault lives only in this
+ * browser's localStorage and the server has never held a private key, so a
+ * device that has never seen the account has nothing to unlock -- no password
+ * can fix that, because the ciphertext simply is not there. The recovery blob
+ * (a KeyBundle sealed under this code, parked on the server) is the only copy it
+ * can reach.
+ *
+ * Why the server may hold that blob when it may not hold the vault: the vault is
+ * sealed under a human-chosen password, so a server holding it holds an offline
+ * cracking target worth grinding. This is sealed under 256 random bits. There is
+ * no dictionary, no wordlist, and no amount of GPU that makes 2^256 approachable
+ * -- the server holds ciphertext it cannot attack, exactly the standard it
+ * already meets for every message it relays.
+ *
+ * Words, not hex: this gets written on paper and typed back months later, and
+ * people transcribe words correctly far more often than 64 hex characters.
+ */
+export const RECOVERY_CODE_WORDS = 24;
+
+/**
+ * BIP39, via @scure/bip39 rather than hand-rolled.
+ *
+ * The encoding is not the interesting part of this feature and getting it subtly
+ * wrong is entirely possible -- the checksum, the bit packing, and NFKD
+ * normalization of typed input all have edge cases. @scure/bip39 is audited and
+ * its English wordlist is chosen so the first four letters of every word are
+ * unique, which is what makes a handwritten phrase survive bad handwriting.
+ *
+ * Using BIP39 here does NOT mean this is a crypto wallet. It is a well-specified
+ * way to render 256 bits as words and read them back, nothing more.
+ *
+ * Lazily imported: the wordlist is ~13KB and users who never register or recover
+ * should not pay for it in the main bundle.
+ */
+async function bip39() {
+  // The `.js` suffix is required: the package's export map lists
+  // "./wordlists/english.js" and nothing resolves without it.
+  const [core, english] = await Promise.all([
+    import('@scure/bip39'),
+    import('@scure/bip39/wordlists/english.js'),
+  ]);
+  return { core, wordlist: english.wordlist };
+}
+
+export interface RecoveryCode {
+  /** The 24 words, space-separated. Shown once, never stored, never sent. */
+  phrase: string;
+  /** Raw entropy, for immediate use in deriving the wrap key. */
+  entropy: Bytes;
+}
+
+export async function generateRecoveryCode(): Promise<RecoveryCode> {
+  const { core, wordlist } = await bip39();
+  // 256 bits -> 24 words.
+  const phrase = core.generateMnemonic(wordlist, 256);
+  return { phrase, entropy: core.mnemonicToEntropy(phrase, wordlist) };
+}
+
+/**
+ * Parse a typed-back phrase into entropy.
+ *
+ * A mistyped word fails the BIP39 checksum here, which matters for the error
+ * message: without it the user would see "wrong recovery code" from a failed
+ * Poly1305 tag, indistinguishable from "the server handed you a corrupt blob".
+ */
+export async function parseRecoveryCode(phrase: string): Promise<Bytes> {
+  const { core, wordlist } = await bip39();
+  const normalized = phrase.trim().toLowerCase().split(/\s+/).filter(Boolean).join(' ');
+
+  const count = normalized ? normalized.split(' ').length : 0;
+  if (count !== RECOVERY_CODE_WORDS) {
+    throw new Error(`recovery code must be ${RECOVERY_CODE_WORDS} words (got ${count})`);
+  }
+
+  try {
+    return core.mnemonicToEntropy(normalized, wordlist);
+  } catch {
+    throw new Error('recovery code is not valid -- check for a mistyped word');
+  }
+}
+
+/**
+ * The blob the server parks. Same shape as an exported key file, but wrapped
+ * under the recovery code instead of a chosen passphrase.
+ */
+export interface RecoveryBlob {
+  ciphertext: string;
+  nonce: string;
+  salt: string;
+}
+
+async function deriveRecoveryKey(entropy: Bytes, saltB64: string): Promise<Bytes> {
+  await ensureReady();
+  const salt = fromB64(saltB64);
+  if (salt.length !== sodium.crypto_pwhash_SALTBYTES) {
+    throw new Error('invalid recovery salt');
+  }
+
+  // The entropy goes in as base64 text, not as raw bytes reinterpreted as a
+  // string. Random bytes are not valid UTF-8, so decoding them would either
+  // throw (our decoder is fatal:true) or -- with a lenient decoder -- silently
+  // map whole byte ranges onto U+FFFD and collapse the entropy. base64 is a
+  // lossless, injective rendering, so distinct codes stay distinct keys.
+  //
+  // Argon2id over already-uniform 256-bit input is not doing the work it does
+  // over a password: there is nothing to slow down, because there is nothing to
+  // guess. It is here so the blob's format matches the export path, and so that
+  // if product ever shortens the code, the derivation is already hardened rather
+  // than needing to be remembered. INTERACTIVE limits keep it off the critical
+  // path.
+  return sodium.crypto_pwhash(
+    sodium.crypto_secretbox_KEYBYTES,
+    bytesToBase64Url(entropy),
+    salt,
+    sodium.crypto_pwhash_OPSLIMIT_INTERACTIVE,
+    sodium.crypto_pwhash_MEMLIMIT_INTERACTIVE,
+    sodium.crypto_pwhash_ALG_ARGON2ID13
+  );
+}
+
+export async function sealRecoveryBlob(
+  bundle: Omit<KeyBundle, 'v' | 'exportedAt'>,
+  entropy: Bytes
+): Promise<RecoveryBlob> {
+  await ensureReady();
+  const salt = await generateSalt();
+  const key = await deriveRecoveryKey(entropy, salt);
+  try {
+    const payload: KeyBundle = { ...bundle, v: 1, exportedAt: new Date().toISOString() };
+    const sealed = await sealWithKey(JSON.stringify(payload), key);
+    return { ciphertext: sealed.ciphertext, nonce: sealed.nonce, salt };
+  } finally {
+    wipe(key);
+  }
+}
+
+export async function openRecoveryBlob(blob: RecoveryBlob, entropy: Bytes): Promise<KeyBundle> {
+  await ensureReady();
+  const key = await deriveRecoveryKey(entropy, blob.salt);
+  try {
+    const json = await openWithKey({ ciphertext: blob.ciphertext, nonce: blob.nonce }, key).catch(
+      () => {
+        throw new Error('wrong recovery code');
+      }
+    );
     return JSON.parse(json) as KeyBundle;
   } finally {
     wipe(key);

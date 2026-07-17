@@ -4,6 +4,7 @@ import rateLimit from 'express-rate-limit';
 import { pool } from '../db.js';
 import { config } from '../config.js';
 import { requireAuth } from '../middleware/auth.js';
+import { entitlementsFor, uploadDenialReason } from '../lib/entitlements.js';
 import { blobStore } from '../blobStore.js';
 
 const router = Router();
@@ -43,12 +44,24 @@ async function isMember(channelId, userId) {
  * so it asks rather than hardcoding a constant that could drift out of sync
  * with BLOB_CHUNK_BYTES and break every upload.
  */
-router.get('/config', requireAuth, (req, res) => {
-  res.json({
-    chunkBytes: config.blob.chunkBytes,
-    maxFileBytes: config.blob.maxFileBytes,
-    chunkOverheadBytes: config.blob.chunkOverheadBytes,
-  });
+router.get('/config', requireAuth, async (req, res, next) => {
+  try {
+    // Per-user, not global: the cap depends on tier, and a client told the
+    // global maximum would let someone pick a 50MB file, encrypt all of it, and
+    // only then be refused at /init.
+    const ent = await entitlementsFor(req.userId);
+    res.json({
+      chunkBytes: config.blob.chunkBytes,
+      maxFileBytes: ent.tier.maxFileBytes,
+      chunkOverheadBytes: config.blob.chunkOverheadBytes,
+      canUpload: ent.canUpload,
+      uploadDenialReason: uploadDenialReason(ent),
+      tier: ent.tier.name,
+      maxChars: ent.tier.maxChars,
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 /**
@@ -71,12 +84,25 @@ router.post('/init', initLimiter, requireAuth, async (req, res, next) => {
       return res.status(400).json({ error: 'invalid declaredChunks' });
     }
 
+    // Both gates are enforced here, before a single byte is accepted -- the
+    // client's own checks are a courtesy and cannot be trusted.
+    const ent = await entitlementsFor(req.userId);
+
+    if (!ent.canUpload) {
+      return res.status(403).json({ error: uploadDenialReason(ent), needsEmail: true });
+    }
+
     // declaredBytes is ciphertext: plaintext + 17 bytes of tag per chunk.
-    const maxCiphertext =
-      config.blob.maxFileBytes + declaredChunks * config.blob.chunkOverheadBytes;
+    // The tier cap is applied to the plaintext ceiling, so a free user gets 20MB
+    // of actual file rather than 20MB minus however many tags their chunking
+    // happened to produce.
+    const tierMax = Math.min(ent.tier.maxFileBytes, config.blob.maxFileBytes);
+    const maxCiphertext = tierMax + declaredChunks * config.blob.chunkOverheadBytes;
     if (declaredBytes > maxCiphertext) {
       return res.status(413).json({
-        error: `file too large (max ${Math.floor(config.blob.maxFileBytes / 1024 / 1024)}MB)`,
+        error: `file too large (max ${Math.floor(tierMax / 1024 / 1024)}MB on the ${ent.tier.name} tier)`,
+        tier: ent.tier.name,
+        maxFileBytes: tierMax,
       });
     }
 

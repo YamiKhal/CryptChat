@@ -8,6 +8,11 @@ build/
 # encrypted blob store (local dev). In production this is a mounted volume on a
 # separate disk from Postgres, never inside the repo or the image.
 backend/data/
+
+# Server logs. In development the mailer prints verification and password-reset
+# links to stdout, so a captured log is a working credential -- it must never be
+# committed.
+*.log
 data/
 
 # env / secrets
@@ -24,3 +29,6 @@ npm-debug.log*
 .DS_Store
 .vscode/
 .idea/
+# Test artifacts
+backend/test-server.log
+coverage/

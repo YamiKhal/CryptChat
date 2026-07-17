@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
+import { CornerUpLeft, Smile, Copy, Download } from 'lucide-react';
 import { useSession } from '../lib/session';
 import { useRelayContext } from '../lib/relayContext';
-import { StoredMessage } from '../lib/vault';
+import { StoredMessage, Vault } from '../lib/vault';
 import {
   formatBytes,
   base64ToBytes,
@@ -10,12 +11,31 @@ import {
   encodeImage,
   packAsset,
   sniffImageMime,
+  saveBlob,
+  BinaryAsset,
 } from '../lib/binary';
-import { Attachment, LinkPreview } from '../lib/crypto';
-import { encryptAndUpload, MAX_FILE_BYTES, TransferProgress } from '../lib/blob';
+import { Attachment, LinkPreview, ReplyRef } from '../lib/crypto';
+import { encryptAndUpload, downloadAndDecrypt, TransferProgress } from '../lib/blob';
 import { pickPreviewUrl, stripPreviewMarkers } from '../lib/links';
+import { Limits, DEFAULT_LIMITS, overCharLimit, buildReplyRef, QUICK_REACTIONS } from '../lib/limits';
 import { api } from '../lib/api';
 import MessageBubble from '../components/MessageBubble';
+import Composer from '../components/Composer';
+import { ContextMenu, useContextMenu, MenuItem } from '../components/ContextMenu';
+import { ReplyComposing } from '../components/ReplyRefCard';
+
+/**
+ * Decrypt an attachment and save it.
+ *
+ * The bytes arrive as ciphertext and the key came inside the signed envelope, so
+ * this is the only place the plaintext exists -- the relay stores something it
+ * cannot open. saveBlob forces application/octet-stream regardless of the
+ * sender's claimed MIME, so a hostile "image" cannot be navigated to as markup.
+ */
+async function downloadAttachment(attachment: Attachment, token: string): Promise<void> {
+  const blob = await downloadAndDecrypt(attachment, token);
+  saveBlob(blob, attachment.name);
+}
 
 /**
  * Ceiling for embedding an image link's original bytes in the envelope.
@@ -26,10 +46,76 @@ import MessageBubble from '../components/MessageBubble';
  */
 const MAX_INLINE_PREVIEW_BYTES = 150 * 1024;
 
+/**
+ * One message plus its context-menu wiring.
+ *
+ * Split out because `useContextMenu` is a hook and cannot be called inside the
+ * transcript's map(). Each row owns its own press-tracking state, which is also
+ * what keeps a long-press on one message from arming another.
+ */
+function MessageRow({
+  message,
+  isSelf,
+  grouped,
+  avatar,
+  keyChanged,
+  supporter,
+  selfId,
+  nameFor,
+  messageIds,
+  highlighted,
+  onToggleReaction,
+  onJumpToReply,
+  onOpenMenu,
+}: {
+  message: StoredMessage;
+  isSelf: boolean;
+  grouped: boolean;
+  avatar?: BinaryAsset;
+  keyChanged: boolean;
+  supporter: boolean;
+  selfId: string;
+  nameFor: (userId: string) => string;
+  messageIds: Set<string>;
+  highlighted: boolean;
+  onToggleReaction: (emoji: string) => void;
+  onJumpToReply: (id: string) => void;
+  onOpenMenu: (x: number, y: number) => void;
+}) {
+  const { handlers, position, close } = useContextMenu();
+
+  // Lift the position up to the page, which owns the single open menu. Two rows
+  // must never render menus at once.
+  useEffect(() => {
+    if (position) {
+      onOpenMenu(position.x, position.y);
+      close();
+    }
+  }, [position, onOpenMenu, close]);
+
+  return (
+    <MessageBubble
+      message={message}
+      isSelf={isSelf}
+      grouped={grouped}
+      avatar={avatar}
+      keyChanged={keyChanged}
+      supporter={supporter}
+      selfId={selfId}
+      nameFor={nameFor}
+      onToggleReaction={onToggleReaction}
+      onJumpToReply={onJumpToReply}
+      replyTargetExists={message.replyTo ? messageIds.has(message.replyTo.id) : false}
+      contextHandlers={handlers}
+      highlighted={highlighted}
+    />
+  );
+}
+
 export default function Chat() {
   const { channelId } = useParams<{ channelId: string }>();
   const { vault, token, account } = useSession();
-  const { send, broadcastProfile, connected, revision } = useRelayContext();
+  const { send, sendReaction, broadcastProfile, connected, revision } = useRelayContext();
   const navigate = useNavigate();
 
   const [messages, setMessages] = useState<StoredMessage[]>([]);
@@ -39,11 +125,33 @@ export default function Chat() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [limits, setLimits] = useState<Limits>(DEFAULT_LIMITS);
+  const [replyTo, setReplyTo] = useState<ReplyRef | null>(null);
+  const [highlighted, setHighlighted] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ message: StoredMessage; x: number; y: number } | null>(null);
+  const [reactingTo, setReactingTo] = useState<{ id: string; x: number; y: number } | null>(null);
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const announced = useRef<string | null>(null);
 
   const channel = channelId && vault ? vault.getChannel(channelId) : undefined;
+
+  // Tier limits come from the server, never hardcoded here: it is the only
+  // authority, and a client that believes the wrong cap produces uploads that
+  // die at 99% or messages the relay rejects.
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    api
+      .limits(token)
+      .then((res) => !cancelled && setLimits(res))
+      // Keep the restrictive defaults on failure rather than assuming premium.
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [token, revision]);
 
   // Load the decrypted transcript for this channel. Messages are stored per
   // channel inside the vault, so opening a channel is one secretbox open.
@@ -144,6 +252,13 @@ export default function Chat() {
     if (!channelId || sending) return;
     if (!text.trim() && pending.length === 0) return;
 
+    // Client-side, and only client-side: the relay sees ciphertext and cannot
+    // count characters. See the note on overCharLimit in lib/limits.ts.
+    if (overCharLimit(text, limits)) {
+      setError(`Message is over the ${limits.maxChars.toLocaleString()} character limit.`);
+      return;
+    }
+
     setError('');
     setSending(true);
     try {
@@ -155,17 +270,51 @@ export default function Chat() {
         body,
         attachments: pending.length > 0 ? pending : undefined,
         preview,
+        replyTo: replyTo ?? undefined,
       });
 
       if (message) setMessages((current) => [...current, message]);
       setText('');
       setPending([]);
+      setReplyTo(null);
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setSending(false);
     }
-  }, [channelId, text, pending, send, sending, buildPreview]);
+  }, [channelId, text, pending, send, sending, buildPreview, replyTo, limits]);
+
+  /**
+   * Scroll to the message a reply points at.
+   *
+   * The target may not exist here at all -- we joined late, cleared history, or
+   * the replier quoted something we never received. The quote is the replier's
+   * snapshot, so it still renders; it just is not clickable.
+   */
+  const jumpToMessage = useCallback((messageId: string) => {
+    const el = document.getElementById(`msg-${messageId}`);
+    if (!el) return;
+
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // A ring that fades: after scrolling, "which one was it" is the next
+    // question, and the answer should not require hunting.
+    setHighlighted(messageId);
+    setTimeout(() => setHighlighted((c) => (c === messageId ? null : c)), 1600);
+  }, []);
+
+  const handleToggleReaction = useCallback(
+    async (target: StoredMessage, emoji: string) => {
+      if (!channelId || !account) return;
+      const mine = target.reactions?.[emoji]?.includes(account.userId) ?? false;
+      try {
+        await sendReaction(channelId, target.id, emoji, mine);
+        setMessages(await (vault as Vault).loadMessages(channelId));
+      } catch (err) {
+        setError((err as Error).message);
+      }
+    },
+    [channelId, account, sendReaction, vault]
+  );
 
   /**
    * Encrypt and upload immediately on pick, so the message send itself is
@@ -175,8 +324,19 @@ export default function Chat() {
     if (!file || !channelId || !token) return;
     setError('');
 
-    if (file.size > MAX_FILE_BYTES) {
-      setError(`file too large (max ${formatBytes(MAX_FILE_BYTES)})`);
+    // Both of these are re-checked by the server, which is what actually
+    // enforces them. Checking here means the user finds out before they wait
+    // through an encrypt-and-upload that was always going to be refused.
+    if (!limits.canUpload) {
+      setError(limits.uploadDenialReason ?? 'Uploads are unavailable on this account.');
+      return;
+    }
+
+    if (file.size > limits.maxFileBytes) {
+      setError(
+        `File is too large — ${formatBytes(file.size)}, and the ${limits.tier} limit is ${formatBytes(limits.maxFileBytes)}.` +
+          (limits.premium ? '' : ' Supporters can send up to 50MB.')
+      );
       return;
     }
 
@@ -205,6 +365,57 @@ export default function Chat() {
     if (!vault) return {};
     return vault.snapshot().contacts;
   }, [vault, revision]);
+
+  /** Whether a reply's target is on this device, so the quote knows if it can jump. */
+  const messageIds = useMemo(() => new Set(messages.map((m) => m.id)), [messages]);
+
+  const nameFor = useCallback(
+    (userId: string) => {
+      if (userId === account?.userId) return vault?.profile.displayName ?? 'you';
+      return contacts[userId]?.displayName ?? 'unknown';
+    },
+    [contacts, account, vault]
+  );
+
+  /** Built per-target so the menu can offer download only where there is a file. */
+  const menuItems = useCallback(
+    (message: StoredMessage): MenuItem[] => {
+      const items: MenuItem[] = [
+        {
+          label: 'Reply',
+          icon: <CornerUpLeft size={13} />,
+          onSelect: () => setReplyTo(buildReplyRef(message)),
+        },
+        {
+          label: 'React',
+          icon: <Smile size={13} />,
+          onSelect: () => setReactingTo({ id: message.id, x: menu?.x ?? 0, y: menu?.y ?? 0 }),
+        },
+      ];
+
+      if (message.body.trim()) {
+        items.push({
+          label: 'Copy text',
+          icon: <Copy size={13} />,
+          onSelect: () => navigator.clipboard?.writeText(message.body),
+        });
+      }
+
+      for (const attachment of message.attachments ?? []) {
+        items.push({
+          label: `Download ${attachment.name}`,
+          icon: <Download size={13} />,
+          // Downloading decrypts locally: the blob store holds ciphertext and
+          // the key rides in the envelope, so the server cannot serve the
+          // plaintext even if it wanted to.
+          onSelect: () => downloadAttachment(attachment, token!).catch((e) => setError(e.message)),
+        });
+      }
+
+      return items;
+    },
+    [menu, token]
+  );
 
   if (!vault || !account) return null;
 
@@ -267,13 +478,21 @@ export default function Chat() {
           const grouped = previous?.senderId === message.senderId;
 
           return (
-            <MessageBubble
+            <MessageRow
               key={message.id}
               message={message}
               isSelf={isSelf}
               grouped={grouped}
               avatar={isSelf ? vault.profile.avatar : contact?.avatar}
               keyChanged={Boolean(contact?.keyChangedAt)}
+              supporter={isSelf ? Boolean(limits.premium) : false}
+              selfId={account.userId}
+              nameFor={nameFor}
+              messageIds={messageIds}
+              highlighted={highlighted === message.id}
+              onToggleReaction={(emoji) => handleToggleReaction(message, emoji)}
+              onJumpToReply={jumpToMessage}
+              onOpenMenu={(x, y) => setMenu({ message, x, y })}
             />
           );
         })}
@@ -319,39 +538,106 @@ export default function Chat() {
         </div>
       )}
 
-      <div className="flex gap-2 border-t border-border bg-surface p-3">
-        {/* Any type. The bytes are encrypted client-side before upload, so the
-            relay stores something it cannot read or scan. */}
-        <input
-          ref={fileRef}
-          type="file"
-          className="hidden"
-          onChange={(e) => handleFile(e.target.files?.[0])}
+      {replyTo && <ReplyComposing reply={replyTo} onCancel={() => setReplyTo(null)} />}
+
+      {/* Any type. The bytes are encrypted client-side before upload, so the
+          relay stores something it cannot read or scan. */}
+      <input
+        ref={fileRef}
+        type="file"
+        className="hidden"
+        onChange={(e) => handleFile(e.target.files?.[0])}
+      />
+
+      <Composer
+        value={text}
+        onChange={setText}
+        onSend={handleSend}
+        onAttach={() => fileRef.current?.click()}
+        disabled={!channel.hasKey}
+        sending={sending}
+        uploading={Boolean(upload)}
+        canSend={Boolean(text.trim()) || pending.length > 0}
+        limits={limits}
+        placeholder={channel.hasKey ? 'message' : 'waiting for key…'}
+      />
+
+      {menu && (
+        <ContextMenu
+          items={menuItems(menu.message)}
+          position={{ x: menu.x, y: menu.y }}
+          onClose={() => setMenu(null)}
         />
-        <button
-          onClick={() => fileRef.current?.click()}
-          disabled={!channel.hasKey || Boolean(upload)}
-          className="btn-ghost px-3"
-          title={`Attach a file (max ${formatBytes(MAX_FILE_BYTES)})`}
-        >
-          +
-        </button>
-        <input
-          className="field flex-1"
-          value={text}
-          disabled={!channel.hasKey}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
-          placeholder={channel.hasKey ? 'message' : 'waiting for key…'}
+      )}
+
+      {/* The quick-reaction strip. A full picker is one tap further in, but the
+          common case is one of eight and should not need a search box. */}
+      {reactingTo && (
+        <QuickReactions
+          x={reactingTo.x}
+          y={reactingTo.y}
+          onPick={(emoji) => {
+            const target = messages.find((m) => m.id === reactingTo.id);
+            if (target) handleToggleReaction(target, emoji);
+            setReactingTo(null);
+          }}
+          onClose={() => setReactingTo(null)}
         />
+      )}
+    </div>
+  );
+}
+
+/** Anchored strip of the eight most-used reactions. */
+function QuickReactions({
+  x,
+  y,
+  onPick,
+  onClose,
+}: {
+  x: number;
+  y: number;
+  onPick: (emoji: string) => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onDown = (e: Event) => {
+      if (!ref.current?.contains(e.target as Node)) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [onClose]);
+
+  // Clamp inside the viewport: opened near an edge this would otherwise render
+  // with half its emoji unreachable.
+  const width = 268;
+  const left = Math.max(8, Math.min(x, window.innerWidth - width - 8));
+  const top = Math.max(8, Math.min(y, window.innerHeight - 56));
+
+  return (
+    <div
+      ref={ref}
+      className="fixed z-50 flex gap-0.5 rounded-full border border-border bg-surface-raised
+                 px-1.5 py-1 shadow-xl animate-fade-in"
+      style={{ left, top }}
+    >
+      {QUICK_REACTIONS.map((emoji) => (
         <button
-          onClick={handleSend}
-          disabled={!channel.hasKey || sending || (!text.trim() && pending.length === 0)}
-          className="btn-primary"
+          key={emoji}
+          onClick={() => onPick(emoji)}
+          className="rounded-full p-1 text-lg leading-none transition-transform hover:scale-125"
+          aria-label={`React with ${emoji}`}
         >
-          {sending ? '…' : 'Send'}
+          {emoji}
         </button>
-      </div>
+      ))}
     </div>
   );
 }
