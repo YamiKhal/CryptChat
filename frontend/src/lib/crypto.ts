@@ -54,8 +54,8 @@ function fromB64(value: string): Bytes {
  * vault were signed under the v2 field list, and refusing to open them would
  * silently destroy every existing transcript. New envelopes are always v3.
  */
-export const ENVELOPE_VERSION = 4;
-const SUPPORTED_VERSIONS = new Set([2, 3, 4]);
+export const ENVELOPE_VERSION = 5;
+const SUPPORTED_VERSIONS = new Set([2, 3, 4, 5]);
 
 /* ------------------------------------------------------------------ */
 /* identity                                                            */
@@ -98,6 +98,33 @@ export async function keyFingerprint(signPublicKeyB64: string): Promise<string> 
     .toUpperCase()
     .match(/.{1,4}/g)!
     .join('-');
+}
+
+/**
+ * A safety number for a PAIR of identities, to verify end-to-end trust.
+ *
+ * Both people compute the same number and compare it out of band (read it aloud,
+ * message it over another channel). If it matches, no one substituted a key
+ * between them -- which is the one thing the encryption itself cannot prove,
+ * since a malicious relay could hand each side a key it controls.
+ *
+ * Order-independent by construction: the two signing keys are sorted before
+ * hashing, so Alice and Bob derive an identical number regardless of who asks.
+ * Rendered as decimal groups because digits are what survive being read over a
+ * phone line without "was that a capital B or an 8".
+ */
+export async function safetyNumber(signKeyA: string, signKeyB: string): Promise<string> {
+  await ensureReady();
+  const [x, y] = [signKeyA, signKeyB].sort();
+  const digest = sodium.crypto_generichash(32, concatBytes(fromB64(x), fromB64(y)));
+
+  // 12 groups of 5 digits (60 total), each from a 2-byte window of the digest.
+  const groups: string[] = [];
+  for (let i = 0; i < 12; i++) {
+    const v = ((digest[i * 2] << 8) | digest[i * 2 + 1]) % 100000;
+    groups.push(String(v).padStart(5, '0'));
+  }
+  return groups.join(' ');
 }
 
 /* ------------------------------------------------------------------ */
@@ -384,6 +411,20 @@ export interface DeleteRef {
   targetId: string;
 }
 
+/**
+ * Burn-after-read: the message self-destructs `ttl` seconds after the recipient
+ * first sees it. Signed so a relay cannot strip or shorten it.
+ *
+ * Honest scope, same family as delete: this only removes the local copy on a
+ * cooperating client. It cannot stop a screenshot, a photo of the screen, or a
+ * modified client that ignores the timer. It is auto-tidy, not a guarantee
+ * against the person you are talking to.
+ */
+export interface BurnRef {
+  /** Seconds after first view before the message is deleted locally. */
+  ttl: number;
+}
+
 export interface EnvelopeContent {
   v: number;
   kind: 'message' | 'profile' | 'reaction' | 'edit' | 'delete';
@@ -398,6 +439,14 @@ export interface EnvelopeContent {
   del?: DeleteRef;
   /** Present when the body is password-locked; the plaintext body is then ''. */
   locked?: LockedPayload;
+  /** Present on a burn-after-read message. */
+  burn?: BurnRef;
+  /**
+   * Opt-in supporter badge. Self-asserted (the server signs no attestation), so
+   * it means "this sender chose to show a crown", not a verified payment. Sent
+   * only when the user enables it and never in incognito channels.
+   */
+  supporter?: boolean;
   sentAt: string;
 }
 
@@ -521,6 +570,17 @@ function canonicalBytes(env: Omit<SignedEnvelope, 'sig'>): Bytes {
     if (env.locked) {
       fields.push(env.locked.salt, env.locked.nonce, env.locked.ct, env.locked.hint ?? '');
     }
+
+    // The burn timer is signed so a relay cannot strip it (keeping a message
+    // that was meant to vanish) or lengthen it.
+    fields.push(env.burn ? '1' : '0');
+    if (env.burn) fields.push(String(env.burn.ttl));
+  }
+
+  // v5 adds the opt-in supporter flag. New version rather than another append to
+  // v4, so every v4 message already in a vault still verifies unchanged.
+  if (env.v >= 5) {
+    fields.push(env.supporter ? '1' : '0');
   }
 
   const parts: Bytes[] = [stringToBytes(`darkchat-envelope-v${env.v}`)];
@@ -655,6 +715,21 @@ function isValidDeleteRef(value: unknown): value is DeleteRef {
 export const MAX_LOCKED_CT = 16384;
 export const MAX_LOCK_HINT = 140;
 
+/** One second to one week. Bounds a peer-supplied timer to something sane. */
+export const MAX_BURN_TTL = 7 * 24 * 3600;
+
+function isValidBurnRef(value: unknown): value is BurnRef {
+  const b = value as BurnRef;
+  return (
+    typeof b === 'object' &&
+    b !== null &&
+    typeof b.ttl === 'number' &&
+    Number.isFinite(b.ttl) &&
+    b.ttl >= 1 &&
+    b.ttl <= MAX_BURN_TTL
+  );
+}
+
 function isValidLockedPayload(value: unknown): value is LockedPayload {
   const l = value as LockedPayload;
   return (
@@ -719,6 +794,9 @@ export async function openEnvelope(
   }
   if (envelope.locked && !isValidLockedPayload(envelope.locked)) {
     throw new Error('malformed locked payload');
+  }
+  if (envelope.burn && !isValidBurnRef(envelope.burn)) {
+    throw new Error('malformed burn timer');
   }
 
   // The transport's claim about the sender and channel must match what the

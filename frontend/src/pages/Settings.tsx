@@ -27,6 +27,7 @@ export default function Settings() {
   const [avatar, setAvatar] = useState<BinaryAsset | undefined>();
   const [fingerprint, setFingerprint] = useState('');
   const [alwaysPreview, setAlwaysPreview] = useState(false);
+  const [showBadge, setShowBadge] = useState(false);
   const [status, setStatus] = useState<{ kind: 'ok' | 'error' | 'info'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -53,6 +54,7 @@ export default function Settings() {
     setDisplayName(vault.profile.displayName);
     setAvatar(vault.profile.avatar);
     setAlwaysPreview(vault.preferences.alwaysPreviewLinks);
+    setShowBadge(Boolean(vault.preferences.showSupporterBadge));
     keyFingerprint(vault.identity.signPublicKey).then(setFingerprint);
   }, [vault]);
 
@@ -126,6 +128,17 @@ export default function Settings() {
       session.refresh();
     } catch (err) {
       setAlwaysPreview(!next);
+      setStatus({ kind: 'error', text: (err as Error).message });
+    }
+  }
+
+  async function handleToggleShowBadge(next: boolean) {
+    setShowBadge(next);
+    try {
+      await vault!.setPreferences({ showSupporterBadge: next });
+      session.refresh();
+    } catch (err) {
+      setShowBadge(!next);
       setStatus({ kind: 'error', text: (err as Error).message });
     }
   }
@@ -566,6 +579,30 @@ export default function Settings() {
         onRedeem={handleRedeem}
         busy={busy}
       />
+
+      {/* Supporter-badge visibility — only meaningful for a supporter. */}
+      {badge && (
+        <section className="card space-y-3">
+          <h2 className="text-xs uppercase tracking-wider text-muted">supporter badge</h2>
+          <label className="flex items-start gap-2">
+            <input
+              type="checkbox"
+              className="mt-0.5 accent-primary"
+              checked={showBadge}
+              onChange={(e) => handleToggleShowBadge(e.target.checked)}
+            />
+            <span className="text-xs">
+              Show my crown to other members
+              <span className="mt-1 block text-[11px] text-muted">
+                Off by default. When on, a supporter crown appears on your messages for others. It is
+                a personal flourish, not proof of payment — anyone's client can display one — and it
+                is never shown in incognito channels. Paid status is a detail about you, so sharing
+                it is your choice.
+              </span>
+            </span>
+          </label>
+        </section>
+      )}
 
       {/* export */}
       <section className="card space-y-3">

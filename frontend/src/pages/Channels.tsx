@@ -226,8 +226,9 @@ export default function Channels() {
             <span className="text-[11px]">
               Incognito
               <span className="mt-0.5 block text-muted">
-                Members appear as colours only — no names, no avatars. Colours differ per channel, so
-                nobody can link you across them.
+                Members appear as colours only — no names or avatars are shown or sent, and colours
+                are per-channel. This hides who's who in the interface; the server still routes by
+                membership, so it is not anonymity from a determined member.
               </span>
             </span>
           </label>

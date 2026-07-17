@@ -1,10 +1,20 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { CornerUpLeft, Smile, Copy, Download, Pencil, Trash2, Lock } from 'lucide-react';
+import { CornerUpLeft, Smile, Copy, Download, Pencil, Trash2, Lock, LockKeyhole, Timer, ShieldCheck } from 'lucide-react';
 import { incognitoHue, incognitoLabel } from '../lib/incognito';
+import TrustPanel from '../components/TrustPanel';
+
+/** Disappearing-message durations offered in the composer. */
+const BURN_OPTIONS = [
+  { ttl: 5, label: '5s' },
+  { ttl: 30, label: '30s' },
+  { ttl: 60, label: '1m' },
+  { ttl: 300, label: '5m' },
+  { ttl: 3600, label: '1h' },
+] as const;
 import { useSession } from '../lib/session';
 import { useRelayContext } from '../lib/relayContext';
-import { StoredMessage, Vault } from '../lib/vault';
+import { StoredMessage, Vault, Contact } from '../lib/vault';
 import {
   formatBytes,
   base64ToBytes,
@@ -70,9 +80,9 @@ function MessageRow({
   onToggleReaction,
   onJumpToReply,
   onOpenMenu,
-  onUnlock,
   avatarColor,
   nameOverride,
+  senderTrusted,
 }: {
   message: StoredMessage;
   isSelf: boolean;
@@ -87,9 +97,9 @@ function MessageRow({
   onToggleReaction: (emoji: string) => void;
   onJumpToReply: (id: string) => void;
   onOpenMenu: (x: number, y: number) => void;
-  onUnlock: (message: StoredMessage, code: string) => Promise<void>;
   avatarColor?: number;
   nameOverride?: string;
+  senderTrusted?: boolean;
 }) {
   const { handlers, position, close } = useContextMenu();
 
@@ -117,10 +127,88 @@ function MessageRow({
       replyTargetExists={message.replyTo ? messageIds.has(message.replyTo.id) : false}
       contextHandlers={handlers}
       highlighted={highlighted}
-      onUnlock={(code) => onUnlock(message, code)}
       avatarColor={avatarColor}
       nameOverride={nameOverride}
+      senderTrusted={senderTrusted}
     />
+  );
+}
+
+/**
+ * Prompt for a code to unlock a password-protected message.
+ *
+ * The code is checked by trying to decrypt -- a wrong one fails secretbox
+ * authentication and reveals nothing. The plaintext only ever lands in this
+ * user's own vault; another member unlocking the same message uses their own
+ * copy and their own code.
+ */
+function UnlockModal({
+  message,
+  onClose,
+  onSubmit,
+}: {
+  message: StoredMessage;
+  onClose: () => void;
+  onSubmit: (message: StoredMessage, code: string) => Promise<void>;
+}) {
+  const [code, setCode] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (!code.trim()) return;
+    setBusy(true);
+    setError('');
+    try {
+      await onSubmit(message, code.trim());
+      onClose();
+    } catch {
+      setError('wrong code');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-xs space-y-3 rounded-lg border border-border bg-surface p-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <p className="flex items-center gap-1.5 text-xs text-muted">
+          <LockKeyhole size={13} aria-hidden="true" />
+          Enter the code for this message
+        </p>
+        {message.locked?.hint && (
+          <p className="text-[11px] italic text-muted">hint: {message.locked.hint}</p>
+        )}
+        <input
+          className="field"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && submit()}
+          placeholder="code"
+          autoCapitalize="off"
+          autoCorrect="off"
+          autoFocus
+        />
+        {error && <p className="text-[11px] text-error">{error}</p>}
+        <div className="flex gap-2">
+          <button onClick={onClose} className="btn-ghost flex-1 text-xs">
+            cancel
+          </button>
+          <button
+            onClick={submit}
+            disabled={busy || !code.trim()}
+            className="btn-primary flex-1 text-xs"
+          >
+            unlock
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -138,6 +226,8 @@ export default function Chat() {
     revision,
     typingIn,
     lastPresence,
+    isVerified,
+    setVerified,
   } = useRelayContext();
   const navigate = useNavigate();
 
@@ -154,6 +244,10 @@ export default function Chat() {
   const [lockArmed, setLockArmed] = useState(false);
   const [lockCode, setLockCode] = useState('');
   const [lockHint, setLockHint] = useState('');
+  const [burnTtl, setBurnTtl] = useState<number | null>(null);
+  // The contact whose safety number is open, from a message's context menu.
+  const [verifyingContact, setVerifyingContact] = useState<Contact | null>(null);
+  const [unlocking, setUnlocking] = useState<StoredMessage | null>(null);
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ message: StoredMessage; x: number; y: number } | null>(null);
   const [reactingTo, setReactingTo] = useState<{ id: string; x: number; y: number } | null>(null);
@@ -221,6 +315,24 @@ export default function Chat() {
     vault.markChannelRead(channelId).catch(() => {});
   }, [vault, channelId, messages.length]);
 
+  // Burn-after-read sweep. While the channel is open, start the clock on any
+  // burn message on screen and remove ones whose time is up. Running only while
+  // open is the point: "read" means it was shown here.
+  useEffect(() => {
+    if (!vault || !channelId) return;
+    let active = true;
+    const tick = async () => {
+      const res = await vault.processBurns(channelId);
+      if (active && res.changed) setMessages(res.messages);
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [vault, channelId, messages.length]);
+
   // Anonymous "someone joined / left" as centered system lines in the transcript,
   // so they are actually seen. Session-scoped (never persisted, never signed) and
   // cleared when switching channels.
@@ -248,10 +360,17 @@ export default function Chat() {
   const handleType = useCallback(
     (value: string) => {
       setText(value);
-      const now = Date.now();
-      if (channelId && value.trim() && now - lastTypingSent.current > 2500) {
-        lastTypingSent.current = now;
-        sendTyping(channelId);
+      if (!channelId) return;
+      if (value.trim()) {
+        const now = Date.now();
+        if (now - lastTypingSent.current > 2500) {
+          lastTypingSent.current = now;
+          sendTyping(channelId);
+        }
+      } else {
+        // Cleared the box: retract the indicator instead of leaving it to lapse.
+        lastTypingSent.current = 0;
+        sendTyping(channelId, true);
       }
     },
     [channelId, sendTyping]
@@ -380,6 +499,7 @@ export default function Chat() {
           lockArmed && lockCode.trim()
             ? { code: lockCode.trim(), hint: lockHint.trim() || undefined }
             : undefined,
+        burn: burnTtl ?? undefined,
       });
 
       if (message) setMessages((current) => [...current, message]);
@@ -389,6 +509,11 @@ export default function Chat() {
       setLockArmed(false);
       setLockCode('');
       setLockHint('');
+      setBurnTtl(null);
+      // Retract our typing indicator immediately; recipients also clear it when
+      // this message lands, but the stop makes it instant even before delivery.
+      lastTypingSent.current = 0;
+      sendTyping(channelId, true);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -408,6 +533,8 @@ export default function Chat() {
     lockArmed,
     lockCode,
     lockHint,
+    burnTtl,
+    sendTyping,
   ]);
 
   const handleUnlock = useCallback(
@@ -573,6 +700,15 @@ export default function Chat() {
         },
       ];
 
+      // A still-locked message: unlocking is the primary action, so it leads.
+      if (message.locked) {
+        items.unshift({
+          label: 'Unlock',
+          icon: <LockKeyhole size={13} />,
+          onSelect: () => setUnlocking(message),
+        });
+      }
+
       if (message.body.trim()) {
         items.push({
           label: 'Copy text',
@@ -589,6 +725,20 @@ export default function Chat() {
           // the key rides in the envelope, so the server cannot serve the
           // plaintext even if it wanted to.
           onSelect: () => downloadAttachment(attachment, token!).catch((e) => setError(e.message)),
+        });
+      }
+
+      // Verify this specific sender: their safety number, scoped to them. Only
+      // for others (you don't verify yourself) and never in incognito.
+      if (
+        message.senderId !== account?.userId &&
+        !channel?.incognito &&
+        contacts[message.senderId]
+      ) {
+        items.push({
+          label: isVerified(message.senderId) ? 'Safety number ✓' : 'Verify safety number',
+          icon: <ShieldCheck size={13} />,
+          onSelect: () => setVerifyingContact(contacts[message.senderId]),
         });
       }
 
@@ -613,7 +763,7 @@ export default function Chat() {
 
       return items;
     },
-    [menu, token, account?.userId, handleStartEdit, handleDelete]
+    [menu, token, account?.userId, handleStartEdit, handleDelete, contacts, channel?.incognito, isVerified]
   );
 
   if (!vault || !account) return null;
@@ -719,7 +869,13 @@ export default function Chat() {
                 grouped={grouped}
                 avatar={isSelf ? vault.profile.avatar : contact?.avatar}
                 keyChanged={Boolean(contact?.keyChangedAt)}
-                supporter={!channel.incognito && isSelf ? Boolean(limits.premium) : false}
+                supporter={
+                  channel.incognito
+                    ? false
+                    : isSelf
+                      ? Boolean(limits.premium)
+                      : Boolean(message.supporterClaimed)
+                }
                 selfId={account.userId}
                 nameFor={nameFor}
                 messageIds={messageIds}
@@ -727,11 +883,11 @@ export default function Chat() {
                 onToggleReaction={(emoji) => handleToggleReaction(message, emoji)}
                 onJumpToReply={jumpToMessage}
                 onOpenMenu={(x, y) => setMenu({ message, x, y })}
-                onUnlock={handleUnlock}
                 avatarColor={
                   channel.incognito ? incognitoHue(channelId!, message.senderId) : undefined
                 }
                 nameOverride={channel.incognito ? nameFor(message.senderId) : undefined}
+                senderTrusted={!channel.incognito && isVerified(message.senderId)}
               />
             );
           });
@@ -834,6 +990,42 @@ export default function Chat() {
         </div>
       )}
 
+      {burnTtl != null && (
+        <div className="space-y-1.5 border-t border-primary/30 bg-primary/5 px-4 py-2">
+          <div className="flex items-center gap-2">
+            <Timer size={12} className="text-primary" aria-hidden="true" />
+            <span className="text-[11px] text-primary">
+              Disappears {BURN_OPTIONS.find((o) => o.ttl === burnTtl)?.label ?? ''} after it's read
+            </span>
+            <button
+              onClick={() => setBurnTtl(null)}
+              className="ml-auto text-[11px] text-muted hover:text-error"
+            >
+              cancel
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {BURN_OPTIONS.map((o) => (
+              <button
+                key={o.ttl}
+                onClick={() => setBurnTtl(o.ttl)}
+                className={`rounded px-2 py-0.5 text-[11px] ${
+                  burnTtl === o.ttl
+                    ? 'bg-primary text-primary-foreground'
+                    : 'border border-border text-muted hover:text-foreground'
+                }`}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-muted">
+            Removed from both sides after the timer, on cooperating clients. It cannot stop a
+            screenshot or a photo of the screen.
+          </p>
+        </div>
+      )}
+
       {editingId && (
         <div className="flex items-center justify-between border-t border-primary/30 bg-primary/5 px-4 py-1.5 text-[11px]">
           <span className="text-primary">Editing message</span>
@@ -874,7 +1066,28 @@ export default function Chat() {
         canLock={Boolean(limits.premium) && !editingId}
         lockArmed={lockArmed}
         onToggleLock={() => setLockArmed((a) => !a)}
+        canBurn={Boolean(limits.premium)}
+        burnArmed={burnTtl != null}
+        onToggleBurn={() => setBurnTtl((t) => (t == null ? 30 : null))}
       />
+
+      {verifyingContact && (
+        <TrustPanel
+          mySignKey={vault.identity.signPublicKey}
+          contacts={[verifyingContact]}
+          isVerified={isVerified}
+          onClose={() => setVerifyingContact(null)}
+          onSetVerified={setVerified}
+        />
+      )}
+
+      {unlocking && (
+        <UnlockModal
+          message={unlocking}
+          onClose={() => setUnlocking(null)}
+          onSubmit={handleUnlock}
+        />
+      )}
 
       {menu && (
         <ContextMenu

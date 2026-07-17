@@ -32,8 +32,8 @@ interface RelayOptions {
   onMessage?: (message: StoredMessage) => void;
   onChannelKey?: (channelId: string) => void;
   onKeyChangeWarning?: (userId: string) => void;
-  /** Ephemeral "someone is typing" — never stored, never in the transcript. */
-  onTyping?: (event: { channelId: string; senderId: string }) => void;
+  /** Ephemeral "someone is typing" — never stored, never in the transcript. `stop` retracts it. */
+  onTyping?: (event: { channelId: string; senderId: string; stop: boolean }) => void;
   /** Anonymous join/leave notice for a channel. Carries no identity. */
   onPresence?: (event: { channelId: string; event: 'joined' | 'left' }) => void;
 }
@@ -46,6 +46,8 @@ export interface SendPayload {
   replyTo?: ReplyRef;
   /** When set, the body is sealed under this code and sent locked (premium). */
   lock?: { code: string; hint?: string };
+  /** Burn-after-read ttl in seconds; the message self-destructs after first view. */
+  burn?: number;
 }
 
 interface ParkedReaction {
@@ -128,7 +130,7 @@ type Incoming =
   | { type: 'key-request'; channelId: string; requesterId: string; requesterPubkey: string; requesterSignPubkey: string }
   | { type: 'member-joined'; channelId: string; userId: string; pubkey: string; signPubkey: string }
   | { type: 'member-left'; channelId: string }
-  | { type: 'typing'; channelId: string; senderId: string }
+  | { type: 'typing'; channelId: string; senderId: string; stop?: boolean }
   | { type: 'profile-request'; channelId: string; requesterId: string }
   | { type: 'sent'; clientId: string; channelId: string }
   | { type: 'key-offer-sent'; channelId: string; recipientId: string };
@@ -303,6 +305,12 @@ export function useRelay({
       replyTo: envelope.replyTo,
       locked: envelope.locked,
       protected: Boolean(envelope.locked),
+      // The recipient's burn clock starts when the message is first shown, not
+      // now -- so firstViewedAt is left unset for processBurns to stamp.
+      burnTtl: envelope.burn?.ttl,
+      // Only honour the crown on a verified message: an unverified one has no
+      // trustworthy sender to attribute a badge to.
+      supporterClaimed: verified && envelope.supporter === true,
       createdAt: envelope.sentAt || data.createdAt,
       verified,
     };
@@ -516,7 +524,11 @@ export function useRelay({
               handlers.current.onPresence?.({ channelId: data.channelId, event: 'left' });
               break;
             case 'typing':
-              handlers.current.onTyping?.({ channelId: data.channelId, senderId: data.senderId });
+              handlers.current.onTyping?.({
+                channelId: data.channelId,
+                senderId: data.senderId,
+                stop: data.stop === true,
+              });
               break;
             case 'profile-request':
               // Answer only; never chain another request, or two clients would
@@ -574,6 +586,12 @@ export function useRelay({
         ? await sealWithPassword(payload.body, payload.lock.code, payload.lock.hint)
         : undefined;
 
+      const burn = payload.burn ? { ttl: payload.burn } : undefined;
+      // Opt-in supporter crown. Never in incognito (it would deanonymise), and
+      // omitted entirely when off so it does not sit as a signed 'false'.
+      const supporter =
+        !channel.incognito && v.preferences.showSupporterBadge ? true : undefined;
+
       const sealed = await createEnvelope(
         {
           kind: 'message',
@@ -585,6 +603,8 @@ export function useRelay({
           preview: payload.preview,
           replyTo: payload.replyTo,
           locked,
+          burn,
+          supporter,
           sentAt,
         },
         channelId,
@@ -621,6 +641,9 @@ export function useRelay({
         preview: payload.preview,
         replyTo: payload.replyTo,
         protected: Boolean(locked),
+        // Our own copy burns too, clocked from send -- we have already read it.
+        burnTtl: payload.burn,
+        firstViewedAt: payload.burn ? sentAt : undefined,
         createdAt: sentAt,
         verified: true,
         pending: ws?.readyState !== WebSocket.OPEN,
@@ -691,10 +714,10 @@ export function useRelay({
    * persistence. The caller throttles; see Chat's composer. Silently a no-op
    * when the socket is down — a typing hint is never worth queuing.
    */
-  const sendTyping = useCallback((channelId: string) => {
+  const sendTyping = useCallback((channelId: string, stop = false) => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    ws.send(JSON.stringify({ type: 'typing', channelId }));
+    ws.send(JSON.stringify({ type: 'typing', channelId, stop }));
   }, []);
 
   /**

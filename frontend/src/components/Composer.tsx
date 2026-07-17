@@ -1,5 +1,5 @@
 import { useRef, useEffect, useLayoutEffect, useState, KeyboardEvent } from 'react';
-import { Paperclip, Send, Smile, Lock } from 'lucide-react';
+import { Paperclip, Send, Smile, Lock, Timer } from 'lucide-react';
 import EmojiPicker from './EmojiPicker';
 import { Limits, countChars } from '../lib/limits';
 
@@ -30,6 +30,11 @@ interface ComposerProps {
   /** Whether the next message will be sent locked. */
   lockArmed?: boolean;
   onToggleLock?: () => void;
+  /** Whether the disappearing-message control is offered (premium). */
+  canBurn?: boolean;
+  /** Whether the next message will disappear after being read. */
+  burnArmed?: boolean;
+  onToggleBurn?: () => void;
 }
 
 export default function Composer({
@@ -46,6 +51,9 @@ export default function Composer({
   canLock,
   lockArmed,
   onToggleLock,
+  canBurn,
+  burnArmed,
+  onToggleBurn,
 }: ComposerProps) {
   const textarea = useRef<HTMLTextAreaElement>(null);
   const [showEmoji, setShowEmoji] = useState(false);
@@ -178,6 +186,21 @@ export default function Composer({
             aria-pressed={lockArmed}
           >
             <Lock size={16} />
+          </button>
+        )}
+
+        {canBurn && (
+          <button
+            onClick={onToggleBurn}
+            disabled={disabled}
+            className={`btn-ghost flex-none px-2.5 py-2 ${
+              burnArmed ? 'border-primary/60 text-primary' : ''
+            }`}
+            title={burnArmed ? 'This message will disappear after reading' : 'Disappearing message'}
+            aria-label="Disappearing message"
+            aria-pressed={burnArmed}
+          >
+            <Timer size={16} />
           </button>
         )}
 

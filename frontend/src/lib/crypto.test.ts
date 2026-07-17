@@ -24,6 +24,7 @@ import {
   deriveVaultKey,
   generateSalt,
   keyFingerprint,
+  safetyNumber,
   sealWithPassword,
   openWithPassword,
   ENVELOPE_VERSION,
@@ -65,6 +66,37 @@ describe('identity', () => {
   it('produces different fingerprints for different keys', async () => {
     const [a, b] = await twoIdentities();
     expect(await keyFingerprint(a.signPublicKey)).not.toBe(await keyFingerprint(b.signPublicKey));
+  });
+});
+
+describe('safety number (E2E trust verification)', () => {
+  it('is identical regardless of argument order -- both parties compute the same', async () => {
+    const [a, b] = await twoIdentities();
+    const fromA = await safetyNumber(a.signPublicKey, b.signPublicKey);
+    const fromB = await safetyNumber(b.signPublicKey, a.signPublicKey);
+    expect(fromA).toBe(fromB);
+  });
+
+  it('differs for a different pair -- a substituted key changes the number', async () => {
+    const [a, b] = await twoIdentities();
+    const c = await generateIdentity();
+    const real = await safetyNumber(a.signPublicKey, b.signPublicKey);
+    // A relay swapping b's key for one it controls (c) yields a different number,
+    // which is exactly what the out-of-band comparison catches.
+    const mitm = await safetyNumber(a.signPublicKey, c.signPublicKey);
+    expect(real).not.toBe(mitm);
+  });
+
+  it('is decimal groups, readable over a phone', async () => {
+    const [a, b] = await twoIdentities();
+    expect(await safetyNumber(a.signPublicKey, b.signPublicKey)).toMatch(/^(\d{5} ){11}\d{5}$/);
+  });
+
+  it('is stable for the same pair', async () => {
+    const [a, b] = await twoIdentities();
+    expect(await safetyNumber(a.signPublicKey, b.signPublicKey)).toBe(
+      await safetyNumber(a.signPublicKey, b.signPublicKey)
+    );
   });
 });
 
@@ -721,6 +753,148 @@ describe('password-locked body', () => {
     // Swap the sealed body for a different one -- the signature covers it.
     const other = await sealWithPassword('substituted', 'sesame');
     opened.locked = other;
+    const reSealed = await sealWithKey(JSON.stringify(opened), key);
+
+    const { verified } = await openEnvelope(reSealed, key, {
+      senderId,
+      channelId,
+      signPublicKey: id.signPublicKey,
+    });
+    expect(verified).toBe(false);
+  });
+});
+
+describe('burn-after-read', () => {
+  const channelId = '11111111-1111-1111-1111-111111111111';
+  const senderId = '22222222-2222-2222-2222-222222222222';
+
+  it('signs and carries a burn timer', async () => {
+    const id = await generateIdentity();
+    const key = await generateChannelKey();
+
+    const sealed = await createEnvelope(
+      { kind: 'message', body: 'gone soon', displayName: 'a', sentAt: '', burn: { ttl: 30 } },
+      channelId,
+      senderId,
+      id.signPrivateKey,
+      key
+    );
+
+    const { envelope, verified } = await openEnvelope(sealed, key, {
+      senderId,
+      channelId,
+      signPublicKey: id.signPublicKey,
+    });
+
+    expect(verified).toBe(true);
+    expect(envelope.burn).toEqual({ ttl: 30 });
+  });
+
+  it('a relay cannot strip the burn timer without breaking the signature', async () => {
+    const id = await generateIdentity();
+    const key = await generateChannelKey();
+
+    const sealed = await createEnvelope(
+      { kind: 'message', body: 'gone soon', displayName: 'a', sentAt: '', burn: { ttl: 30 } },
+      channelId,
+      senderId,
+      id.signPrivateKey,
+      key
+    );
+
+    const { openWithKey, sealWithKey } = await import('./crypto');
+    const opened = JSON.parse(await openWithKey(sealed, key));
+    delete opened.burn; // try to keep a message that was meant to vanish
+    const reSealed = await sealWithKey(JSON.stringify(opened), key);
+
+    const { verified } = await openEnvelope(reSealed, key, {
+      senderId,
+      channelId,
+      signPublicKey: id.signPublicKey,
+    });
+    expect(verified).toBe(false);
+  });
+
+  it('rejects an out-of-range ttl', async () => {
+    const id = await generateIdentity();
+    const key = await generateChannelKey();
+
+    const sealed = await createEnvelope(
+      { kind: 'message', body: 'x', displayName: 'a', sentAt: '', burn: { ttl: 999999999 } },
+      channelId,
+      senderId,
+      id.signPrivateKey,
+      key
+    );
+
+    await expect(
+      openEnvelope(sealed, key, { senderId, channelId, signPublicKey: id.signPublicKey })
+    ).rejects.toThrow(/malformed burn/);
+  });
+});
+
+describe('opt-in supporter badge (v5)', () => {
+  const channelId = '11111111-1111-1111-1111-111111111111';
+  const senderId = '22222222-2222-2222-2222-222222222222';
+
+  it('carries and signs the flag when set', async () => {
+    const id = await generateIdentity();
+    const key = await generateChannelKey();
+
+    const sealed = await createEnvelope(
+      { kind: 'message', body: 'hi', displayName: 'a', sentAt: '', supporter: true },
+      channelId,
+      senderId,
+      id.signPrivateKey,
+      key
+    );
+
+    const { envelope, verified } = await openEnvelope(sealed, key, {
+      senderId,
+      channelId,
+      signPublicKey: id.signPublicKey,
+    });
+
+    expect(verified).toBe(true);
+    expect(envelope.v).toBe(5);
+    expect(envelope.supporter).toBe(true);
+  });
+
+  it('is absent by default', async () => {
+    const id = await generateIdentity();
+    const key = await generateChannelKey();
+
+    const sealed = await createEnvelope(
+      { kind: 'message', body: 'hi', displayName: 'a', sentAt: '' },
+      channelId,
+      senderId,
+      id.signPrivateKey,
+      key
+    );
+
+    const { envelope } = await openEnvelope(sealed, key, {
+      senderId,
+      channelId,
+      signPublicKey: id.signPublicKey,
+    });
+    expect(envelope.supporter).toBeFalsy();
+  });
+
+  it('cannot be forged onto a message that was not signed with it', async () => {
+    const id = await generateIdentity();
+    const key = await generateChannelKey();
+
+    const sealed = await createEnvelope(
+      { kind: 'message', body: 'hi', displayName: 'a', sentAt: '' },
+      channelId,
+      senderId,
+      id.signPrivateKey,
+      key
+    );
+
+    const { openWithKey, sealWithKey } = await import('./crypto');
+    const opened = JSON.parse(await openWithKey(sealed, key));
+    opened.supporter = true; // relay/member tries to add a crown
     const reSealed = await sealWithKey(JSON.stringify(opened), key);
 
     const { verified } = await openEnvelope(reSealed, key, {

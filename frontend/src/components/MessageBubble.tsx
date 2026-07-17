@@ -1,5 +1,5 @@
 import { useEffect, useState, Fragment } from "react";
-import { LockKeyhole } from "lucide-react";
+import { LockKeyhole, Timer, ShieldCheck } from "lucide-react";
 import { StoredMessage } from "../lib/vault";
 import { BinaryAsset, unpackAsset, decodeImage } from "../lib/binary";
 import { segmentize } from "../lib/links";
@@ -60,66 +60,29 @@ interface MessageBubbleProps {
   contextHandlers?: Record<string, unknown>;
   /** Briefly ring the bubble after a reply jump lands on it. */
   highlighted?: boolean;
-  /** Submit a code to unlock a password-protected message. Rejects on a wrong code. */
-  onUnlock?: (code: string) => Promise<void>;
   /** Incognito: render the avatar as this hue instead of an image/initials. */
   avatarColor?: number;
   /** Incognito: show this in place of the (blanked) envelope display name. */
   nameOverride?: string;
+  /** Sender's key was verified out of band -- show a trust badge. */
+  senderTrusted?: boolean;
 }
 
 /**
  * A password-locked message the recipient has not opened yet.
  *
- * The code is entered here and checked locally by trying to decrypt -- a wrong
- * code fails secretbox authentication and never reveals anything. Honest by
- * construction: there is no "is this right" endpoint, only "does it decrypt".
+ * Just a placeholder and the optional hint -- unlocking is a context-menu action
+ * (right-click / long-press) so the code is entered in a dedicated prompt, and
+ * the plaintext only ever lands in the unlocking user's own vault.
  */
-function LockedBody({
-  hint,
-  onUnlock,
-}: {
-  hint?: string;
-  onUnlock?: (code: string) => Promise<void>;
-}) {
-  const [code, setCode] = useState('');
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  async function submit() {
-    if (!code.trim() || !onUnlock) return;
-    setBusy(true);
-    setError('');
-    try {
-      await onUnlock(code.trim());
-    } catch {
-      setError('wrong code');
-      setBusy(false);
-    }
-  }
-
+function LockedBody({ hint }: { hint?: string }) {
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1">
       <p className="flex items-center gap-1.5 text-xs text-muted">
         <LockKeyhole size={13} aria-hidden="true" />
-        Password-protected message
+        Password-protected — open the menu to unlock
       </p>
       {hint && <p className="text-[11px] italic text-muted">hint: {hint}</p>}
-      <div className="flex gap-1.5">
-        <input
-          className="field py-1 text-xs"
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && submit()}
-          placeholder="enter code"
-          autoCapitalize="off"
-          autoCorrect="off"
-        />
-        <button onClick={submit} disabled={busy || !code.trim()} className="btn-ghost px-2 py-1 text-xs">
-          unlock
-        </button>
-      </div>
-      {error && <p className="text-[11px] text-error">{error}</p>}
     </div>
   );
 }
@@ -169,9 +132,9 @@ export default function MessageBubble({
   replyTargetExists,
   contextHandlers,
   highlighted,
-  onUnlock,
   avatarColor,
   nameOverride,
+  senderTrusted,
 }: MessageBubbleProps) {
   const shownName = nameOverride ?? message.displayName;
   const time = new Date(message.createdAt).toLocaleTimeString([], {
@@ -221,6 +184,11 @@ export default function MessageBubble({
             <span className="text-[11px] font-medium text-foreground/80">
               {shownName}
             </span>
+            {senderTrusted && (
+              <span className="inline-flex text-ok" title="Verified — you confirmed this key">
+                <ShieldCheck size={11} aria-hidden="true" />
+              </span>
+            )}
             {supporter && <Badge size="sm" />}
             <span className="text-[10px] text-muted">{time}</span>
 
@@ -280,7 +248,7 @@ export default function MessageBubble({
             // slot kept so a reply that quoted it still resolves.
             <p className="italic text-muted">message deleted</p>
           ) : message.locked ? (
-            <LockedBody hint={message.locked.hint} onUnlock={onUnlock} />
+            <LockedBody hint={message.locked.hint} />
           ) : (
             <>
               {message.body &&
@@ -302,6 +270,14 @@ export default function MessageBubble({
                   title="This message was password-protected"
                 >
                   <LockKeyhole size={10} aria-hidden="true" />
+                </span>
+              )}
+              {message.burnTtl && (
+                <span
+                  className="ml-1 inline-flex align-baseline text-muted"
+                  title="Disappears after it is read"
+                >
+                  <Timer size={10} aria-hidden="true" />
                 </span>
               )}
               {message.editedAt && (

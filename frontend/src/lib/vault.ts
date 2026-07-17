@@ -116,6 +116,13 @@ export interface Preferences {
   customTheme?: CustomTheme;
 
   /**
+   * Show a supporter crown on your messages to other members. Off by default:
+   * paid status is a correlation handle, so broadcasting it is a deliberate,
+   * opt-in choice. Never sent in incognito channels regardless.
+   */
+  showSupporterBadge?: boolean;
+
+  /**
    * Premium chat wallpaper, held as a re-encoded asset (EXIF stripped like any
    * other image here). Rendered behind opaque message bubbles so text stays
    * legible whatever the image.
@@ -172,6 +179,12 @@ export interface StoredMessage {
   locked?: LockedPayload;
   /** True if the message is (or was) password-locked, for a lock indicator. */
   protected?: boolean;
+  /** The sender opted to show a supporter crown on this message (self-asserted). */
+  supporterClaimed?: boolean;
+  /** Burn-after-read: seconds to keep the message after it is first seen. */
+  burnTtl?: number;
+  /** When this device first displayed the message; the burn clock starts here. */
+  firstViewedAt?: string;
   /**
    * Set when the author deleted the message. The row is kept as a tombstone --
    * body and attachments are cleared, so nothing decrypted survives, but the
@@ -608,6 +621,49 @@ export class Vault {
     messages[index] = { ...messages[index], body, locked: undefined };
     await this.saveMessages(channelId, messages);
     return messages;
+  }
+
+  /**
+   * Burn-after-read bookkeeping for a channel, run on a tick while it is open.
+   *
+   * Two jobs in one pass so the vault is written at most once:
+   *   1. Stamp `firstViewedAt` on any burn message that has been shown but not
+   *      yet clocked -- this starts the countdown.
+   *   2. Remove any burn message whose countdown has elapsed.
+   *
+   * Returns the surviving transcript and whether anything changed, so the caller
+   * only re-renders when it must.
+   */
+  async processBurns(channelId: string, now: number = Date.now()): Promise<{
+    messages: StoredMessage[];
+    changed: boolean;
+  }> {
+    const messages = await this.loadMessages(channelId);
+    let changed = false;
+
+    const survivors: StoredMessage[] = [];
+    for (const m of messages) {
+      if (!m.burnTtl) {
+        survivors.push(m);
+        continue;
+      }
+      // Not yet clocked: start the timer now (it is on screen).
+      if (!m.firstViewedAt) {
+        survivors.push({ ...m, firstViewedAt: new Date(now).toISOString() });
+        changed = true;
+        continue;
+      }
+      // Clocked: drop it once the ttl has elapsed since first view.
+      const deadline = new Date(m.firstViewedAt).getTime() + m.burnTtl * 1000;
+      if (now >= deadline) {
+        changed = true; // omit from survivors -- it burns
+      } else {
+        survivors.push(m);
+      }
+    }
+
+    if (changed) await this.saveMessages(channelId, survivors);
+    return { messages: survivors, changed };
   }
 
   async clearMessages(channelId: string): Promise<void> {

@@ -110,3 +110,58 @@ describe('unread', () => {
     expect(await vault.unreadCount(CHAN)).toBe(2);
   });
 });
+
+describe('processBurns (ROADMAP: disappearing messages)', () => {
+  beforeEach(installStorage);
+
+  function burnMsg(id: string, ttl: number, firstViewedAt?: string): StoredMessage {
+    return {
+      id,
+      channelId: CHAN,
+      senderId: OTHER,
+      displayName: OTHER,
+      body: 'poof',
+      createdAt: '2026-01-02T00:00:00.000Z',
+      verified: true,
+      burnTtl: ttl,
+      firstViewedAt,
+    };
+  }
+
+  it('starts the clock (stamps firstViewedAt) on first pass, keeping the message', async () => {
+    const vault = await freshVault();
+    await vault.appendMessage(burnMsg('b1', 30));
+    const t0 = Date.parse('2026-06-01T00:00:00.000Z');
+
+    const res = await vault.processBurns(CHAN, t0);
+    expect(res.changed).toBe(true);
+    const m = res.messages.find((x) => x.id === 'b1');
+    expect(m).toBeTruthy();
+    expect(m?.firstViewedAt).toBe(new Date(t0).toISOString());
+  });
+
+  it('removes the message once the ttl elapses after first view', async () => {
+    const vault = await freshVault();
+    const viewed = '2026-06-01T00:00:00.000Z';
+    await vault.appendMessage(burnMsg('b1', 30, viewed));
+
+    // 29s in: still there.
+    let res = await vault.processBurns(CHAN, Date.parse(viewed) + 29_000);
+    expect(res.messages.some((x) => x.id === 'b1')).toBe(true);
+
+    // 31s in: gone.
+    res = await vault.processBurns(CHAN, Date.parse(viewed) + 31_000);
+    expect(res.changed).toBe(true);
+    expect(res.messages.some((x) => x.id === 'b1')).toBe(false);
+    // Persisted removal.
+    expect((await vault.loadMessages(CHAN)).some((x) => x.id === 'b1')).toBe(false);
+  });
+
+  it('leaves non-burn messages untouched', async () => {
+    const vault = await freshVault();
+    await vault.appendMessage(msg('keep', OTHER, '2026-01-02T00:00:00.000Z'));
+    const res = await vault.processBurns(CHAN, Date.now());
+    expect(res.changed).toBe(false);
+    expect(res.messages.some((x) => x.id === 'keep')).toBe(true);
+  });
+});

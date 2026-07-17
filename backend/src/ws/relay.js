@@ -358,12 +358,16 @@ async function handleTyping(userId, msg) {
   if (!UUID.test(channelId ?? '')) return;
   if (!(await isMember(channelId, userId))) return;
 
+  // `stop` lets a client retract the indicator immediately (message sent, or the
+  // box was cleared) rather than waiting for the recipient's TTL to lapse.
+  const stop = msg.stop === true;
+
   const members = await pool.query(
     'SELECT user_id FROM channel_members WHERE channel_id = $1 AND user_id != $2',
     [channelId, userId]
   );
   for (const { user_id: memberId } of members.rows) {
-    sendTo(memberId, { type: 'typing', channelId, senderId: userId });
+    sendTo(memberId, { type: 'typing', channelId, senderId: userId, stop });
   }
 }
 

@@ -66,6 +66,18 @@ describe('typing', () => {
     }
   });
 
+  test('forwards a stop so the indicator can be retracted at once', async () => {
+    const { a, b, channelId } = await twoInAChannel();
+    try {
+      a.sendRelay({ type: 'typing', channelId, stop: true });
+      const frame = await b.waitForRelay((m) => m.type === 'typing' && m.channelId === channelId);
+      assert.equal(frame.stop, true);
+    } finally {
+      a.closeRelay();
+      b.closeRelay();
+    }
+  });
+
   test('drops a typing ping from a non-member', async () => {
     const { a, b, channelId } = await twoInAChannel();
     const intruder = new TestUser();

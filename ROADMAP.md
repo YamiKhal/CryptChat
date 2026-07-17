@@ -11,6 +11,14 @@ Deferred by decision: voice/video/screen-share calls (#8) and group-call SFrame
 (#9) — dropped from this pass. TOTP fallback for #5 remains a later addition;
 WebAuthn shipped first as planned.
 
+**#7 shipped as display-only.** Members are shown as per-channel colours and no
+name/avatar is sent — but the envelope still carries the real `senderId`, so the
+§7 crux (channel-scoped signing identities, for true unlinkability from other
+members) is NOT yet implemented. Incognito currently hides identity in the
+interface, not from a member reading the wire. Closing that gap needs the relay
+to stop binding `senderId` to the socket's real account — a real change, left as
+follow-up. UI copy reflects the current, weaker guarantee.
+
 Operational notes for the shipped work:
 
 - Schema changes auto-apply on boot (all `IF NOT EXISTS` / idempotent `ALTER`).
