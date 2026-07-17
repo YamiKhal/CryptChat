@@ -22,6 +22,12 @@ interface AvatarProps {
   name: string;
   size?: keyof typeof SIZES;
   className?: string;
+  /**
+   * Incognito mode: a solid colour swatch instead of an image or initials.
+   * A hue in [0, 360). When set, `asset` and `name` are ignored for rendering,
+   * since an incognito member has neither to show.
+   */
+  color?: number;
 }
 
 /** Deterministic hue from the name, so a person keeps the same colour. */
@@ -31,11 +37,11 @@ function hueFor(name: string): number {
   return Math.abs(hash) % 360;
 }
 
-export default function Avatar({ asset, name, size = 'md', className = '' }: AvatarProps) {
+export default function Avatar({ asset, name, size = 'md', className = '', color }: AvatarProps) {
   const [url, setUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!asset) {
+    if (!asset || color !== undefined) {
       setUrl(null);
       return;
     }
@@ -57,7 +63,7 @@ export default function Avatar({ asset, name, size = 'md', className = '' }: Ava
       release?.();
       setUrl(null);
     };
-  }, [asset]);
+  }, [asset, color]);
 
   const initials = useMemo(
     () =>
@@ -71,6 +77,17 @@ export default function Avatar({ asset, name, size = 'md', className = '' }: Ava
   );
 
   const base = `${SIZES[size]} shrink-0 rounded-full overflow-hidden ${className}`;
+
+  // Incognito: a solid colour, no image and no initials to reveal.
+  if (color !== undefined) {
+    return (
+      <div
+        className={`${base} border border-border`}
+        style={{ backgroundColor: `hsl(${color} 55% 45%)` }}
+        aria-hidden
+      />
+    );
+  }
 
   if (url) {
     return <img src={url} alt="" className={`${base} object-cover border border-border`} />;

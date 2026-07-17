@@ -1,5 +1,5 @@
 import { useRef, useEffect, useLayoutEffect, useState, KeyboardEvent } from 'react';
-import { Paperclip, Send, Smile } from 'lucide-react';
+import { Paperclip, Send, Smile, Lock } from 'lucide-react';
 import EmojiPicker from './EmojiPicker';
 import { Limits, countChars } from '../lib/limits';
 
@@ -25,6 +25,11 @@ interface ComposerProps {
   canSend: boolean;
   limits: Limits;
   placeholder?: string;
+  /** Whether the password-lock control is offered (premium). */
+  canLock?: boolean;
+  /** Whether the next message will be sent locked. */
+  lockArmed?: boolean;
+  onToggleLock?: () => void;
 }
 
 export default function Composer({
@@ -38,6 +43,9 @@ export default function Composer({
   canSend,
   limits,
   placeholder,
+  canLock,
+  lockArmed,
+  onToggleLock,
 }: ComposerProps) {
   const textarea = useRef<HTMLTextAreaElement>(null);
   const [showEmoji, setShowEmoji] = useState(false);
@@ -157,6 +165,21 @@ export default function Composer({
         >
           <Smile size={16} />
         </button>
+
+        {canLock && (
+          <button
+            onClick={onToggleLock}
+            disabled={disabled}
+            className={`btn-ghost flex-none px-2.5 py-2 ${
+              lockArmed ? 'border-primary/60 text-primary' : ''
+            }`}
+            title={lockArmed ? 'This message will require a code' : 'Password-protect this message'}
+            aria-label="Password-protect this message"
+            aria-pressed={lockArmed}
+          >
+            <Lock size={16} />
+          </button>
+        )}
 
         <button
           onClick={onSend}

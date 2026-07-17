@@ -64,7 +64,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // kind rather than a mutation of a stored message because the relay holds no
 // message to mutate -- it holds ciphertext addressed to a recipient. The client
 // folds reactions into the target when it decrypts them.
-const KINDS = new Set(['message', 'profile', 'reaction']);
+const KINDS = new Set(['message', 'profile', 'reaction', 'edit', 'delete']);
 
 function validCiphertext(value, max = config.limits.maxEnvelopeBytes) {
   return typeof value === 'string' && value.length > 0 && value.length <= max && B64.test(value);
@@ -204,6 +204,7 @@ export function attachRelay(server) {
         switch (msg.type) {
           case 'send':        return await handleSend(userId, msg, ws);
           case 'ack':         return await handleAck(userId, msg);
+          case 'typing':          return await handleTyping(userId, msg);
           case 'key-offer':       return await handleKeyOffer(userId, msg, ws);
           case 'key-ack':         return await handleKeyAck(userId, msg);
           case 'request-key':     return await handleRequestKey(userId, msg);
@@ -237,6 +238,12 @@ async function handleSend(senderId, msg, ws) {
   }
   if (!(await isMember(channelId, senderId))) return;
 
+  // The sender's stable id for this message. Forwarded to every recipient so all
+  // clients agree on the id -- the whole point, so an edit/delete/reaction can be
+  // matched. Falls back to null (recipients then use the queue row id) if a
+  // client did not send one.
+  const clientId = UUID.test(msg.clientId ?? '') ? msg.clientId : null;
+
   const members = await pool.query(
     'SELECT user_id FROM channel_members WHERE channel_id = $1 AND user_id != $2',
     [channelId, senderId]
@@ -254,15 +261,18 @@ async function handleSend(senderId, msg, ws) {
     // channel_members -- so every member received every row, N times over, and
     // could delete rows addressed to anyone else.
     const inserted = await pool.query(
-      `INSERT INTO message_queue (channel_id, sender_id, recipient_id, ciphertext, nonce, kind)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, created_at`,
-      [channelId, senderId, recipientId, ciphertext, nonce, kind]
+      `INSERT INTO message_queue (channel_id, sender_id, recipient_id, ciphertext, nonce, kind, client_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, created_at`,
+      [channelId, senderId, recipientId, ciphertext, nonce, kind, clientId]
     );
     const queued = inserted.rows[0];
 
     sendTo(recipientId, {
       type: 'message',
+      // messageId is the queue row id, used only to ack (delete) the row.
       messageId: queued.id,
+      // clientId is the stable, cross-client message id the recipient stores under.
+      clientId,
       channelId,
       senderId,
       kind,
@@ -337,6 +347,26 @@ async function handleKeyAck(userId, msg) {
   );
 }
 
+// "Someone is typing." Pure presence: nothing is stored, nothing is signed,
+// and it never enters the transcript. The relay already knows the sender (it is
+// this socket's user) and the channel roster, so forwarding senderId leaks
+// nothing new -- the recipient's client decides whether to name them or, in an
+// incognito channel, show only a colour. Throttled client-side; the token
+// bucket is the backstop against a socket that ignores that.
+async function handleTyping(userId, msg) {
+  const { channelId } = msg;
+  if (!UUID.test(channelId ?? '')) return;
+  if (!(await isMember(channelId, userId))) return;
+
+  const members = await pool.query(
+    'SELECT user_id FROM channel_members WHERE channel_id = $1 AND user_id != $2',
+    [channelId, userId]
+  );
+  for (const { user_id: memberId } of members.rows) {
+    sendTo(memberId, { type: 'typing', channelId, senderId: userId });
+  }
+}
+
 // A member with no local key asks the channel for one (new device, cleared
 // storage). Only reaches members who are online and hold the key.
 async function handleRequestKey(userId, msg) {
@@ -407,9 +437,25 @@ export function notifyMemberJoined(channelId, joiner) {
     .catch((err) => console.error('notifyMemberJoined failed:', err.message));
 }
 
+// Called from the leave route after membership is removed, so the remaining
+// members can show an anonymous "someone left". Deliberately carries no userId:
+// the product surfaces that *a* member left, not who. The relay knows, but does
+// not tell -- a display choice, and the comment says so honestly rather than
+// implying the server is blind.
+export function notifyMemberLeft(channelId) {
+  pool
+    .query('SELECT user_id FROM channel_members WHERE channel_id = $1', [channelId])
+    .then(({ rows }) => {
+      for (const { user_id: memberId } of rows) {
+        sendTo(memberId, { type: 'member-left', channelId });
+      }
+    })
+    .catch((err) => console.error('notifyMemberLeft failed:', err.message));
+}
+
 async function flushQueue(userId, ws) {
   const pending = await pool.query(
-    `SELECT id, channel_id, sender_id, ciphertext, nonce, kind, created_at
+    `SELECT id, channel_id, sender_id, ciphertext, nonce, kind, client_id, created_at
      FROM message_queue
      WHERE recipient_id = $1
      ORDER BY created_at ASC
@@ -421,6 +467,7 @@ async function flushQueue(userId, ws) {
     ws.send(JSON.stringify({
       type: 'message',
       messageId: row.id,
+      clientId: row.client_id,
       channelId: row.channel_id,
       senderId: row.sender_id,
       kind: row.kind,

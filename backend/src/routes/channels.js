@@ -4,7 +4,8 @@ import { pool } from '../db.js';
 import { config } from '../config.js';
 import { requireAuth } from '../middleware/auth.js';
 import { joinLimiter, apiLimiter } from '../middleware/security.js';
-import { notifyMemberJoined } from '../ws/relay.js';
+import { notifyMemberJoined, notifyMemberLeft } from '../ws/relay.js';
+import { entitlementsFor } from '../lib/entitlements.js';
 
 const router = Router();
 
@@ -38,6 +39,17 @@ function normalizeCode(code) {
 const CODE_RE = new RegExp(`^[${ALPHABET}]{${CODE_LENGTH}}$`);
 
 router.post('/create', apiLimiter, requireAuth, async (req, res, next) => {
+  const incognito = req.body?.incognito === true;
+
+  // Incognito channels are a supporter feature. Checked before allocating a
+  // code so a free user never gets a half-created channel back.
+  if (incognito) {
+    const ent = await entitlementsFor(req.userId);
+    if (!ent.premium) {
+      return res.status(403).json({ error: 'incognito channels are a supporter feature' });
+    }
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -49,11 +61,11 @@ router.post('/create', apiLimiter, requireAuth, async (req, res, next) => {
       // which races. The old loop also fell through and inserted a known
       // duplicate after 5 clashes, turning a retry into a 500.
       const inserted = await client.query(
-        `INSERT INTO channels (code, created_by, code_expires_at)
-         VALUES ($1, $2, now() + ($3 || ' hours')::interval)
+        `INSERT INTO channels (code, created_by, code_expires_at, incognito)
+         VALUES ($1, $2, now() + ($3 || ' hours')::interval, $4)
          ON CONFLICT (code) DO NOTHING
-         RETURNING id, code, code_expires_at`,
-        [code, req.userId, String(config.channelCodeTtlHours)]
+         RETURNING id, code, code_expires_at, incognito`,
+        [code, req.userId, String(config.channelCodeTtlHours), incognito]
       );
       if (inserted.rowCount > 0) channel = inserted.rows[0];
     }
@@ -74,6 +86,7 @@ router.post('/create', apiLimiter, requireAuth, async (req, res, next) => {
       channelId: channel.id,
       code: channel.code,
       codeExpiresAt: channel.code_expires_at,
+      incognito: channel.incognito,
       members: [],
     });
   } catch (err) {
@@ -95,14 +108,14 @@ router.post('/join', joinLimiter, requireAuth, async (req, res, next) => {
     }
 
     const channel = await pool.query(
-      'SELECT id, code_expires_at FROM channels WHERE code = $1',
+      'SELECT id, code_expires_at, incognito FROM channels WHERE code = $1',
       [code]
     );
     if (channel.rowCount === 0) {
       return res.status(404).json({ error: 'channel not found' });
     }
 
-    const { id: channelId, code_expires_at: expiresAt } = channel.rows[0];
+    const { id: channelId, code_expires_at: expiresAt, incognito } = channel.rows[0];
     if (expiresAt && new Date(expiresAt) < new Date()) {
       return res.status(410).json({ error: 'channel code expired' });
     }
@@ -138,6 +151,7 @@ router.post('/join', joinLimiter, requireAuth, async (req, res, next) => {
       channelId,
       code,
       isNewMember,
+      incognito,
       members: members.rows.map((m) => ({
         userId: m.id,
         pubkey: m.pubkey,
@@ -154,7 +168,7 @@ router.post('/join', joinLimiter, requireAuth, async (req, res, next) => {
 router.get('/list', apiLimiter, requireAuth, async (req, res, next) => {
   try {
     const result = await pool.query(
-      `SELECT c.id, c.code, c.code_expires_at, c.created_at, cm.joined_at,
+      `SELECT c.id, c.code, c.code_expires_at, c.created_at, c.incognito, cm.joined_at,
               (SELECT count(*) FROM channel_members x WHERE x.channel_id = c.id) AS member_count
        FROM channel_members cm
        JOIN channels c ON c.id = cm.channel_id
@@ -169,6 +183,7 @@ router.get('/list', apiLimiter, requireAuth, async (req, res, next) => {
         codeExpiresAt: r.code_expires_at,
         createdAt: r.created_at,
         joinedAt: r.joined_at,
+        incognito: r.incognito,
         memberCount: Number(r.member_count),
       })),
     });
@@ -232,7 +247,7 @@ router.post('/:channelId/rotate-code', apiLimiter, requireAuth, async (req, res,
 
 router.delete('/:channelId/leave', apiLimiter, requireAuth, async (req, res, next) => {
   try {
-    await pool.query(
+    const removed = await pool.query(
       'DELETE FROM channel_members WHERE channel_id = $1 AND user_id = $2',
       [req.params.channelId, req.userId]
     );
@@ -240,6 +255,12 @@ router.delete('/:channelId/leave', apiLimiter, requireAuth, async (req, res, nex
       'DELETE FROM message_queue WHERE channel_id = $1 AND recipient_id = $2',
       [req.params.channelId, req.userId]
     );
+
+    // Tell the remaining members someone left -- anonymously. Only when a
+    // membership row was actually removed, so a repeated leave does not emit a
+    // phantom event.
+    if (removed.rowCount > 0) notifyMemberLeft(req.params.channelId);
+
     res.json({ ok: true });
   } catch (err) {
     next(err);

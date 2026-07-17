@@ -86,6 +86,19 @@ if (isProd && !publicAppUrl) {
   process.exit(1);
 }
 
+// WebAuthn (ROADMAP #5). The RP ID must be a registrable suffix of the origin
+// the ceremony runs on -- i.e. the *frontend's* host, since that is the page
+// calling navigator.credentials. Both default off the public app URL and can be
+// overridden for deployments where the API and app hosts differ.
+let derivedRpId = 'localhost';
+try {
+  derivedRpId = new URL(publicAppUrl).hostname;
+} catch {
+  // publicAppUrl empty/invalid in some dev setups; the default stands.
+}
+const webauthnRpId = process.env.WEBAUTHN_RP_ID || derivedRpId;
+const webauthnOrigin = process.env.WEBAUTHN_ORIGIN || publicAppUrl || 'http://localhost:5173';
+
 // Mail is what makes recovery and verification real. Without a provider the
 // mailer logs to the console, which is fine locally and a silent hole in prod.
 const mailApiKey = process.env.MAIL_API_KEY || '';
@@ -248,6 +261,12 @@ export const config = {
   rateLimitsEnabled,
 
   publicAppUrl,
+
+  webauthn: {
+    rpName: 'CryptChat',
+    rpId: webauthnRpId,
+    origin: webauthnOrigin,
+  },
 
   mail: {
     apiKey: mailApiKey,

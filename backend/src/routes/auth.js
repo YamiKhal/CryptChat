@@ -8,6 +8,12 @@ import { authLimiter, registerLimiter } from '../middleware/security.js';
 import { usernameIndex, legacyUsernameHash, emailIndex } from '../lib/identityCrypto.js';
 import { validEmail, startEmailVerification } from '../lib/emailVerification.js';
 import { badgeFor } from './billing.js';
+import {
+  authenticationOptions,
+  verifyAuthentication,
+  issueChallengeToken,
+  readChallengeToken,
+} from '../lib/webauthn.js';
 
 const router = Router();
 
@@ -253,10 +259,91 @@ router.post('/login', authLimiter, async (req, res, next) => {
     // row, and therefore the only safe moment to rewrite its index.
     if (found.legacy) await upgradeUsernameHash(user.id, username);
 
+    // Second factor, if the account enrolled one. A correct password is no
+    // longer sufficient on its own: we withhold the session token and hand back
+    // an authentication challenge instead. See POST /login/2fa.
+    const creds = (
+      await pool.query('SELECT id, transports FROM webauthn_credentials WHERE user_id = $1', [
+        user.id,
+      ])
+    ).rows;
+    if (creds.length > 0) {
+      const options = await authenticationOptions(creds);
+      const challengeToken = issueChallengeToken(options.challenge, {
+        userId: user.id,
+        purpose: 'login',
+      });
+      return res.json({ twoFactorRequired: true, challengeToken, options });
+    }
+
     // The client needs its own salt and public keys to rebuild session state.
     // The private half never touched this server and cannot be recovered here:
     // a new device gets its keys from a key file export or the recovery blob,
     // not from login.
+    res.json({
+      token: signToken(user.id, user.token_epoch),
+      userId: user.id,
+      pubkey: user.pubkey,
+      signPubkey: user.sign_pubkey,
+      vaultSalt: user.vault_salt,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Complete a login that required a second factor.
+ *
+ * The challenge token carries the userId and the challenge we issued; it is
+ * short-lived and audience-scoped so it can never stand in for a session. A
+ * valid assertion against one of the user's enrolled credentials mints the real
+ * session token -- the same shape /login would have returned outright.
+ */
+router.post('/login/2fa', authLimiter, async (req, res, next) => {
+  try {
+    const { challengeToken, response } = req.body ?? {};
+
+    let claims;
+    try {
+      claims = readChallengeToken(challengeToken, 'login');
+    } catch {
+      return res.status(401).json({ error: 'login challenge expired, start again' });
+    }
+
+    const credId = response?.id;
+    if (typeof credId !== 'string') return res.status(400).json({ error: 'malformed response' });
+
+    const credRow = (
+      await pool.query(
+        'SELECT id, public_key, counter, transports FROM webauthn_credentials WHERE id = $1 AND user_id = $2',
+        [credId, claims.sub]
+      )
+    ).rows[0];
+    if (!credRow) return res.status(401).json({ error: 'unknown authenticator' });
+
+    let verification;
+    try {
+      verification = await verifyAuthentication(response, claims.challenge, credRow);
+    } catch {
+      return res.status(401).json({ error: 'authentication failed' });
+    }
+    if (!verification.verified) return res.status(401).json({ error: 'authentication failed' });
+
+    // Advance the signature counter (clone detection) and record use.
+    await pool.query(
+      'UPDATE webauthn_credentials SET counter = $1, last_used_at = now() WHERE id = $2',
+      [verification.authenticationInfo.newCounter, credId]
+    );
+
+    const user = (
+      await pool.query(
+        'SELECT id, pubkey, sign_pubkey, vault_salt, token_epoch FROM users WHERE id = $1',
+        [claims.sub]
+      )
+    ).rows[0];
+    if (!user) return res.status(401).json({ error: 'authentication failed' });
+
     res.json({
       token: signToken(user.id, user.token_epoch),
       userId: user.id,

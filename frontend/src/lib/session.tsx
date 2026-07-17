@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode, useCallback } from 'react';
-import { api } from './api';
+import { startAuthentication } from '@simplewebauthn/browser';
+import { api, AuthResponse, isTwoFactorChallenge } from './api';
 import {
   generateIdentity,
   Identity,
@@ -89,6 +90,27 @@ const SessionContext = createContext<SessionApi | null>(null);
 
 const ACTIVE_KEY = 'darkchat:active';
 const tokenKey = (userId: string) => `darkchat:tok:${userId}`;
+
+/**
+ * Resolve a login, transparently completing a WebAuthn second factor if the
+ * account has one enrolled.
+ *
+ * The server withholds the session token when 2FA is on and returns a challenge
+ * instead; this runs the authenticator ceremony and exchanges the assertion for
+ * the real AuthResponse. Callers get an AuthResponse either way and never have
+ * to know a second factor was involved.
+ */
+async function resolveLogin(username: string, password: string): Promise<AuthResponse> {
+  const result = await api.login(username, password);
+  if (!isTwoFactorChallenge(result)) return result;
+
+  // Prompts the authenticator (security key, passkey, platform biometric).
+  // Throws if the user cancels, which surfaces as a normal login failure.
+  const assertion = await startAuthentication({
+    optionsJSON: result.options as Parameters<typeof startAuthentication>[0]['optionsJSON'],
+  });
+  return api.completeTwoFactor(result.challengeToken, assertion);
+}
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<SessionState>({
@@ -308,7 +330,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
 
   const login = useCallback(async (username: string, password: string, remember: boolean) => {
-    const res = await api.login(username, password);
+    const res = await resolveLogin(username, password);
 
     const existing = getAccount(res.userId);
 
@@ -350,7 +372,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (!token) {
         // Vault password and account password are the same secret, so a valid
         // unlock is also enough to mint a fresh token when the old one expired.
-        const res = await api.login(state.account.username, password);
+        // Runs the second factor too, if the account enrolled one.
+        const res = await resolveLogin(state.account.username, password);
         token = res.token;
         sessionStorage.setItem(tokenKey(state.account.userId), token);
       }

@@ -1,4 +1,5 @@
 import { useEffect, useState, Fragment } from "react";
+import { LockKeyhole } from "lucide-react";
 import { StoredMessage } from "../lib/vault";
 import { BinaryAsset, unpackAsset, decodeImage } from "../lib/binary";
 import { segmentize } from "../lib/links";
@@ -59,6 +60,68 @@ interface MessageBubbleProps {
   contextHandlers?: Record<string, unknown>;
   /** Briefly ring the bubble after a reply jump lands on it. */
   highlighted?: boolean;
+  /** Submit a code to unlock a password-protected message. Rejects on a wrong code. */
+  onUnlock?: (code: string) => Promise<void>;
+  /** Incognito: render the avatar as this hue instead of an image/initials. */
+  avatarColor?: number;
+  /** Incognito: show this in place of the (blanked) envelope display name. */
+  nameOverride?: string;
+}
+
+/**
+ * A password-locked message the recipient has not opened yet.
+ *
+ * The code is entered here and checked locally by trying to decrypt -- a wrong
+ * code fails secretbox authentication and never reveals anything. Honest by
+ * construction: there is no "is this right" endpoint, only "does it decrypt".
+ */
+function LockedBody({
+  hint,
+  onUnlock,
+}: {
+  hint?: string;
+  onUnlock?: (code: string) => Promise<void>;
+}) {
+  const [code, setCode] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (!code.trim() || !onUnlock) return;
+    setBusy(true);
+    setError('');
+    try {
+      await onUnlock(code.trim());
+    } catch {
+      setError('wrong code');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <p className="flex items-center gap-1.5 text-xs text-muted">
+        <LockKeyhole size={13} aria-hidden="true" />
+        Password-protected message
+      </p>
+      {hint && <p className="text-[11px] italic text-muted">hint: {hint}</p>}
+      <div className="flex gap-1.5">
+        <input
+          className="field py-1 text-xs"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && submit()}
+          placeholder="enter code"
+          autoCapitalize="off"
+          autoCorrect="off"
+        />
+        <button onClick={submit} disabled={busy || !code.trim()} className="btn-ghost px-2 py-1 text-xs">
+          unlock
+        </button>
+      </div>
+      {error && <p className="text-[11px] text-error">{error}</p>}
+    </div>
+  );
 }
 
 /** Decodes an attached image back to an object URL for the life of the bubble. */
@@ -106,7 +169,11 @@ export default function MessageBubble({
   replyTargetExists,
   contextHandlers,
   highlighted,
+  onUnlock,
+  avatarColor,
+  nameOverride,
 }: MessageBubbleProps) {
+  const shownName = nameOverride ?? message.displayName;
   const time = new Date(message.createdAt).toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
@@ -127,7 +194,12 @@ export default function MessageBubble({
     >
       <div className="w-6 flex-none">
         {!grouped && (
-          <Avatar asset={avatar} name={message.displayName} size="sm" />
+          <Avatar
+            asset={avatarColor !== undefined ? undefined : avatar}
+            name={shownName}
+            size="sm"
+            color={avatarColor}
+          />
         )}
       </div>
 
@@ -147,7 +219,7 @@ export default function MessageBubble({
             {/* The display name comes from inside the signed envelope, not from
                 the server -- the server has never seen it. */}
             <span className="text-[11px] font-medium text-foreground/80">
-              {message.displayName}
+              {shownName}
             </span>
             {supporter && <Badge size="sm" />}
             <span className="text-[10px] text-muted">{time}</span>
@@ -203,18 +275,40 @@ export default function MessageBubble({
             />
           )}
 
-          {message.body &&
-            (!message.preview ||
-              (message.preview && message.preview!.kind === "youtube")) && (
-              <Body text={message.body} />
-            )}
-          {message.asset && <Attachment asset={message.asset} />}
+          {message.deleted ? (
+            // Tombstone. The bytes are already gone from the vault; this is the
+            // slot kept so a reply that quoted it still resolves.
+            <p className="italic text-muted">message deleted</p>
+          ) : message.locked ? (
+            <LockedBody hint={message.locked.hint} onUnlock={onUnlock} />
+          ) : (
+            <>
+              {message.body &&
+                (!message.preview ||
+                  (message.preview && message.preview!.kind === "youtube")) && (
+                  <Body text={message.body} />
+                )}
+              {message.asset && <Attachment asset={message.asset} />}
 
-          {message.attachments?.map((attachment) => (
-            <AttachmentCard key={attachment.blobId} attachment={attachment} />
-          ))}
+              {message.attachments?.map((attachment) => (
+                <AttachmentCard key={attachment.blobId} attachment={attachment} />
+              ))}
 
-          {message.preview && <LinkPreviewCard preview={message.preview} />}
+              {message.preview && <LinkPreviewCard preview={message.preview} />}
+
+              {message.protected && (
+                <span
+                  className="ml-1 inline-flex align-baseline text-muted"
+                  title="This message was password-protected"
+                >
+                  <LockKeyhole size={10} aria-hidden="true" />
+                </span>
+              )}
+              {message.editedAt && (
+                <span className="ml-1 align-baseline text-[10px] text-muted">(edited)</span>
+              )}
+            </>
+          )}
 
           {message.pending && (
             <p className="mt-1 text-[10px] text-muted">queued — not yet sent</p>

@@ -6,6 +6,7 @@ import {
   wrapChannelKeyForRecipient,
   unwrapChannelKey,
   isSingleEmoji,
+  sealWithPassword,
   Attachment,
   LinkPreview,
   ReplyRef,
@@ -31,6 +32,10 @@ interface RelayOptions {
   onMessage?: (message: StoredMessage) => void;
   onChannelKey?: (channelId: string) => void;
   onKeyChangeWarning?: (userId: string) => void;
+  /** Ephemeral "someone is typing" — never stored, never in the transcript. */
+  onTyping?: (event: { channelId: string; senderId: string }) => void;
+  /** Anonymous join/leave notice for a channel. Carries no identity. */
+  onPresence?: (event: { channelId: string; event: 'joined' | 'left' }) => void;
 }
 
 export interface SendPayload {
@@ -39,6 +44,8 @@ export interface SendPayload {
   attachments?: Attachment[];
   preview?: LinkPreview;
   replyTo?: ReplyRef;
+  /** When set, the body is sealed under this code and sent locked (premium). */
+  lock?: { code: string; hint?: string };
 }
 
 interface ParkedReaction {
@@ -73,11 +80,55 @@ async function drainParked(
   return true;
 }
 
+/** An edit or delete whose target message has not arrived yet. */
+interface ParkedMutation {
+  channelId: string;
+  targetId: string;
+  kind: 'edit' | 'delete';
+  senderId: string;
+  body?: string;
+  at?: string;
+}
+
+/**
+ * Apply parked edits/deletes now that `messageId` exists.
+ *
+ * Ordering usually saves us -- the relay flushes the original (older timestamp)
+ * before the edit -- but a member who joined mid-conversation can receive an
+ * edit for a message they never had, so these are parked like reactions rather
+ * than dropped. The author check lives in the vault, so a parked mutation from
+ * the wrong sender simply no-ops when it drains.
+ */
+async function drainMutations(
+  parked: { current: ParkedMutation[] },
+  vault: Vault,
+  channelId: string,
+  messageId: string
+): Promise<boolean> {
+  const ready = parked.current.filter((m) => m.channelId === channelId && m.targetId === messageId);
+  if (ready.length === 0) return false;
+
+  parked.current = parked.current.filter(
+    (m) => !(m.channelId === channelId && m.targetId === messageId)
+  );
+
+  for (const m of ready) {
+    if (m.kind === 'edit') {
+      await vault.editMessage(channelId, m.targetId, m.senderId, m.body ?? '', m.at);
+    } else {
+      await vault.deleteMessage(channelId, m.targetId, m.senderId);
+    }
+  }
+  return true;
+}
+
 type Incoming =
-  | { type: 'message'; messageId: string; channelId: string; senderId: string; kind: 'message' | 'profile'; ciphertext: string; nonce: string; createdAt: string }
+  | { type: 'message'; messageId: string; clientId?: string | null; channelId: string; senderId: string; kind: string; ciphertext: string; nonce: string; createdAt: string }
   | { type: 'key-offer'; offerId: string; channelId: string; senderId: string; senderPubkey: string; senderSignPubkey: string; ciphertext: string; nonce: string }
   | { type: 'key-request'; channelId: string; requesterId: string; requesterPubkey: string; requesterSignPubkey: string }
   | { type: 'member-joined'; channelId: string; userId: string; pubkey: string; signPubkey: string }
+  | { type: 'member-left'; channelId: string }
+  | { type: 'typing'; channelId: string; senderId: string }
   | { type: 'profile-request'; channelId: string; requesterId: string }
   | { type: 'sent'; clientId: string; channelId: string }
   | { type: 'key-offer-sent'; channelId: string; recipientId: string };
@@ -89,13 +140,15 @@ export function useRelay({
   onMessage,
   onChannelKey,
   onKeyChangeWarning,
+  onTyping,
+  onPresence,
 }: RelayOptions) {
   const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
 
   // Handlers change every render; the socket must not.
-  const handlers = useRef({ onMessage, onChannelKey, onKeyChangeWarning });
-  handlers.current = { onMessage, onChannelKey, onKeyChangeWarning };
+  const handlers = useRef({ onMessage, onChannelKey, onKeyChangeWarning, onTyping, onPresence });
+  handlers.current = { onMessage, onChannelKey, onKeyChangeWarning, onTyping, onPresence };
   const vaultRef = useRef(vault);
   vaultRef.current = vault;
 
@@ -113,6 +166,7 @@ export function useRelay({
   const parkedReactions = useRef<
     { channelId: string; targetId: string; emoji: string; senderId: string; removed: boolean }[]
   >([]);
+  const parkedMutations = useRef<ParkedMutation[]>([]);
   const MAX_PARKED = 200;
 
   const handleIncomingMessage = useCallback(async (data: Extract<Incoming, { type: 'message' }>) => {
@@ -187,11 +241,57 @@ export function useRelay({
       return true;
     }
 
+    if (envelope.kind === 'edit') {
+      // An unverified edit is dropped, not shown: we cannot confirm who sent it,
+      // and applying it would let a forged envelope rewrite someone's words.
+      if (!verified || !envelope.edit) return true;
+      const { targetId, body } = envelope.edit;
+      const at = envelope.sentAt || data.createdAt;
+      const updated = await v.editMessage(data.channelId, targetId, data.senderId, body, at);
+      if (updated === null) {
+        if (parkedMutations.current.length >= MAX_PARKED) parkedMutations.current.shift();
+        parkedMutations.current.push({
+          channelId: data.channelId,
+          targetId,
+          kind: 'edit',
+          senderId: data.senderId,
+          body,
+          at,
+        });
+      } else {
+        handlers.current.onChannelKey?.(data.channelId);
+      }
+      return true;
+    }
+
+    if (envelope.kind === 'delete') {
+      if (!verified || !envelope.del) return true;
+      const { targetId } = envelope.del;
+      const updated = await v.deleteMessage(data.channelId, targetId, data.senderId);
+      if (updated === null) {
+        if (parkedMutations.current.length >= MAX_PARKED) parkedMutations.current.shift();
+        parkedMutations.current.push({
+          channelId: data.channelId,
+          targetId,
+          kind: 'delete',
+          senderId: data.senderId,
+        });
+      } else {
+        handlers.current.onChannelKey?.(data.channelId);
+      }
+      return true;
+    }
+
     const message: StoredMessage = {
-      id: data.messageId,
+      // The sender's stable id, so this message matches the sender's own copy
+      // (and thus their edits, deletes, and reactions). Falls back to the queue
+      // id only for a client that did not send one.
+      id: data.clientId ?? data.messageId,
       channelId: data.channelId,
       senderId: data.senderId,
       displayName: envelope.displayName,
+      // A locked message arrives with an empty body and its sealed payload; it
+      // stays unreadable until the recipient enters the code.
       body: envelope.body,
       asset: envelope.avatar,
       // Attachment keys, the preview, and the reply reference are all inside the
@@ -201,14 +301,17 @@ export function useRelay({
       attachments: envelope.attachments,
       preview: envelope.preview,
       replyTo: envelope.replyTo,
+      locked: envelope.locked,
+      protected: Boolean(envelope.locked),
       createdAt: envelope.sentAt || data.createdAt,
       verified,
     };
 
     await v.appendMessage(message);
 
-    // A reaction that arrived before its target can now be applied.
+    // A reaction, edit, or delete that arrived before its target can now land.
     await drainParked(parkedReactions, v, data.channelId, message.id);
+    await drainMutations(parkedMutations, v, data.channelId, message.id);
 
     handlers.current.onMessage?.(message);
     return true;
@@ -243,6 +346,9 @@ export function useRelay({
       hasKey: true,
       joinedAt: existing?.joinedAt ?? new Date().toISOString(),
       label: existing?.label,
+      // Preserve the incognito flag: dropping it here reverted a joiner to a
+      // normal channel the moment the key arrived, leaking their real name.
+      incognito: existing?.incognito,
     });
 
     handlers.current.onChannelKey?.(data.channelId);
@@ -301,6 +407,8 @@ export function useRelay({
 
       const channel = v.getChannel(channelId);
       if (!channel?.hasKey) return;
+      // Incognito channels never receive a profile: no name, no avatar, ever.
+      if (channel.incognito) return;
 
       const profile = v.profile;
       const sealed = await createEnvelope(
@@ -395,11 +503,20 @@ export function useRelay({
               });
               break;
             case 'member-joined':
+              // Anonymous notice first, then the real work: existing members
+              // wrap the channel key for the joiner.
+              handlers.current.onPresence?.({ channelId: data.channelId, event: 'joined' });
               await offerKeyTo(data.channelId, {
                 userId: data.userId,
                 pubkey: data.pubkey,
                 signPubkey: data.signPubkey,
               });
+              break;
+            case 'member-left':
+              handlers.current.onPresence?.({ channelId: data.channelId, event: 'left' });
+              break;
+            case 'typing':
+              handlers.current.onTyping?.({ channelId: data.channelId, senderId: data.senderId });
               break;
             case 'profile-request':
               // Answer only; never chain another request, or two clients would
@@ -450,15 +567,24 @@ export function useRelay({
       const sentAt = new Date().toISOString();
       const profile = v.profile;
 
+      // Password-locked: the body is sealed under the code and the envelope
+      // carries the ciphertext instead of plaintext. The channel encryption
+      // still wraps the whole thing -- this is a second lock inside it.
+      const locked = payload.lock
+        ? await sealWithPassword(payload.body, payload.lock.code, payload.lock.hint)
+        : undefined;
+
       const sealed = await createEnvelope(
         {
           kind: 'message',
-          body: payload.body,
-          displayName: profile.displayName,
+          body: locked ? '' : payload.body,
+          // Incognito channels carry no name; members are shown as colours only.
+          displayName: channel.incognito ? '' : profile.displayName,
           avatar: payload.asset,
           attachments: payload.attachments,
           preview: payload.preview,
           replyTo: payload.replyTo,
+          locked,
           sentAt,
         },
         channelId,
@@ -481,7 +607,9 @@ export function useRelay({
       }
 
       // Our own copy. The relay only fans out to *other* members, so the
-      // sender's transcript is written locally and is trivially verified.
+      // sender's transcript is written locally and is trivially verified. We
+      // authored the locked body, so we keep the plaintext -- just flagged
+      // `protected` for the lock indicator; only recipients have to unlock.
       const local: StoredMessage = {
         id: clientId,
         channelId,
@@ -492,6 +620,7 @@ export function useRelay({
         attachments: payload.attachments,
         preview: payload.preview,
         replyTo: payload.replyTo,
+        protected: Boolean(locked),
         createdAt: sentAt,
         verified: true,
         pending: ws?.readyState !== WebSocket.OPEN,
@@ -529,7 +658,7 @@ export function useRelay({
         {
           kind: 'reaction',
           body: '',
-          displayName: v.profile.displayName,
+          displayName: channel.incognito ? '' : v.profile.displayName,
           reaction: { targetId, emoji, removed },
           sentAt: new Date().toISOString(),
         },
@@ -557,6 +686,106 @@ export function useRelay({
     [userId]
   );
 
+  /**
+   * Tell a channel we're typing. Fire-and-forget presence: no local echo, no
+   * persistence. The caller throttles; see Chat's composer. Silently a no-op
+   * when the socket is down — a typing hint is never worth queuing.
+   */
+  const sendTyping = useCallback((channelId: string) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: 'typing', channelId }));
+  }, []);
+
+  /**
+   * Edit a message we authored. Sends a signed 'edit' envelope and applies the
+   * change locally. The author check lives in the vault on both ends, so this
+   * can only ever change our own messages.
+   */
+  const editMessage = useCallback(
+    async (channelId: string, targetId: string, body: string) => {
+      const v = vaultRef.current;
+      const ws = wsRef.current;
+      if (!v || !userId) return;
+
+      const channel = v.getChannel(channelId);
+      if (!channel?.hasKey) throw new Error('no key for this channel yet');
+
+      const sentAt = new Date().toISOString();
+      const sealed = await createEnvelope(
+        {
+          kind: 'edit',
+          body: '',
+          displayName: channel.incognito ? '' : v.profile.displayName,
+          edit: { targetId, body },
+          sentAt,
+        },
+        channelId,
+        userId,
+        v.identity.signPrivateKey,
+        channel.key
+      );
+
+      if (ws?.readyState === WebSocket.OPEN) {
+        ws.send(
+          JSON.stringify({
+            type: 'send',
+            channelId,
+            clientId: crypto.randomUUID(),
+            kind: 'edit',
+            ciphertext: sealed.ciphertext,
+            nonce: sealed.nonce,
+          })
+        );
+      }
+
+      await v.editMessage(channelId, targetId, userId, body, sentAt);
+    },
+    [userId]
+  );
+
+  /** Delete a message we authored: a signed tombstone, applied locally too. */
+  const deleteMessage = useCallback(
+    async (channelId: string, targetId: string) => {
+      const v = vaultRef.current;
+      const ws = wsRef.current;
+      if (!v || !userId) return;
+
+      const channel = v.getChannel(channelId);
+      if (!channel?.hasKey) throw new Error('no key for this channel yet');
+
+      const sealed = await createEnvelope(
+        {
+          kind: 'delete',
+          body: '',
+          displayName: channel.incognito ? '' : v.profile.displayName,
+          del: { targetId },
+          sentAt: new Date().toISOString(),
+        },
+        channelId,
+        userId,
+        v.identity.signPrivateKey,
+        channel.key
+      );
+
+      if (ws?.readyState === WebSocket.OPEN) {
+        ws.send(
+          JSON.stringify({
+            type: 'send',
+            channelId,
+            clientId: crypto.randomUUID(),
+            kind: 'delete',
+            ciphertext: sealed.ciphertext,
+            nonce: sealed.nonce,
+          })
+        );
+      }
+
+      await v.deleteMessage(channelId, targetId, userId);
+    },
+    [userId]
+  );
+
   const broadcastProfileEverywhere = useCallback(async () => {
     const v = vaultRef.current;
     if (!v) return;
@@ -569,6 +798,9 @@ export function useRelay({
     connected,
     send,
     sendReaction,
+    sendTyping,
+    editMessage,
+    deleteMessage,
     broadcastProfile,
     broadcastProfileEverywhere,
     offerKeyTo,

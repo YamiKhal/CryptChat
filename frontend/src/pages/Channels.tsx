@@ -13,10 +13,13 @@ export default function Channels() {
   const navigate = useNavigate();
 
   const [channels, setChannels] = useState<StoredChannel[]>([]);
+  const [unread, setUnread] = useState<Record<string, number>>({});
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+  const [premium, setPremium] = useState(false);
+  const [incognitoNew, setIncognitoNew] = useState(false);
 
   const reload = useCallback(() => {
     if (!vault) return;
@@ -24,6 +27,38 @@ export default function Channels() {
   }, [vault]);
 
   useEffect(reload, [reload, revision]);
+
+  // Premium gates offering the incognito toggle. The server enforces it too, so
+  // this is just UI: a non-premium user simply never sees the option.
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    api
+      .limits(token)
+      .then((res) => !cancelled && setPremium(Boolean(res.premium)))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  // Unread badges. Recomputed on every relay revision, so a message that lands
+  // while the list is open bumps the count without a manual refresh. Channels
+  // are few and transcripts are already local, so loading them here is cheap.
+  useEffect(() => {
+    if (!vault) return;
+    let cancelled = false;
+    (async () => {
+      const counts: Record<string, number> = {};
+      for (const channel of vault.listChannels()) {
+        counts[channel.channelId] = await vault.unreadCount(channel.channelId);
+      }
+      if (!cancelled) setUnread(counts);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [vault, revision]);
 
   /**
    * Reconcile local channels against server membership.
@@ -51,12 +86,13 @@ export default function Channels() {
               code: summary.code,
               key: '',
               hasKey: false,
+              incognito: summary.incognito,
               joinedAt: summary.joinedAt,
             });
             changed = true;
-          } else if (local.code !== summary.code) {
-            // Code was rotated by another member.
-            await vault.saveChannel({ ...local, code: summary.code });
+          } else if (local.code !== summary.code || local.incognito !== summary.incognito) {
+            // Code rotated, or we learned the incognito flag from the server.
+            await vault.saveChannel({ ...local, code: summary.code, incognito: summary.incognito });
             changed = true;
           }
         }
@@ -78,7 +114,7 @@ export default function Channels() {
     setError('');
     setBusy(true);
     try {
-      const res = await api.createChannel(token);
+      const res = await api.createChannel(token, incognitoNew);
 
       // The creator mints the channel key locally. The server issues the code
       // and nothing else -- it never sees this value.
@@ -89,8 +125,10 @@ export default function Channels() {
         code: res.code,
         key,
         hasKey: true,
+        incognito: res.incognito,
         joinedAt: new Date().toISOString(),
       });
+      setIncognitoNew(false);
 
       reload();
       navigate(`/chat/${res.channelId}`);
@@ -124,6 +162,7 @@ export default function Channels() {
         code: res.code,
         key: '',
         hasKey: false,
+        incognito: res.incognito,
         joinedAt: new Date().toISOString(),
       });
 
@@ -173,8 +212,26 @@ export default function Channels() {
 
       <section className="card space-y-3">
         <button onClick={handleCreate} disabled={busy} className="btn-primary w-full">
-          Create channel
+          Create {incognitoNew ? 'incognito ' : ''}channel
         </button>
+
+        {premium && (
+          <label className="flex items-start gap-2">
+            <input
+              type="checkbox"
+              className="mt-0.5 accent-primary"
+              checked={incognitoNew}
+              onChange={(e) => setIncognitoNew(e.target.checked)}
+            />
+            <span className="text-[11px]">
+              Incognito
+              <span className="mt-0.5 block text-muted">
+                Members appear as colours only — no names, no avatars. Colours differ per channel, so
+                nobody can link you across them.
+              </span>
+            </span>
+          </label>
+        )}
 
         <div className="flex items-center gap-2">
           <div className="h-px flex-1 bg-border" />
@@ -222,10 +279,20 @@ export default function Channels() {
               <p className="font-mono text-sm tracking-widest text-primary">
                 {channel.code || '········'}
               </p>
-              <p className="text-[11px] text-muted">
+              <p className="flex items-center gap-1.5 text-[11px] text-muted">
                 joined {new Date(channel.joinedAt).toLocaleDateString()}
+                {channel.incognito && <span className="tag bg-secondary/10 text-secondary">incognito</span>}
               </p>
             </div>
+            {unread[channel.channelId] > 0 && (
+              <span
+                className="inline-flex min-w-5 items-center justify-center rounded-full bg-primary
+                           px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground"
+                aria-label={`${unread[channel.channelId]} unread`}
+              >
+                {unread[channel.channelId] > 99 ? '99+' : unread[channel.channelId]}
+              </span>
+            )}
             {channel.hasKey ? (
               <span className="tag bg-primary/10 text-primary">keyed</span>
             ) : (

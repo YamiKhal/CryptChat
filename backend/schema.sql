@@ -291,3 +291,43 @@ CREATE TABLE IF NOT EXISTS billing_events (
   event_id TEXT PRIMARY KEY,
   received_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- ------------------------------------------------------------------
+-- WebAuthn second factor (ROADMAP #5)
+--
+-- Optional. A registered credential turns login into two steps: a correct
+-- password no longer issues a session on its own -- the account must also prove
+-- possession of an enrolled authenticator. This gates the LOGIN path only; it is
+-- not a crypto root and never touches the vault (message keys are sealed under
+-- the password, which WebAuthn does not replace). An offline attacker with a DB
+-- dump plus the password decrypts the vault directly -- the assertion never runs
+-- -- so this is protection against online credential theft, not a backup leak.
+--
+-- The stored public key and counter are not secrets. We hold no username here to
+-- put in the authenticator UI, by design; the ceremony uses a neutral label.
+-- ------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS webauthn_credentials (
+  id          TEXT PRIMARY KEY,               -- base64url credential id
+  user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  public_key  BYTEA NOT NULL,                 -- COSE public key
+  counter     BIGINT NOT NULL DEFAULT 0,      -- signature counter, clone detection
+  transports  TEXT,                           -- JSON array, hint for the next ceremony
+  label       TEXT,                           -- user-facing name for the key
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_used_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS webauthn_credentials_user_idx
+  ON webauthn_credentials (user_id);
+
+-- Incognito channels (ROADMAP #7, premium). A display mode: members appear only
+-- as stable per-channel colours, never names or avatars, and no profile is
+-- broadcast into the channel. The flag itself is not sensitive -- the server
+-- already knows the membership it routes for -- so it lives here in plaintext.
+ALTER TABLE channels ADD COLUMN IF NOT EXISTS incognito BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- The sender's stable message id, carried end-to-end so every client stores a
+-- message under the SAME id. Without it, the sender kept its own random client
+-- id while recipients used this table's row id -- so an edit/delete/reaction
+-- targeting a message could never be matched on the other side.
+ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS client_id TEXT;

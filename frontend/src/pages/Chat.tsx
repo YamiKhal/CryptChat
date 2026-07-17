@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { CornerUpLeft, Smile, Copy, Download } from 'lucide-react';
+import { CornerUpLeft, Smile, Copy, Download, Pencil, Trash2, Lock } from 'lucide-react';
+import { incognitoHue, incognitoLabel } from '../lib/incognito';
 import { useSession } from '../lib/session';
 import { useRelayContext } from '../lib/relayContext';
 import { StoredMessage, Vault } from '../lib/vault';
@@ -13,6 +14,8 @@ import {
   sniffImageMime,
   saveBlob,
   BinaryAsset,
+  base64UrlToBytes,
+  bytesToDataUrl,
 } from '../lib/binary';
 import { Attachment, LinkPreview, ReplyRef } from '../lib/crypto';
 import { encryptAndUpload, downloadAndDecrypt, TransferProgress } from '../lib/blob';
@@ -67,6 +70,9 @@ function MessageRow({
   onToggleReaction,
   onJumpToReply,
   onOpenMenu,
+  onUnlock,
+  avatarColor,
+  nameOverride,
 }: {
   message: StoredMessage;
   isSelf: boolean;
@@ -81,6 +87,9 @@ function MessageRow({
   onToggleReaction: (emoji: string) => void;
   onJumpToReply: (id: string) => void;
   onOpenMenu: (x: number, y: number) => void;
+  onUnlock: (message: StoredMessage, code: string) => Promise<void>;
+  avatarColor?: number;
+  nameOverride?: string;
 }) {
   const { handlers, position, close } = useContextMenu();
 
@@ -108,6 +117,9 @@ function MessageRow({
       replyTargetExists={message.replyTo ? messageIds.has(message.replyTo.id) : false}
       contextHandlers={handlers}
       highlighted={highlighted}
+      onUnlock={(code) => onUnlock(message, code)}
+      avatarColor={avatarColor}
+      nameOverride={nameOverride}
     />
   );
 }
@@ -115,7 +127,18 @@ function MessageRow({
 export default function Chat() {
   const { channelId } = useParams<{ channelId: string }>();
   const { vault, token, account } = useSession();
-  const { send, sendReaction, broadcastProfile, connected, revision } = useRelayContext();
+  const {
+    send,
+    sendReaction,
+    sendTyping,
+    editMessage,
+    deleteMessage,
+    broadcastProfile,
+    connected,
+    revision,
+    typingIn,
+    lastPresence,
+  } = useRelayContext();
   const navigate = useNavigate();
 
   const [messages, setMessages] = useState<StoredMessage[]>([]);
@@ -127,6 +150,10 @@ export default function Chat() {
   const [loading, setLoading] = useState(true);
   const [limits, setLimits] = useState<Limits>(DEFAULT_LIMITS);
   const [replyTo, setReplyTo] = useState<ReplyRef | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [lockArmed, setLockArmed] = useState(false);
+  const [lockCode, setLockCode] = useState('');
+  const [lockHint, setLockHint] = useState('');
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ message: StoredMessage; x: number; y: number } | null>(null);
   const [reactingTo, setReactingTo] = useState<{ id: string; x: number; y: number } | null>(null);
@@ -184,6 +211,51 @@ export default function Chat() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length]);
+
+  // Mark the channel read while it is open: on entry and each time the
+  // transcript grows. Clears the unread badge on the channel list. markChannelRead
+  // never moves the marker backwards, so this only ever writes when there is
+  // genuinely newer material.
+  useEffect(() => {
+    if (!vault || !channelId) return;
+    vault.markChannelRead(channelId).catch(() => {});
+  }, [vault, channelId, messages.length]);
+
+  // Anonymous "someone joined / left" as centered system lines in the transcript,
+  // so they are actually seen. Session-scoped (never persisted, never signed) and
+  // cleared when switching channels.
+  const [presenceLog, setPresenceLog] = useState<{ id: string; text: string; at: string }[]>([]);
+  useEffect(() => {
+    setPresenceLog([]);
+  }, [channelId]);
+  useEffect(() => {
+    if (!lastPresence || lastPresence.channelId !== channelId) return;
+    // Stamp it when it happened. The render merges these into the transcript by
+    // time, so a leave stays at its moment and later messages fall after it.
+    setPresenceLog((log) => [
+      ...log,
+      {
+        id: String(lastPresence.nonce),
+        text: lastPresence.event === 'joined' ? 'Someone joined the channel' : 'Someone left the channel',
+        at: new Date().toISOString(),
+      },
+    ]);
+  }, [lastPresence, channelId]);
+
+  // Throttled typing ping. Fires at most every few seconds while the user is
+  // actually typing something — never on an empty box, never a local echo.
+  const lastTypingSent = useRef(0);
+  const handleType = useCallback(
+    (value: string) => {
+      setText(value);
+      const now = Date.now();
+      if (channelId && value.trim() && now - lastTypingSent.current > 2500) {
+        lastTypingSent.current = now;
+        sendTyping(channelId);
+      }
+    },
+    [channelId, sendTyping]
+  );
 
   /**
    * Build a preview for one link, if the user asked for one.
@@ -250,12 +322,45 @@ export default function Chat() {
 
   const handleSend = useCallback(async () => {
     if (!channelId || sending) return;
+
+    // Editing an existing message rather than sending a new one.
+    if (editingId) {
+      const body = stripPreviewMarkers(text.trim());
+      if (!body) return; // an empty edit would be a delete; use delete for that
+      if (overCharLimit(text, limits)) {
+        setError(`Message is over the ${limits.maxChars.toLocaleString()} character limit.`);
+        return;
+      }
+      setError('');
+      setSending(true);
+      try {
+        await editMessage(channelId, editingId, body);
+        setMessages((current) =>
+          current.map((m) =>
+            m.id === editingId ? { ...m, body, editedAt: new Date().toISOString() } : m
+          )
+        );
+        setText('');
+        setEditingId(null);
+      } catch (err) {
+        setError((err as Error).message);
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
     if (!text.trim() && pending.length === 0) return;
 
     // Client-side, and only client-side: the relay sees ciphertext and cannot
     // count characters. See the note on overCharLimit in lib/limits.ts.
     if (overCharLimit(text, limits)) {
       setError(`Message is over the ${limits.maxChars.toLocaleString()} character limit.`);
+      return;
+    }
+
+    if (lockArmed && !lockCode.trim()) {
+      setError('Enter a code to lock this message, or turn the lock off.');
       return;
     }
 
@@ -271,18 +376,79 @@ export default function Chat() {
         attachments: pending.length > 0 ? pending : undefined,
         preview,
         replyTo: replyTo ?? undefined,
+        lock:
+          lockArmed && lockCode.trim()
+            ? { code: lockCode.trim(), hint: lockHint.trim() || undefined }
+            : undefined,
       });
 
       if (message) setMessages((current) => [...current, message]);
       setText('');
       setPending([]);
       setReplyTo(null);
+      setLockArmed(false);
+      setLockCode('');
+      setLockHint('');
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setSending(false);
     }
-  }, [channelId, text, pending, send, sending, buildPreview, replyTo, limits]);
+  }, [
+    channelId,
+    text,
+    pending,
+    send,
+    sending,
+    buildPreview,
+    replyTo,
+    limits,
+    editingId,
+    editMessage,
+    lockArmed,
+    lockCode,
+    lockHint,
+  ]);
+
+  const handleUnlock = useCallback(
+    async (message: StoredMessage, code: string) => {
+      if (!channelId || !vault) return;
+      // Throws 'wrong code' on failure; the bubble surfaces it inline.
+      const updated = await vault.unlockMessage(channelId, message.id, code);
+      setMessages(updated);
+    },
+    [channelId, vault]
+  );
+
+  const handleStartEdit = useCallback((message: StoredMessage) => {
+    setReplyTo(null);
+    setEditingId(message.id);
+    setText(message.body);
+  }, []);
+
+  const handleDelete = useCallback(
+    async (message: StoredMessage) => {
+      if (!channelId) return;
+      if (!confirm('Delete this message for everyone?\n\nThis cannot be undone.')) return;
+      try {
+        await deleteMessage(channelId, message.id);
+        setMessages((current) =>
+          current.map((m) =>
+            m.id === message.id
+              ? { ...m, deleted: true, body: '', asset: undefined, attachments: undefined, preview: undefined, replyTo: undefined }
+              : m
+          )
+        );
+        if (editingId === message.id) {
+          setEditingId(null);
+          setText('');
+        }
+      } catch (err) {
+        setError((err as Error).message);
+      }
+    },
+    [channelId, deleteMessage, editingId]
+  );
 
   /**
    * Scroll to the message a reply points at.
@@ -369,12 +535,26 @@ export default function Chat() {
   /** Whether a reply's target is on this device, so the quote knows if it can jump. */
   const messageIds = useMemo(() => new Set(messages.map((m) => m.id)), [messages]);
 
+  // Premium chat wallpaper, decoded from the vault to a data URL. Rendered
+  // behind opaque message bubbles, so it never costs legibility.
+  const chatBackground = useMemo(() => {
+    const asset = vault?.preferences.chatBackground;
+    if (!asset) return undefined;
+    try {
+      return bytesToDataUrl(base64UrlToBytes(asset.data), asset.mime);
+    } catch {
+      return undefined;
+    }
+  }, [vault]);
+
   const nameFor = useCallback(
     (userId: string) => {
+      // In an incognito channel nobody has a name; everyone is a per-channel tag.
+      if (channel?.incognito && channelId) return incognitoLabel(channelId, userId);
       if (userId === account?.userId) return vault?.profile.displayName ?? 'you';
       return contacts[userId]?.displayName ?? 'unknown';
     },
-    [contacts, account, vault]
+    [contacts, account, vault, channel?.incognito, channelId]
   );
 
   /** Built per-target so the menu can offer download only where there is a file. */
@@ -412,9 +592,28 @@ export default function Chat() {
         });
       }
 
+      // Edit and delete are author-only: the vault enforces it on both ends, but
+      // there is no reason to offer the action on someone else's message. A
+      // tombstone offers neither.
+      if (message.senderId === account?.userId && !message.deleted) {
+        if (message.body.trim()) {
+          items.push({
+            label: 'Edit',
+            icon: <Pencil size={13} />,
+            onSelect: () => handleStartEdit(message),
+          });
+        }
+        items.push({
+          label: 'Delete',
+          icon: <Trash2 size={13} />,
+          danger: true,
+          onSelect: () => handleDelete(message),
+        });
+      }
+
       return items;
     },
-    [menu, token]
+    [menu, token, account?.userId, handleStartEdit, handleDelete]
   );
 
   if (!vault || !account) return null;
@@ -445,6 +644,9 @@ export default function Chat() {
               className={`inline-block h-1.5 w-1.5 rounded-full ${connected ? 'bg-primary' : 'bg-warn'}`}
             />
             {connected ? 'encrypted' : 'reconnecting…'}
+            {channel.incognito && (
+              <span className="tag bg-secondary/10 text-secondary">incognito</span>
+            )}
           </p>
         </div>
         <button onClick={handleLeave} className="btn-ghost px-2 py-1 text-[11px]">
@@ -463,39 +665,78 @@ export default function Chat() {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-1">
+      <div
+        className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-1 bg-cover bg-center bg-fixed"
+        style={
+          chatBackground
+            ? {
+                backgroundImage: `linear-gradient(var(--wallpaper-scrim), var(--wallpaper-scrim)), url(${chatBackground})`,
+              }
+            : undefined
+        }
+      >
         {loading && <p className="text-center text-xs text-muted">decrypting…</p>}
 
         {!loading && messages.length === 0 && channel.hasKey && (
           <p className="text-center text-xs text-muted">No messages yet.</p>
         )}
 
-        {messages.map((message, index) => {
-          const isSelf = message.senderId === account.userId;
-          const contact = contacts[message.senderId];
-          const previous = messages[index - 1];
-          // Collapse the header on consecutive messages from the same person.
-          const grouped = previous?.senderId === message.senderId;
+        {(() => {
+          // Messages and presence notices, merged and ordered by time, so a
+          // "someone left" sits exactly where it happened rather than always at
+          // the bottom. A presence line also breaks message grouping, so the
+          // next message shows its header again.
+          const items = [
+            ...messages.map((m) => ({ type: 'msg' as const, at: m.createdAt, message: m })),
+            ...presenceLog.map((p) => ({ type: 'presence' as const, at: p.at, id: p.id, text: p.text })),
+          ].sort((a, b) => a.at.localeCompare(b.at));
 
-          return (
-            <MessageRow
-              key={message.id}
-              message={message}
-              isSelf={isSelf}
-              grouped={grouped}
-              avatar={isSelf ? vault.profile.avatar : contact?.avatar}
-              keyChanged={Boolean(contact?.keyChangedAt)}
-              supporter={isSelf ? Boolean(limits.premium) : false}
-              selfId={account.userId}
-              nameFor={nameFor}
-              messageIds={messageIds}
-              highlighted={highlighted === message.id}
-              onToggleReaction={(emoji) => handleToggleReaction(message, emoji)}
-              onJumpToReply={jumpToMessage}
-              onOpenMenu={(x, y) => setMenu({ message, x, y })}
-            />
-          );
-        })}
+          let prevSenderId: string | null = null;
+
+          return items.map((item) => {
+            if (item.type === 'presence') {
+              prevSenderId = null;
+              return (
+                <div key={`p-${item.id}`} className="my-2 flex justify-center">
+                  <span className="rounded-full bg-surface-raised px-3 py-1 text-[11px] text-muted">
+                    {item.text}
+                  </span>
+                </div>
+              );
+            }
+
+            const message = item.message;
+            const isSelf = message.senderId === account.userId;
+            const contact = contacts[message.senderId];
+            const grouped = prevSenderId === message.senderId;
+            prevSenderId = message.senderId;
+
+            return (
+              <MessageRow
+                key={message.id}
+                message={message}
+                isSelf={isSelf}
+                grouped={grouped}
+                avatar={isSelf ? vault.profile.avatar : contact?.avatar}
+                keyChanged={Boolean(contact?.keyChangedAt)}
+                supporter={!channel.incognito && isSelf ? Boolean(limits.premium) : false}
+                selfId={account.userId}
+                nameFor={nameFor}
+                messageIds={messageIds}
+                highlighted={highlighted === message.id}
+                onToggleReaction={(emoji) => handleToggleReaction(message, emoji)}
+                onJumpToReply={jumpToMessage}
+                onOpenMenu={(x, y) => setMenu({ message, x, y })}
+                onUnlock={handleUnlock}
+                avatarColor={
+                  channel.incognito ? incognitoHue(channelId!, message.senderId) : undefined
+                }
+                nameOverride={channel.incognito ? nameFor(message.senderId) : undefined}
+              />
+            );
+          });
+        })()}
+
         <div ref={bottomRef} />
       </div>
 
@@ -538,6 +779,76 @@ export default function Chat() {
         </div>
       )}
 
+      {(() => {
+        const typers = channelId ? typingIn(channelId).filter((id) => id !== account.userId) : [];
+        if (typers.length === 0) return null;
+        const names = typers.map(nameFor).filter((n) => n && n !== 'unknown');
+        const typingLabel =
+          typers.length === 1
+            ? `${names[0] ?? 'Someone'} is typing…`
+            : names.length === typers.length
+              ? `${names.join(', ')} are typing…`
+              : 'Several people are typing…';
+        return (
+          <div className="flex items-center gap-2 px-4 py-1 text-[11px] text-muted">
+            <span className="animate-pulse">{typingLabel}</span>
+          </div>
+        );
+      })()}
+
+      {lockArmed && (
+        <div className="space-y-1.5 border-t border-primary/30 bg-primary/5 px-4 py-2">
+          <div className="flex items-center gap-2">
+            <Lock size={12} className="text-primary" aria-hidden="true" />
+            <span className="text-[11px] text-primary">This message will need a code to read</span>
+            <button
+              onClick={() => {
+                setLockArmed(false);
+                setLockCode('');
+                setLockHint('');
+              }}
+              className="ml-auto text-[11px] text-muted hover:text-error"
+            >
+              cancel
+            </button>
+          </div>
+          <input
+            className="field text-xs"
+            placeholder="code recipients must enter"
+            value={lockCode}
+            onChange={(e) => setLockCode(e.target.value)}
+            autoComplete="off"
+          />
+          <input
+            className="field text-xs"
+            placeholder="hint (optional, shown before unlocking)"
+            value={lockHint}
+            onChange={(e) => setLockHint(e.target.value)}
+            maxLength={140}
+          />
+          <p className="text-[10px] text-muted">
+            Share the code another way. It never reaches our servers and cannot be recovered —
+            without it, the message stays locked. This guards against a glance over the shoulder, not
+            against someone who already has the message.
+          </p>
+        </div>
+      )}
+
+      {editingId && (
+        <div className="flex items-center justify-between border-t border-primary/30 bg-primary/5 px-4 py-1.5 text-[11px]">
+          <span className="text-primary">Editing message</span>
+          <button
+            onClick={() => {
+              setEditingId(null);
+              setText('');
+            }}
+            className="text-muted hover:text-error"
+          >
+            cancel
+          </button>
+        </div>
+      )}
+
       {replyTo && <ReplyComposing reply={replyTo} onCancel={() => setReplyTo(null)} />}
 
       {/* Any type. The bytes are encrypted client-side before upload, so the
@@ -551,7 +862,7 @@ export default function Chat() {
 
       <Composer
         value={text}
-        onChange={setText}
+        onChange={handleType}
         onSend={handleSend}
         onAttach={() => fileRef.current?.click()}
         disabled={!channel.hasKey}
@@ -559,7 +870,10 @@ export default function Chat() {
         uploading={Boolean(upload)}
         canSend={Boolean(text.trim()) || pending.length > 0}
         limits={limits}
-        placeholder={channel.hasKey ? 'message' : 'waiting for key…'}
+        placeholder={editingId ? 'edit message…' : channel.hasKey ? 'message' : 'waiting for key…'}
+        canLock={Boolean(limits.premium) && !editingId}
+        lockArmed={lockArmed}
+        onToggleLock={() => setLockArmed((a) => !a)}
       />
 
       {menu && (

@@ -18,6 +18,31 @@ export interface AuthResponse {
   emailPending?: boolean;
 }
 
+/**
+ * Login can resolve two ways. A normal account gets an AuthResponse. An account
+ * with a second factor gets a challenge instead of a token: no session is issued
+ * until the authenticator assertion is verified at /auth/login/2fa.
+ */
+export interface TwoFactorChallenge {
+  twoFactorRequired: true;
+  challengeToken: string;
+  // The @simplewebauthn/browser options blob; passed straight to startAuthentication.
+  options: unknown;
+}
+
+export type LoginResult = AuthResponse | TwoFactorChallenge;
+
+export function isTwoFactorChallenge(r: LoginResult): r is TwoFactorChallenge {
+  return (r as TwoFactorChallenge).twoFactorRequired === true;
+}
+
+export interface TwoFactorCredential {
+  id: string;
+  label: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
 /** The mask, never the address. The server does not expose the plaintext. */
 export interface EmailState {
   mask: string | null;
@@ -75,6 +100,7 @@ export interface ChannelSummary {
   createdAt: string;
   joinedAt: string;
   memberCount: number;
+  incognito?: boolean;
 }
 
 export interface UnfurlResponse {
@@ -135,10 +161,42 @@ export const api = {
     }),
 
   login: (username: string, password: string) =>
-    request<AuthResponse>('/auth/login', {
+    request<LoginResult>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
     }),
+
+  /** Complete a login that returned a TwoFactorChallenge. */
+  completeTwoFactor: (challengeToken: string, response: unknown) =>
+    request<AuthResponse>('/auth/login/2fa', {
+      method: 'POST',
+      body: JSON.stringify({ challengeToken, response }),
+    }),
+
+  /* --- two-factor (WebAuthn) management --- */
+
+  twoFactorStatus: (token: string) =>
+    request<{ enabled: boolean; credentials: TwoFactorCredential[] }>('/account/2fa', {}, token),
+
+  twoFactorRegisterOptions: (token: string) =>
+    request<{ options: unknown; challengeToken: string }>(
+      '/account/2fa/register/options',
+      { method: 'POST' },
+      token
+    ),
+
+  twoFactorRegisterVerify: (
+    token: string,
+    body: { response: unknown; challengeToken: string; label?: string }
+  ) =>
+    request<{ ok: true; credential: { id: string; label: string } }>(
+      '/account/2fa/register/verify',
+      { method: 'POST', body: JSON.stringify(body) },
+      token
+    ),
+
+  twoFactorRemove: (token: string, id: string) =>
+    request<{ ok: true }>(`/account/2fa/${encodeURIComponent(id)}`, { method: 'DELETE' }, token),
 
   me: (token: string) => request<MeResponse>('/auth/me', {}, token),
 
@@ -259,19 +317,23 @@ export const api = {
       };
     }>('/billing/redeem', { method: 'POST', body: JSON.stringify({ code }) }, token),
 
-  createChannel: (token: string) =>
-    request<{ channelId: string; code: string; codeExpiresAt: string; members: MemberInfo[] }>(
-      '/channel/create',
-      { method: 'POST' },
-      token
-    ),
+  createChannel: (token: string, incognito = false) =>
+    request<{
+      channelId: string;
+      code: string;
+      codeExpiresAt: string;
+      incognito: boolean;
+      members: MemberInfo[];
+    }>('/channel/create', { method: 'POST', body: JSON.stringify({ incognito }) }, token),
 
   joinChannel: (token: string, code: string) =>
-    request<{ channelId: string; code: string; isNewMember: boolean; members: MemberInfo[] }>(
-      '/channel/join',
-      { method: 'POST', body: JSON.stringify({ code }) },
-      token
-    ),
+    request<{
+      channelId: string;
+      code: string;
+      isNewMember: boolean;
+      incognito: boolean;
+      members: MemberInfo[];
+    }>('/channel/join', { method: 'POST', body: JSON.stringify({ code }) }, token),
 
   listChannels: (token: string) =>
     request<{ channels: ChannelSummary[] }>('/channel/list', {}, token),

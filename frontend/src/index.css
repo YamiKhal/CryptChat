@@ -42,6 +42,9 @@
   --color-error: #ff5656;
   --color-warn: #ffb829;
   --color-info: #60aaff;
+  /* success -- distinct from primary so a "verified" tag reads as its own
+     thing, not a CTA. Referenced as bg-ok / text-ok. */
+  --color-ok: #17c964;
 
   --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Consolas,
     monospace;
@@ -58,6 +61,62 @@
       transform: translateY(0);
     }
   }
+}
+
+/**
+ * Light theme.
+ *
+ * The @theme block above is the dark default and lives on :root. This rule is
+ * unlayered and more specific (:root[data-theme='light'] beats :root), so when
+ * an inline script in index.html stamps data-theme="light" before first paint,
+ * every `var(--color-*)` the utilities compiled to flips at runtime -- no
+ * rebuild, no second stylesheet. Switching back to dark just removes the match
+ * and the :root defaults take over again.
+ *
+ * The terminal-green identity is kept, but the primary green is darkened: the
+ * dark theme's #00ff85 is unreadable as text on a light surface and washed out
+ * as a fill. This darker green passes contrast both as text on the page and as
+ * a button fill with white text. If you touch these, keep text-primary legible
+ * on --color-bg AND --color-primary-foreground legible on --color-primary.
+ */
+/**
+ * Wallpaper scrim (premium chat background, ROADMAP #2).
+ *
+ * A semi-opaque wash laid over the wallpaper image, behind message content, so
+ * even a translucent self-bubble (bg-primary/15) stays legible over a busy
+ * photo. Base-scoped rather than palette-scoped: it tracks light/dark, not the
+ * user's custom colours, so it always dims toward the readable direction.
+ */
+:root {
+  --wallpaper-scrim: rgba(7, 10, 8, 0.62);
+}
+
+:root[data-theme='light'] {
+  --wallpaper-scrim: rgba(238, 242, 239, 0.55);
+
+  /* surfaces, back to front */
+  --color-bg: #eef2ef;
+  --color-surface: #ffffff;
+  --color-surface-raised: #f4f7f5;
+  --color-border: #d3ddd6;
+
+  /* text */
+  --color-foreground: #0d1a12;
+  --color-muted: #5a6f62;
+
+  /* terminal green, darkened for a light surface */
+  --color-primary: #007a3a;
+  --color-primary-strong: #006330;
+  --color-primary-foreground: #ffffff;
+
+  --color-secondary: #0784a8;
+  --color-secondary-foreground: #ffffff;
+
+  /* status */
+  --color-error: #cc2b2b;
+  --color-warn: #9a6400;
+  --color-info: #2160c4;
+  --color-ok: #007a3a;
 }
 
 @layer base {

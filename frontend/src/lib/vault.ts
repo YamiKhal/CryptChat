@@ -6,8 +6,10 @@ import {
   Attachment,
   LinkPreview,
   ReplyRef,
+  LockedPayload,
   sealWithKey,
   openWithKey,
+  openWithPassword,
   deriveVaultKey,
 } from './crypto';
 
@@ -56,6 +58,14 @@ export interface StoredChannel {
   /** False until a member has wrapped and delivered the channel key. */
   hasKey: boolean;
   label?: string;
+  /** Incognito mode: members shown as colours only, no names or avatars sent. */
+  incognito?: boolean;
+  /**
+   * When this channel was last opened. Drives the unread badge on the channel
+   * list: messages newer than this (and not our own) are unread. Absent means
+   * never opened, so everything since joining counts.
+   */
+  lastReadAt?: string;
 }
 
 /** A peer's keys, pinned on first sight (TOFU). */
@@ -76,6 +86,23 @@ export interface Profile {
   updatedAt: string;
 }
 
+/**
+ * A premium custom palette, layered on top of the base dark/light theme.
+ *
+ * Purely cosmetic and purely local: it rides in the vault so it syncs across a
+ * user's own devices and stays private, but it is never a security boundary.
+ * "Premium only" is a product perk enforced in the UI, not a secret -- a user
+ * editing their own client to recolour their own screen harms no one, so there
+ * is nothing here to defend server-side.
+ *
+ * `colors` maps a token slug (see CUSTOMIZABLE_TOKENS in theme.ts) to an
+ * #rrggbb value; anything absent falls through to the base theme.
+ */
+export interface CustomTheme {
+  enabled: boolean;
+  colors: Record<string, string>;
+}
+
 export interface Preferences {
   /**
    * Build a link preview for every link, not just ones prefixed with "!".
@@ -84,6 +111,16 @@ export interface Preferences {
    * which URL you are sending. Opting in is a choice the user makes knowingly.
    */
   alwaysPreviewLinks: boolean;
+
+  /** Premium palette override. Absent or disabled = base theme only. */
+  customTheme?: CustomTheme;
+
+  /**
+   * Premium chat wallpaper, held as a re-encoded asset (EXIF stripped like any
+   * other image here). Rendered behind opaque message bubbles so text stays
+   * legible whatever the image.
+   */
+  chatBackground?: BinaryAsset;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -125,6 +162,22 @@ export interface StoredMessage {
   /** Signature checked against the pinned key. False means "do not trust attribution". */
   verified: boolean;
   pending?: boolean;
+  /** Set when the author edited the message. Rendered as an "(edited)" marker. */
+  editedAt?: string;
+  /**
+   * Present on a password-locked message that this device has not unlocked. While
+   * set, `body` is empty and the UI shows a locked placeholder. Cleared once the
+   * recipient enters the code and the plaintext is written into `body`.
+   */
+  locked?: LockedPayload;
+  /** True if the message is (or was) password-locked, for a lock indicator. */
+  protected?: boolean;
+  /**
+   * Set when the author deleted the message. The row is kept as a tombstone --
+   * body and attachments are cleared, so nothing decrypted survives, but the
+   * slot stays so replies pointing at it still resolve.
+   */
+  deleted?: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -322,6 +375,35 @@ export class Vault {
     await this.flush();
   }
 
+  /** Mark a channel read up to `at` (default now). No-op if the channel is gone. */
+  async markChannelRead(channelId: string, at: string = new Date().toISOString()): Promise<void> {
+    const channel = this.data.channels[channelId];
+    if (!channel) return;
+    // Never move the marker backwards: reopening an old channel must not
+    // resurrect unread counts.
+    if (channel.lastReadAt && channel.lastReadAt >= at) return;
+    channel.lastReadAt = at;
+    await this.flush();
+  }
+
+  /**
+   * Count messages newer than the read marker, excluding our own.
+   *
+   * Own messages never count as unread — you wrote them. Pending (not-yet-sent)
+   * copies are ours too, so they are covered by the same senderId check.
+   */
+  async unreadCount(channelId: string): Promise<number> {
+    const channel = this.data.channels[channelId];
+    if (!channel) return 0;
+    const since = channel.lastReadAt ?? channel.joinedAt;
+    const messages = await this.loadMessages(channelId);
+    let count = 0;
+    for (const m of messages) {
+      if (m.senderId !== this.userId && m.createdAt > since) count++;
+    }
+    return count;
+  }
+
   /* contacts -- trust on first use */
 
   getContact(userId: string): Contact | undefined {
@@ -447,6 +529,83 @@ export class Vault {
       ...messages[index],
       reactions: applyReaction(messages[index].reactions, emoji, senderId, removed),
     };
+    await this.saveMessages(channelId, messages);
+    return messages;
+  }
+
+  /**
+   * Apply an edit to a message, but only if `editorId` authored it.
+   *
+   * The author check is the whole security of the feature: the signature (checked
+   * before this is called) proves who sent the edit, and this proves they are the
+   * one allowed to. A mismatch is ignored, not applied -- one member cannot edit
+   * another's words. Returns the updated transcript, or null when the target is
+   * not here yet (caller may park it) or the author check failed.
+   */
+  async editMessage(
+    channelId: string,
+    targetId: string,
+    editorId: string,
+    body: string,
+    editedAt: string = new Date().toISOString()
+  ): Promise<StoredMessage[] | null> {
+    const messages = await this.loadMessages(channelId);
+    const index = messages.findIndex((m) => m.id === targetId);
+    if (index === -1) return null;
+    // Author-only, and never edit a tombstone back to life.
+    if (messages[index].senderId !== editorId || messages[index].deleted) return null;
+
+    messages[index] = { ...messages[index], body, editedAt };
+    await this.saveMessages(channelId, messages);
+    return messages;
+  }
+
+  /**
+   * Delete a message the caller authored, leaving a tombstone.
+   *
+   * Same author check as editMessage. Body, attachments, asset, preview, and
+   * reply are dropped so no plaintext outlives the delete; the id and sender
+   * stay so a reply that quoted it still resolves to "message deleted".
+   */
+  async deleteMessage(
+    channelId: string,
+    targetId: string,
+    deleterId: string
+  ): Promise<StoredMessage[] | null> {
+    const messages = await this.loadMessages(channelId);
+    const index = messages.findIndex((m) => m.id === targetId);
+    if (index === -1) return null;
+    if (messages[index].senderId !== deleterId) return null;
+
+    const { id, channelId: cid, senderId, displayName, createdAt } = messages[index];
+    messages[index] = {
+      id,
+      channelId: cid,
+      senderId,
+      displayName,
+      createdAt,
+      body: '',
+      verified: messages[index].verified,
+      deleted: true,
+    };
+    await this.saveMessages(channelId, messages);
+    return messages;
+  }
+
+  /**
+   * Unlock a password-locked message with `code`, writing the plaintext in.
+   *
+   * Throws 'wrong code' when the code does not open the sealed body (secretbox
+   * authentication fails). On success the plaintext is stored and `locked` is
+   * cleared, so the message reads normally from then on -- the code is not kept.
+   */
+  async unlockMessage(channelId: string, id: string, code: string): Promise<StoredMessage[]> {
+    const messages = await this.loadMessages(channelId);
+    const index = messages.findIndex((m) => m.id === id);
+    if (index === -1 || !messages[index].locked) return messages;
+
+    const body = await openWithPassword(messages[index].locked!, code);
+    messages[index] = { ...messages[index], body, locked: undefined };
     await this.saveMessages(channelId, messages);
     return messages;
   }

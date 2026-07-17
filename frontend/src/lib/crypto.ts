@@ -10,6 +10,7 @@ import {
   bytesToBase64Url,
   concatBytes,
   wipe,
+  isBase64Url,
   BinaryAsset,
 } from './binary';
 
@@ -53,8 +54,8 @@ function fromB64(value: string): Bytes {
  * vault were signed under the v2 field list, and refusing to open them would
  * silently destroy every existing transcript. New envelopes are always v3.
  */
-export const ENVELOPE_VERSION = 3;
-const SUPPORTED_VERSIONS = new Set([2, 3]);
+export const ENVELOPE_VERSION = 4;
+const SUPPORTED_VERSIONS = new Set([2, 3, 4]);
 
 /* ------------------------------------------------------------------ */
 /* identity                                                            */
@@ -164,6 +165,79 @@ export async function openWithKey(sealed: Sealed, key: Bytes | string): Promise<
     k
   );
   return bytesToString(plaintext);
+}
+
+/* ------------------------------------------------------------------ */
+/* password-locked message body (ROADMAP #6, premium)                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A message body sealed a SECOND time under a per-message code.
+ *
+ * This layers on top of the normal channel encryption -- the whole envelope is
+ * still E2E, this just makes the body unreadable without a code the sender
+ * shares out of band. Argon2id slows brute force, but be honest about the
+ * threat model (see IDENTITY/ROADMAP): the recipient already holds this
+ * ciphertext, so a low-entropy code is guessable *by them*. It is a privacy
+ * screen against shoulder-surfing and borrowed-but-unlocked devices, not
+ * secrecy from a determined channel member.
+ */
+export interface LockedPayload {
+  /** Argon2id salt, base64url. */
+  salt: string;
+  nonce: string;
+  /** secretbox of the real body under Argon2id(code, salt). */
+  ct: string;
+  /** Optional plaintext hint shown to the recipient. Signed like everything else. */
+  hint?: string;
+}
+
+function derivePasswordKey(code: string, salt: Bytes): Bytes {
+  return sodium.crypto_pwhash(
+    32,
+    code,
+    salt,
+    sodium.crypto_pwhash_OPSLIMIT_INTERACTIVE,
+    sodium.crypto_pwhash_MEMLIMIT_INTERACTIVE,
+    sodium.crypto_pwhash_ALG_ARGON2ID13
+  );
+}
+
+export async function sealWithPassword(
+  body: string,
+  code: string,
+  hint?: string
+): Promise<LockedPayload> {
+  await ensureReady();
+  const salt = sodium.randombytes_buf(sodium.crypto_pwhash_SALTBYTES);
+  const key = derivePasswordKey(code, salt);
+  const nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES);
+  const ct = sodium.crypto_secretbox_easy(stringToBytes(body), nonce, key);
+  wipe(key);
+  return {
+    salt: toB64(salt),
+    nonce: toB64(nonce),
+    ct: toB64(ct),
+    ...(hint ? { hint } : {}),
+  };
+}
+
+/** Throws on a wrong code -- secretbox authentication fails rather than returning garbage. */
+export async function openWithPassword(locked: LockedPayload, code: string): Promise<string> {
+  await ensureReady();
+  const key = derivePasswordKey(code, fromB64(locked.salt));
+  try {
+    const plaintext = sodium.crypto_secretbox_open_easy(
+      fromB64(locked.ct),
+      fromB64(locked.nonce),
+      key
+    );
+    return bytesToString(plaintext);
+  } catch {
+    throw new Error('wrong code');
+  } finally {
+    wipe(key);
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -291,9 +365,28 @@ export interface ReactionRef {
   removed: boolean;
 }
 
+/**
+ * An edit: the id of the message being changed and its new text.
+ *
+ * A separate signed envelope, not a rewrite of the original -- the relay holds
+ * only ciphertext it cannot mutate, and the edit has to be attributable. The
+ * recipient additionally checks that the editor is the original author (see
+ * openEnvelope's callers): the signature proves who sent the edit, but only the
+ * per-message author check stops one member editing another's words.
+ */
+export interface EditRef {
+  targetId: string;
+  body: string;
+}
+
+/** A delete: a signed tombstone pointing at the message to remove. */
+export interface DeleteRef {
+  targetId: string;
+}
+
 export interface EnvelopeContent {
   v: number;
-  kind: 'message' | 'profile' | 'reaction';
+  kind: 'message' | 'profile' | 'reaction' | 'edit' | 'delete';
   body: string;
   displayName: string;
   avatar?: BinaryAsset;
@@ -301,6 +394,10 @@ export interface EnvelopeContent {
   preview?: LinkPreview;
   replyTo?: ReplyRef;
   reaction?: ReactionRef;
+  edit?: EditRef;
+  del?: DeleteRef;
+  /** Present when the body is password-locked; the plaintext body is then ''. */
+  locked?: LockedPayload;
   sentAt: string;
 }
 
@@ -407,6 +504,25 @@ function canonicalBytes(env: Omit<SignedEnvelope, 'sig'>): Bytes {
     }
   }
 
+  // v4 adds edit and delete, both signed acts pointing at a target message.
+  // Appended after the v3 block for the same reason v3 was appended after v2:
+  // an existing v3 envelope must still hash to exactly what it was signed over.
+  if (env.v >= 4) {
+    fields.push(env.edit ? '1' : '0');
+    if (env.edit) fields.push(env.edit.targetId, env.edit.body);
+
+    fields.push(env.del ? '1' : '0');
+    if (env.del) fields.push(env.del.targetId);
+
+    // The locked payload is signed too: the ciphertext, salt, nonce, and hint
+    // are all part of what the sender committed to, so a relay cannot swap the
+    // sealed body or rewrite the hint.
+    fields.push(env.locked ? '1' : '0');
+    if (env.locked) {
+      fields.push(env.locked.salt, env.locked.nonce, env.locked.ct, env.locked.hint ?? '');
+    }
+  }
+
   const parts: Bytes[] = [stringToBytes(`darkchat-envelope-v${env.v}`)];
   for (const field of fields) {
     const bytes = stringToBytes(field);
@@ -508,6 +624,50 @@ function isValidReactionRef(value: unknown): value is ReactionRef {
   );
 }
 
+/**
+ * A generous cap on an edited body -- above the premium message limit, since the
+ * UI enforces the tier cap and this is only the outer bound that keeps a hostile
+ * peer from pushing an unbounded string into every recipient's vault.
+ */
+export const MAX_EDIT_BODY = 8192;
+
+function isValidTargetId(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= 64;
+}
+
+function isValidEditRef(value: unknown): value is EditRef {
+  const e = value as EditRef;
+  return (
+    typeof e === 'object' &&
+    e !== null &&
+    isValidTargetId(e.targetId) &&
+    typeof e.body === 'string' &&
+    e.body.length <= MAX_EDIT_BODY
+  );
+}
+
+function isValidDeleteRef(value: unknown): value is DeleteRef {
+  const d = value as DeleteRef;
+  return typeof d === 'object' && d !== null && isValidTargetId(d.targetId);
+}
+
+/** Bound on the sealed body, matching the envelope's overall generosity. */
+export const MAX_LOCKED_CT = 16384;
+export const MAX_LOCK_HINT = 140;
+
+function isValidLockedPayload(value: unknown): value is LockedPayload {
+  const l = value as LockedPayload;
+  return (
+    typeof l === 'object' &&
+    l !== null &&
+    isBase64Url(l.salt) &&
+    isBase64Url(l.nonce) &&
+    isBase64Url(l.ct) &&
+    l.ct.length <= MAX_LOCKED_CT &&
+    (l.hint === undefined || (typeof l.hint === 'string' && l.hint.length <= MAX_LOCK_HINT))
+  );
+}
+
 export interface OpenedEnvelope {
   envelope: SignedEnvelope;
   verified: boolean;
@@ -550,6 +710,15 @@ export async function openEnvelope(
   }
   if (envelope.reaction && !isValidReactionRef(envelope.reaction)) {
     throw new Error('malformed reaction');
+  }
+  if (envelope.edit && !isValidEditRef(envelope.edit)) {
+    throw new Error('malformed edit');
+  }
+  if (envelope.del && !isValidDeleteRef(envelope.del)) {
+    throw new Error('malformed delete');
+  }
+  if (envelope.locked && !isValidLockedPayload(envelope.locked)) {
+    throw new Error('malformed locked payload');
   }
 
   // The transport's claim about the sender and channel must match what the

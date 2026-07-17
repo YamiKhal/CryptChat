@@ -4,6 +4,7 @@ import cors from 'cors';
 import { config } from './config.js';
 import authRoutes from './routes/auth.js';
 import accountRoutes from './routes/account.js';
+import webauthnRoutes from './routes/webauthn.js';
 import recoveryRoutes from './routes/recovery.js';
 import billingRoutes from './routes/billing.js';
 import channelRoutes from './routes/channels.js';
@@ -34,6 +35,8 @@ app.use((req, res, next) => {
 });
 
 app.use('/auth', authRoutes);
+// Mounted before the general account router so /account/2fa/* resolves here.
+app.use('/account/2fa', webauthnRoutes);
 app.use('/account', accountRoutes);
 app.use('/recovery', recoveryRoutes);
 app.use('/billing', billingRoutes);

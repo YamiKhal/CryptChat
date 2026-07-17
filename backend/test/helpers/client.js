@@ -1,5 +1,6 @@
 import { createRequire } from 'module';
 import fs from 'fs';
+import WebSocket from 'ws';
 import * as bip39 from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english.js';
 
@@ -254,6 +255,11 @@ export class TestUser {
     return call('/channel/list', { token: this.token });
   }
 
+  leaveChannel(channelId) {
+    this.channels.delete(channelId);
+    return call(`/channel/${channelId}/leave`, { method: 'DELETE', token: this.token });
+  }
+
   /* --- blobs --- */
 
   blobConfig() {
@@ -268,6 +274,29 @@ export class TestUser {
     });
   }
 
+  /* --- webauthn / 2fa --- */
+
+  twoFactorStatus() {
+    return call('/account/2fa', { token: this.token });
+  }
+
+  twoFactorRegisterOptions() {
+    return call('/account/2fa/register/options', { method: 'POST', token: this.token });
+  }
+
+  removeCredential(id) {
+    return call(`/account/2fa/${id}`, { method: 'DELETE', token: this.token });
+  }
+
+  /** Login without mutating this.token, so the raw body (2fa branch) is inspectable. */
+  loginRaw(password = this.password) {
+    return call('/auth/login', { method: 'POST', body: { username: this.username, password } });
+  }
+
+  completeTwoFactor(challengeToken, response) {
+    return call('/auth/login/2fa', { method: 'POST', body: { challengeToken, response } });
+  }
+
   /* --- billing --- */
 
   billingStatus() {
@@ -276,6 +305,84 @@ export class TestUser {
 
   redeem(code) {
     return call('/billing/redeem', { method: 'POST', token: this.token, body: { code } });
+  }
+
+  /* --- relay (WebSocket) --- */
+
+  /**
+   * Open the real relay socket, speaking the same subprotocol the browser does:
+   * 'darkchat' plus a 'bearer.<token>' entry the handshake reads instead of a
+   * query string. Buffers every inbound frame so a test can assert on one that
+   * may have already arrived.
+   */
+  async connectRelay() {
+    const url = API.replace(/^http/, 'ws') + '/ws';
+    const ws = new WebSocket(url, ['darkchat', `bearer.${this.token}`]);
+
+    this._inbox = [];
+    this._waiters = [];
+
+    ws.on('message', (raw) => {
+      let msg;
+      try {
+        msg = JSON.parse(raw.toString());
+      } catch {
+        return;
+      }
+      this._inbox.push(msg);
+      for (let i = this._waiters.length - 1; i >= 0; i--) {
+        if (this._waiters[i].pred(msg)) {
+          this._waiters[i].resolve(msg);
+          this._waiters.splice(i, 1);
+        }
+      }
+    });
+
+    await new Promise((resolve, reject) => {
+      ws.once('open', resolve);
+      ws.once('error', reject);
+    });
+
+    this.ws = ws;
+    return ws;
+  }
+
+  sendRelay(obj) {
+    this.ws.send(JSON.stringify(obj));
+  }
+
+  /** Resolve with the first buffered or future frame matching `pred`. */
+  waitForRelay(pred, { timeout = 5000 } = {}) {
+    const existing = this._inbox.find(pred);
+    if (existing) return Promise.resolve(existing);
+    return new Promise((resolve, reject) => {
+      const waiter = { pred, resolve };
+      this._waiters.push(waiter);
+      const timer = setTimeout(() => {
+        const i = this._waiters.indexOf(waiter);
+        if (i >= 0) this._waiters.splice(i, 1);
+        reject(new Error('waitForRelay timed out'));
+      }, timeout);
+      timer.unref?.();
+    });
+  }
+
+  /** Assert a frame did NOT arrive within `window` ms. */
+  async expectNoRelay(pred, { window = 500 } = {}) {
+    try {
+      await this.waitForRelay(pred, { timeout: window });
+      return false;
+    } catch {
+      return true;
+    }
+  }
+
+  closeRelay() {
+    try {
+      this.ws?.close();
+    } catch {
+      // already closing
+    }
   }
 }
 

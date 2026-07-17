@@ -13,6 +13,9 @@ import { saveAccount, Vault } from '../lib/vault';
 import { api, EmailState, Badge as BadgeState } from '../lib/api';
 import Avatar from '../components/Avatar';
 import SubscriptionSection from '../components/SubscriptionSection';
+import ThemeToggle from '../components/ThemeToggle';
+import ThemeCustomizer from '../components/ThemeCustomizer';
+import TwoFactorSection from '../components/TwoFactorSection';
 
 export default function Settings() {
   const session = useSession();
@@ -352,6 +355,7 @@ export default function Settings() {
           ←
         </Link>
         <h1 className="flex-1 text-sm font-semibold uppercase tracking-wider">settings</h1>
+        <ThemeToggle />
         <button onClick={session.lock} className="btn-ghost px-3 py-1.5 text-xs">
           lock
         </button>
@@ -409,6 +413,20 @@ export default function Settings() {
         </button>
       </section>
 
+      {/* appearance */}
+      <section className="card space-y-3">
+        <h2 className="text-xs uppercase tracking-wider text-muted">appearance</h2>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-xs">Theme</span>
+          <ThemeToggle />
+        </div>
+        <p className="text-[11px] text-muted">
+          Stored only on this device — the server never sees it. Dark is the default.
+        </p>
+
+        <ThemeCustomizer vault={vault} isPremium={!!badge} onChange={session.refresh} />
+      </section>
+
       {/* privacy */}
       <section className="card space-y-3">
         <h2 className="text-xs uppercase tracking-wider text-muted">link previews</h2>
@@ -453,6 +471,9 @@ export default function Settings() {
           name, no one swapped keys in between.
         </p>
       </section>
+
+      {/* two-factor */}
+      {session.token && <TwoFactorSection token={session.token} />}
 
       {/* email */}
       <section className="card space-y-3">

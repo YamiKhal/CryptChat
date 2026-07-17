@@ -24,6 +24,8 @@ import {
   deriveVaultKey,
   generateSalt,
   keyFingerprint,
+  sealWithPassword,
+  openWithPassword,
   ENVELOPE_VERSION,
   MAX_REPLY_EXCERPT,
   Identity,
@@ -268,6 +270,120 @@ describe('envelopes', () => {
     expect(verified).toBe(true);
     expect(envelope.kind).toBe('reaction');
     expect(envelope.reaction).toEqual({ targetId: 'msg-1', emoji: '👍', removed: false });
+  });
+
+  it('signs an edit target and its new body (v4)', async () => {
+    const id = await generateIdentity();
+    const key = await generateChannelKey();
+
+    const sealed = await createEnvelope(
+      {
+        kind: 'edit',
+        body: '',
+        displayName: 'alice',
+        sentAt: '',
+        edit: { targetId: 'msg-1', body: 'the corrected text' },
+      },
+      channelId,
+      senderId,
+      id.signPrivateKey,
+      key
+    );
+
+    const { envelope, verified } = await openEnvelope(sealed, key, {
+      senderId,
+      channelId,
+      signPublicKey: id.signPublicKey,
+    });
+
+    expect(verified).toBe(true);
+    expect(envelope.kind).toBe('edit');
+    expect(envelope.edit).toEqual({ targetId: 'msg-1', body: 'the corrected text' });
+  });
+
+  it('a tampered edit body fails verification', async () => {
+    const id = await generateIdentity();
+    const key = await generateChannelKey();
+
+    const sealed = await createEnvelope(
+      {
+        kind: 'edit',
+        body: '',
+        displayName: 'alice',
+        sentAt: '',
+        edit: { targetId: 'msg-1', body: 'honest' },
+      },
+      channelId,
+      senderId,
+      id.signPrivateKey,
+      key
+    );
+
+    // Open, rewrite the edited body, reseal under the channel key (which any
+    // member holds) -- the signature must no longer verify.
+    const { openWithKey, sealWithKey } = await import('./crypto');
+    const opened = JSON.parse(await openWithKey(sealed, key));
+    opened.edit.body = 'forged replacement';
+    const reSealed = await sealWithKey(JSON.stringify(opened), key);
+
+    const { verified } = await openEnvelope(reSealed, key, {
+      senderId,
+      channelId,
+      signPublicKey: id.signPublicKey,
+    });
+    expect(verified).toBe(false);
+  });
+
+  it('signs a delete tombstone target (v4)', async () => {
+    const id = await generateIdentity();
+    const key = await generateChannelKey();
+
+    const sealed = await createEnvelope(
+      {
+        kind: 'delete',
+        body: '',
+        displayName: 'alice',
+        sentAt: '',
+        del: { targetId: 'msg-7' },
+      },
+      channelId,
+      senderId,
+      id.signPrivateKey,
+      key
+    );
+
+    const { envelope, verified } = await openEnvelope(sealed, key, {
+      senderId,
+      channelId,
+      signPublicKey: id.signPublicKey,
+    });
+
+    expect(verified).toBe(true);
+    expect(envelope.kind).toBe('delete');
+    expect(envelope.del).toEqual({ targetId: 'msg-7' });
+  });
+
+  it('rejects an edit body past the outer cap', async () => {
+    const id = await generateIdentity();
+    const key = await generateChannelKey();
+
+    const sealed = await createEnvelope(
+      {
+        kind: 'edit',
+        body: '',
+        displayName: 'a',
+        sentAt: '',
+        edit: { targetId: 'msg-1', body: 'x'.repeat(9000) },
+      },
+      channelId,
+      senderId,
+      id.signPrivateKey,
+      key
+    );
+
+    await expect(
+      openEnvelope(sealed, key, { senderId, channelId, signPublicKey: id.signPublicKey })
+    ).rejects.toThrow(/malformed edit/);
   });
 
   it('rejects a reply excerpt past the cap', async () => {
@@ -538,5 +654,80 @@ describe('isSingleEmoji', () => {
 
   it('rejects an absurdly long string outright', () => {
     expect(isSingleEmoji('👍'.repeat(100))).toBe(false);
+  });
+});
+
+describe('password-locked body', () => {
+  const channelId = '11111111-1111-1111-1111-111111111111';
+  const senderId = '22222222-2222-2222-2222-222222222222';
+
+  it('round-trips a body sealed under a code', async () => {
+    const locked = await sealWithPassword('the secret text', 'hunter2');
+    expect(await openWithPassword(locked, 'hunter2')).toBe('the secret text');
+  });
+
+  it('a wrong code fails authentication rather than returning garbage', async () => {
+    const locked = await sealWithPassword('the secret text', 'hunter2');
+    await expect(openWithPassword(locked, 'wrong')).rejects.toThrow(/wrong code/);
+  });
+
+  it('carries an optional hint without exposing the body', async () => {
+    const locked = await sealWithPassword('answer: 42', 'code', 'the meaning of life');
+    expect(locked.hint).toBe('the meaning of life');
+    // The ciphertext must not contain the plaintext.
+    expect(locked.ct).not.toContain('42');
+  });
+
+  it('a locked envelope signs and hides its body', async () => {
+    const id = await generateIdentity();
+    const key = await generateChannelKey();
+    const locked = await sealWithPassword('classified', 'sesame');
+
+    const sealed = await createEnvelope(
+      { kind: 'message', body: '', displayName: 'alice', sentAt: '', locked },
+      channelId,
+      senderId,
+      id.signPrivateKey,
+      key
+    );
+
+    const { envelope, verified } = await openEnvelope(sealed, key, {
+      senderId,
+      channelId,
+      signPublicKey: id.signPublicKey,
+    });
+
+    expect(verified).toBe(true);
+    expect(envelope.body).toBe(''); // no plaintext in the envelope
+    expect(envelope.locked).toBeTruthy();
+    expect(await openWithPassword(envelope.locked!, 'sesame')).toBe('classified');
+  });
+
+  it('a tampered locked ciphertext fails the envelope signature', async () => {
+    const id = await generateIdentity();
+    const key = await generateChannelKey();
+    const locked = await sealWithPassword('classified', 'sesame');
+
+    const sealed = await createEnvelope(
+      { kind: 'message', body: '', displayName: 'alice', sentAt: '', locked },
+      channelId,
+      senderId,
+      id.signPrivateKey,
+      key
+    );
+
+    const { openWithKey, sealWithKey } = await import('./crypto');
+    const opened = JSON.parse(await openWithKey(sealed, key));
+    // Swap the sealed body for a different one -- the signature covers it.
+    const other = await sealWithPassword('substituted', 'sesame');
+    opened.locked = other;
+    const reSealed = await sealWithKey(JSON.stringify(opened), key);
+
+    const { verified } = await openEnvelope(reSealed, key, {
+      senderId,
+      channelId,
+      signPublicKey: id.signPublicKey,
+    });
+    expect(verified).toBe(false);
   });
 });
