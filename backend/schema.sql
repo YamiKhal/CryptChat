@@ -80,6 +80,42 @@ CREATE TABLE IF NOT EXISTS key_offers (
 CREATE INDEX IF NOT EXISTS key_offers_recipient_idx
   ON key_offers (recipient_id, created_at);
 
+-- Encrypted file attachments.
+--
+-- The bytes live on disk, not here -- Postgres holds only routing metadata.
+-- Note what is absent: no filename, no MIME type, no content hash. Those are
+-- attacker-useful and travel inside the E2E envelope instead. The server knows
+-- only that a user put N ciphertext bytes in a channel at a time.
+--
+-- The id is random (gen_random_uuid), deliberately NOT a hash of the content.
+-- Content-addressing would enable cross-user dedup, which hands the server a
+-- confirmation oracle: it could test whether you uploaded a known file just by
+-- checking whether its address already exists.
+CREATE TABLE IF NOT EXISTS blobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  channel_id UUID NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+  owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+
+  -- 'pending' until /finish. Pending rows are abandoned uploads and get reaped.
+  status TEXT NOT NULL DEFAULT 'pending',
+
+  declared_chunks INT NOT NULL,
+  chunks_received INT NOT NULL DEFAULT 0,
+  -- Ciphertext bytes actually on disk. Authoritative for resume: the file is
+  -- truncated back to this on a retry, so a half-written chunk cannot corrupt
+  -- the stream.
+  bytes_received BIGINT NOT NULL DEFAULT 0,
+  declared_bytes BIGINT NOT NULL,
+
+  created_at TIMESTAMPTZ DEFAULT now(),
+  completed_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS blobs_expires_idx ON blobs (expires_at);
+CREATE INDEX IF NOT EXISTS blobs_owner_idx ON blobs (owner_id, status);
+CREATE INDEX IF NOT EXISTS blobs_channel_idx ON blobs (channel_id);
+
 -- Failed-login accounting for lockout. Keyed by username_hash so it works for
 -- usernames that do not exist, which is what stops enumeration-by-timing.
 CREATE TABLE IF NOT EXISTS login_attempts (

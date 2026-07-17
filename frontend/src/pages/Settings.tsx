@@ -21,6 +21,7 @@ export default function Settings() {
   const [displayName, setDisplayName] = useState('');
   const [avatar, setAvatar] = useState<BinaryAsset | undefined>();
   const [fingerprint, setFingerprint] = useState('');
+  const [alwaysPreview, setAlwaysPreview] = useState(false);
   const [status, setStatus] = useState<{ kind: 'ok' | 'error' | 'info'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -36,6 +37,7 @@ export default function Settings() {
     if (!vault) return;
     setDisplayName(vault.profile.displayName);
     setAvatar(vault.profile.avatar);
+    setAlwaysPreview(vault.preferences.alwaysPreviewLinks);
     keyFingerprint(vault.identity.signPublicKey).then(setFingerprint);
   }, [vault]);
 
@@ -69,6 +71,19 @@ export default function Settings() {
       setAvatar(asset);
       setStatus({ kind: 'info', text: 'Avatar ready. Save to apply.' });
     } catch (err) {
+      setStatus({ kind: 'error', text: (err as Error).message });
+    }
+  }
+
+  // Applied immediately rather than on Save: a privacy toggle should never sit
+  // in a state the user thinks is active but is not yet persisted.
+  async function handlePreviewToggle(next: boolean) {
+    setAlwaysPreview(next);
+    try {
+      await vault!.setPreferences({ alwaysPreviewLinks: next });
+      session.refresh();
+    } catch (err) {
+      setAlwaysPreview(!next);
       setStatus({ kind: 'error', text: (err as Error).message });
     }
   }
@@ -235,7 +250,7 @@ export default function Settings() {
       </header>
 
       {status && (
-        <p className={`rounded border p-2 text-xs ${statusStyles[status.kind]}`}>{status.text}</p>
+        <p className={`rounded border p-4 text-xs ${statusStyles[status.kind]}`}>{status.text}</p>
       )}
 
       {/* profile */}
@@ -286,6 +301,34 @@ export default function Settings() {
         </button>
       </section>
 
+      {/* privacy */}
+      <section className="card space-y-3">
+        <h2 className="text-xs uppercase tracking-wider text-muted">link previews</h2>
+
+        <label className="flex items-start gap-2">
+          <input
+            type="checkbox"
+            className="mt-0.5 accent-primary"
+            checked={alwaysPreview}
+            onChange={(e) => handlePreviewToggle(e.target.checked)}
+          />
+          <span className="text-xs">
+            Always preview links
+            <span className="mt-1 block text-[11px] text-muted">
+              Off by default. Prefix a link with <span className="text-primary">!</span> to preview
+              just that one.
+            </span>
+          </span>
+        </label>
+
+        <p className="rounded border border-warn/30 bg-warn/10 p-4 text-[11px] text-warn">
+          Building a preview asks the server to fetch that URL, so the relay learns which link you
+          sent — the one thing it otherwise never sees. The preview itself is encrypted and sent
+          with your message, so people reading it never load anything and their IP stays private.
+          Links always work as plain clickable text with this off.
+        </p>
+      </section>
+
       {/* identity */}
       <section className="card space-y-2">
         <h2 className="text-xs uppercase tracking-wider text-muted">identity</h2>
@@ -321,7 +364,7 @@ export default function Settings() {
             onChange={(e) => setExportPassphrase(e.target.value)}
           />
         </label>
-        <p className="rounded border border-warn/30 bg-warn/10 p-2 text-[11px] text-warn">
+        <p className="rounded border border-warn/30 bg-warn/10 p-4 text-[11px] text-warn">
           Use a different passphrase from your login password. This file leaves the device; if it
           shares the account secret, one leaked file is a full account compromise.
         </p>
@@ -384,7 +427,7 @@ export default function Settings() {
         {session.accounts.map((other) => (
           <div
             key={other.userId}
-            className={`flex items-center gap-2 rounded border p-2 ${
+            className={`flex items-center gap-2 rounded border p-4 ${
               other.userId === account.userId ? 'border-primary/40 bg-primary/5' : 'border-border'
             }`}
           >

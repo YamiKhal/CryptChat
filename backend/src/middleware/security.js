@@ -27,7 +27,10 @@ export function corsOptions() {
       return callback(new Error('origin not allowed'));
     },
     credentials: false,
-    methods: ['GET', 'POST', 'DELETE'],
+    // PUT is required for blob chunk uploads. The allowlist is still explicit
+    // rather than open -- it is the origin check above that does the real work.
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Chunk-Index'],
   };
 }
 

@@ -1,5 +1,13 @@
 import { Bytes, wipe, base64UrlToBytes, bytesToBase64Url, BinaryAsset } from './binary';
-import { Identity, Sealed, sealWithKey, openWithKey, deriveVaultKey } from './crypto';
+import {
+  Identity,
+  Sealed,
+  Attachment,
+  LinkPreview,
+  sealWithKey,
+  openWithKey,
+  deriveVaultKey,
+} from './crypto';
 
 /**
  * Encrypted, per-account local storage.
@@ -66,11 +74,27 @@ export interface Profile {
   updatedAt: string;
 }
 
+export interface Preferences {
+  /**
+   * Build a link preview for every link, not just ones prefixed with "!".
+   *
+   * Off by default, and deliberately so: generating a preview tells the relay
+   * which URL you are sending. Opting in is a choice the user makes knowingly.
+   */
+  alwaysPreviewLinks: boolean;
+}
+
+export const DEFAULT_PREFERENCES: Preferences = {
+  alwaysPreviewLinks: false,
+};
+
 export interface VaultData {
   identity: Identity;
   channels: Record<string, StoredChannel>;
   contacts: Record<string, Contact>;
   profile: Profile;
+  /** Optional on disk: vaults created before preferences existed lack it. */
+  preferences?: Preferences;
 }
 
 export interface StoredMessage {
@@ -80,6 +104,10 @@ export interface StoredMessage {
   displayName: string;
   body: string;
   asset?: BinaryAsset;
+  /** Pointers + keys for files in the blob store. Never the file bytes. */
+  attachments?: Attachment[];
+  /** Sender-built preview. Rendering it makes no network request. */
+  preview?: LinkPreview;
   createdAt: string;
   /** Signature checked against the pinned key. False means "do not trust attribution". */
   verified: boolean;
@@ -247,6 +275,16 @@ export class Vault {
 
   async setProfile(profile: Omit<Profile, 'updatedAt'>): Promise<void> {
     this.data.profile = { ...profile, updatedAt: new Date().toISOString() };
+    await this.flush();
+  }
+
+  /** Merged with defaults so a vault written before preferences existed still opens. */
+  get preferences(): Preferences {
+    return { ...DEFAULT_PREFERENCES, ...(this.data.preferences ?? {}) };
+  }
+
+  async setPreferences(patch: Partial<Preferences>): Promise<void> {
+    this.data.preferences = { ...this.preferences, ...patch };
     await this.flush();
   }
 

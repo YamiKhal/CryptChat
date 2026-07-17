@@ -24,6 +24,13 @@ services:
       PORT: 3000
       DATABASE_URL: postgres://postgres:password@db:5432/darkchat
       JWT_SECRET: change_this_to_a_long_random_string
+      BLOB_DIR: /data/blobs
+    volumes:
+      # Encrypted attachments. A named volume, not the container filesystem, or
+      # every redeploy would wipe every file. Kept separate from the Postgres
+      # volume on purpose: if blobs fill their disk, uploads fail but the
+      # database keeps writing.
+      - darkchat_blobs:/data/blobs
     ports:
       - "3000:3000"
     depends_on:
@@ -32,3 +39,4 @@ services:
 
 volumes:
   darkchat_pgdata:
+  darkchat_blobs:

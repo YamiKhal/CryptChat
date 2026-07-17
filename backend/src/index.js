@@ -4,8 +4,11 @@ import cors from 'cors';
 import { config } from './config.js';
 import authRoutes from './routes/auth.js';
 import channelRoutes from './routes/channels.js';
+import blobRoutes, { startBlobReaper } from './routes/blobs.js';
+import unfurlRoutes from './routes/unfurl.js';
 import { attachRelay, startQueueReaper } from './ws/relay.js';
 import { securityHeaders, corsOptions } from './middleware/security.js';
+import { blobStore } from './blobStore.js';
 import { initDb } from './initDb.js';
 
 const app = express();
@@ -21,6 +24,11 @@ app.use(express.json({ limit: config.limits.maxJsonBytes }));
 
 app.use('/auth', authRoutes);
 app.use('/channel', channelRoutes);
+// Chunk uploads arrive as application/octet-stream and are parsed by
+// express.raw inside the router. express.json above ignores them -- it only
+// touches application/json -- so opaque ciphertext never reaches a body parser.
+app.use('/blob', blobRoutes);
+app.use('/unfurl', unfurlRoutes);
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 
@@ -40,8 +48,10 @@ const server = http.createServer(app);
 attachRelay(server);
 
 initDb()
+  .then(() => blobStore.init())
   .then(() => {
     startQueueReaper();
+    startBlobReaper();
     server.listen(config.port, () => console.log(`CryptChat backend on :${config.port}`));
   })
   .catch((err) => {

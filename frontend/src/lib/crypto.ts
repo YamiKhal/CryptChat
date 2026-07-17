@@ -45,7 +45,7 @@ function fromB64(value: string): Bytes {
   return sodium.from_base64(value, B64);
 }
 
-export const ENVELOPE_VERSION = 1;
+export const ENVELOPE_VERSION = 2;
 
 /* ------------------------------------------------------------------ */
 /* identity                                                            */
@@ -209,12 +209,54 @@ export async function unwrapChannelKey(
 /* signed envelopes                                                    */
 /* ------------------------------------------------------------------ */
 
+/**
+ * A file living in the blob store. The envelope carries the pointer *and the
+ * key*; the server holds only ciphertext it cannot open.
+ */
+export interface Attachment {
+  blobId: string;
+  /** secretstream key, base64. Random per file -- never the channel key. */
+  key: string;
+  /** secretstream header (public nonce), base64. */
+  header: string;
+  name: string;
+  mime: string;
+  /** Plaintext size, for display and for verifying the decrypted result. */
+  size: number;
+  /** blake2b of the plaintext. Signed, so the sender commits to the content. */
+  hash: string;
+  chunkSize: number;
+  /** Small inline preview so chat renders images without pulling the full file. */
+  thumb?: BinaryAsset;
+}
+
+/**
+ * A link preview built by the *sender* and shipped inside the envelope.
+ *
+ * Recipients render this without touching the network. If each recipient
+ * fetched the URL to build its own preview, posting a link to a server you
+ * control would collect the IP address of everyone in the channel.
+ */
+export interface LinkPreview {
+  url: string;
+  /** 'image' is a link that *is* an image, embedded rather than described. */
+  kind: 'link' | 'youtube' | 'image';
+  title?: string;
+  description?: string;
+  siteName?: string;
+  videoId?: string;
+  /** Re-encoded through canvas by the sender: EXIF stripped, size bounded. */
+  image?: BinaryAsset;
+}
+
 export interface EnvelopeContent {
   v: number;
   kind: 'message' | 'profile';
   body: string;
   displayName: string;
   avatar?: BinaryAsset;
+  attachments?: Attachment[];
+  preview?: LinkPreview;
   sentAt: string;
 }
 
@@ -237,6 +279,10 @@ export interface SignedEnvelope extends EnvelopeContent {
  * cannot be replayed into a different channel or reattributed to another
  * member by a relay that rewrites the outer senderId field.
  */
+function assetField(asset?: BinaryAsset): string {
+  return asset ? `${asset.mime}:${asset.data}` : '';
+}
+
 function canonicalBytes(env: Omit<SignedEnvelope, 'sig'>): Bytes {
   const fields = [
     String(env.v),
@@ -246,10 +292,46 @@ function canonicalBytes(env: Omit<SignedEnvelope, 'sig'>): Bytes {
     env.sentAt,
     env.displayName,
     env.body,
-    env.avatar ? `${env.avatar.mime}:${env.avatar.data}` : '',
+    assetField(env.avatar),
   ];
 
-  const parts: Bytes[] = [stringToBytes('darkchat-envelope-v1')];
+  // Attachments are signed field-by-field, including the key and the content
+  // hash. Signing only the blobId would let another member (or a relay holding
+  // the channel key) repoint a message at different bytes, or swap the key so
+  // the file silently fails to open. The count is signed too, so an attachment
+  // cannot be appended or dropped.
+  const attachments = env.attachments ?? [];
+  fields.push(String(attachments.length));
+  for (const a of attachments) {
+    fields.push(
+      a.blobId,
+      a.key,
+      a.header,
+      a.name,
+      a.mime,
+      String(a.size),
+      a.hash,
+      String(a.chunkSize),
+      assetField(a.thumb)
+    );
+  }
+
+  // The preview is sender-asserted text rendered next to their name, so it has
+  // to be signed like anything else they say.
+  fields.push(env.preview ? '1' : '0');
+  if (env.preview) {
+    fields.push(
+      env.preview.url,
+      env.preview.kind,
+      env.preview.title ?? '',
+      env.preview.description ?? '',
+      env.preview.siteName ?? '',
+      env.preview.videoId ?? '',
+      assetField(env.preview.image)
+    );
+  }
+
+  const parts: Bytes[] = [stringToBytes('darkchat-envelope-v2')];
   for (const field of fields) {
     const bytes = stringToBytes(field);
     const len = new Uint8Array(4);
@@ -326,6 +408,91 @@ export async function openEnvelope(
   );
 
   return { envelope, verified };
+}
+
+/* ------------------------------------------------------------------ */
+/* file streams                                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * File encryption uses crypto_secretstream_xchacha20poly1305, not secretbox.
+ *
+ * secretbox would require holding the whole file in memory and, worse, offers
+ * no protection against a truncated or reordered stream -- a server could serve
+ * the first half of a file and it would decrypt cleanly. secretstream chains
+ * every chunk to the last and marks the end with TAG_FINAL, so a short read is
+ * detectable rather than silently valid.
+ *
+ * Each file gets its own random key. It never derives from the channel key, so
+ * a file's key can travel in one envelope without exposing anything else.
+ */
+
+export interface FileStreamHeader {
+  key: string;
+  header: string;
+}
+
+export async function createFileEncryptor() {
+  await ensureReady();
+  const key = sodium.crypto_secretstream_xchacha20poly1305_keygen();
+  const { state, header } = sodium.crypto_secretstream_xchacha20poly1305_init_push(key);
+
+  return {
+    key: toB64(key),
+    header: toB64(header),
+    /** `final` must be true for the last chunk, or the reader rejects the stream. */
+    push(chunk: Bytes, final: boolean): Bytes {
+      return sodium.crypto_secretstream_xchacha20poly1305_push(
+        state,
+        chunk,
+        null,
+        final
+          ? sodium.crypto_secretstream_xchacha20poly1305_TAG_FINAL
+          : sodium.crypto_secretstream_xchacha20poly1305_TAG_MESSAGE
+      );
+    },
+  };
+}
+
+export async function createFileDecryptor(keyB64: string, headerB64: string) {
+  await ensureReady();
+  const state = sodium.crypto_secretstream_xchacha20poly1305_init_pull(
+    fromB64(headerB64),
+    fromB64(keyB64)
+  );
+
+  return {
+    pull(chunk: Bytes): { message: Bytes; final: boolean } {
+      const result = sodium.crypto_secretstream_xchacha20poly1305_pull(state, chunk);
+      // Tampered, reordered, or wrong-key chunks land here.
+      if (!result) throw new Error('file chunk failed authentication');
+      return {
+        message: result.message,
+        final: result.tag === sodium.crypto_secretstream_xchacha20poly1305_TAG_FINAL,
+      };
+    },
+  };
+}
+
+export const FILE_CHUNK_OVERHEAD = 17; // crypto_secretstream ABYTES
+
+/** Streaming blake2b, so a 50MB file is never buffered just to hash it. */
+export async function createHasher() {
+  await ensureReady();
+  const state = sodium.crypto_generichash_init(null, 32);
+  return {
+    update(chunk: Bytes) {
+      sodium.crypto_generichash_update(state, chunk);
+    },
+    digest(): string {
+      return toB64(sodium.crypto_generichash_final(state, 32));
+    },
+  };
+}
+
+export async function hashBytes(bytes: Bytes): Promise<string> {
+  await ensureReady();
+  return toB64(sodium.crypto_generichash(32, bytes));
 }
 
 /* ------------------------------------------------------------------ */

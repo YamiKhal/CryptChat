@@ -5,6 +5,8 @@ import {
   openEnvelope,
   wrapChannelKeyForRecipient,
   unwrapChannelKey,
+  Attachment,
+  LinkPreview,
 } from './crypto';
 import { BinaryAsset } from './binary';
 import { Vault, StoredMessage } from './vault';
@@ -32,6 +34,8 @@ interface RelayOptions {
 export interface SendPayload {
   body: string;
   asset?: BinaryAsset;
+  attachments?: Attachment[];
+  preview?: LinkPreview;
 }
 
 type Incoming =
@@ -102,6 +106,11 @@ export function useRelay({
       displayName: envelope.displayName,
       body: envelope.body,
       asset: envelope.avatar,
+      // Attachment keys and the preview are inside the signature. If `verified`
+      // is false the UI badges the whole message as untrusted, which covers
+      // these too -- a forged preview is a phishing surface, not a cosmetic bug.
+      attachments: envelope.attachments,
+      preview: envelope.preview,
       createdAt: envelope.sentAt || data.createdAt,
       verified,
     };
@@ -353,6 +362,8 @@ export function useRelay({
           body: payload.body,
           displayName: profile.displayName,
           avatar: payload.asset,
+          attachments: payload.attachments,
+          preview: payload.preview,
           sentAt,
         },
         channelId,
@@ -383,6 +394,8 @@ export function useRelay({
         displayName: profile.displayName,
         body: payload.body,
         asset: payload.asset,
+        attachments: payload.attachments,
+        preview: payload.preview,
         createdAt: sentAt,
         verified: true,
         pending: ws?.readyState !== WebSocket.OPEN,

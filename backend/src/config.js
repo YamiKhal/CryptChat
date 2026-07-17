@@ -56,8 +56,10 @@ export const config = {
 
   limits: {
     // A message envelope is ciphertext of body + display name + signature.
-    // Generous enough for a resized avatar, tight enough that the queue is not
-    // a free object store.
+    // Generous enough for a resized avatar, an attachment pointer, and a link
+    // preview thumbnail, tight enough that the queue is not a free object
+    // store. File bytes never travel in here -- they go to the blob store and
+    // the envelope carries only a pointer plus its key.
     maxEnvelopeBytes: Number(process.env.MAX_ENVELOPE_BYTES) || 256 * 1024,
     maxJsonBytes: '512kb',
     maxQueuePerRecipient: Number(process.env.MAX_QUEUE_PER_RECIPIENT) || 5000,
@@ -66,5 +68,46 @@ export const config = {
   auth: {
     maxFailures: 8,
     lockoutMinutes: 15,
+  },
+
+  blob: {
+    // Where ciphertext lands. In Coolify this is a persistent storage mount
+    // backed by a Hetzner Volume -- deliberately a different disk from
+    // Postgres, so a full blob volume fails uploads instead of wedging the
+    // database and taking the whole app down.
+    dir: process.env.BLOB_DIR || './data/blobs',
+
+    maxFileBytes: Number(process.env.MAX_FILE_BYTES) || 50 * 1024 * 1024,
+
+    // Plaintext bytes per secretstream chunk. 1MB keeps a 50MB upload at 50
+    // requests; 64KB would be 800 and would trip rate limits for nothing. It
+    // also keeps every HTTP body small enough to slip under proxy body caps
+    // (Cloudflare's free tier rejects a single body over 100MB).
+    chunkBytes: Number(process.env.BLOB_CHUNK_BYTES) || 1024 * 1024,
+
+    // crypto_secretstream ABYTES: each chunk carries a 17-byte auth tag.
+    chunkOverheadBytes: 17,
+
+    // Files outlive the message queue (72h). Someone offline for a long
+    // weekend should still get the file.
+    ttlDays: Number(process.env.BLOB_TTL_DAYS) || 30,
+
+    // Total stored ciphertext per user. Without this the blob store is a free
+    // anonymous file host.
+    quotaPerUserBytes: Number(process.env.BLOB_QUOTA_PER_USER_BYTES) || 2 * 1024 * 1024 * 1024,
+
+    // An upload that never calls /finish is abandoned; reap it.
+    pendingTtlHours: Number(process.env.BLOB_PENDING_TTL_HOURS) || 24,
+  },
+
+  unfurl: {
+    // Link previews are opt-in per message ("!" prefix) or per user. The
+    // relay learns any URL it is asked to preview -- that is the whole cost of
+    // the feature, and why it is never automatic.
+    enabled: process.env.UNFURL_ENABLED !== 'false',
+    timeoutMs: Number(process.env.UNFURL_TIMEOUT_MS) || 5000,
+    maxHtmlBytes: Number(process.env.UNFURL_MAX_HTML_BYTES) || 512 * 1024,
+    maxImageBytes: Number(process.env.UNFURL_MAX_IMAGE_BYTES) || 2 * 1024 * 1024,
+    maxRedirects: 3,
   },
 };

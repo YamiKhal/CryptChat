@@ -259,6 +259,148 @@ export function decodeImage(bytes: Bytes, mime: string): { url: string; release:
 }
 
 /* ------------------------------------------------------------------ */
+/* content sniffing                                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Image types safe to render from a blob URL.
+ *
+ * SVG is deliberately absent and must stay absent: an SVG is a document, not a
+ * bitmap. Navigating to a blob: URL holding one executes its script in this
+ * origin, which is a same-origin XSS handed over by whoever sent the file.
+ */
+export const RENDERABLE_IMAGE_MIME = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+  'image/avif',
+]);
+
+const startsWith = (bytes: Bytes, sig: number[], offset = 0): boolean =>
+  bytes.length >= offset + sig.length && sig.every((b, i) => bytes[offset + i] === b);
+
+const ascii = (bytes: Bytes, offset: number, text: string): boolean =>
+  startsWith(bytes, [...text].map((c) => c.charCodeAt(0)), offset);
+
+/**
+ * Identify an image from its bytes, ignoring any declared type.
+ *
+ * The MIME on an attachment is chosen by the sender. Trusting it is how a file
+ * labelled `image/png` gets rendered as `text/html`. The bytes cannot lie about
+ * what they are, so the container is derived from the magic number and the
+ * claimed value is discarded entirely.
+ *
+ * Returns null for anything not on the renderable allowlist -- including SVG,
+ * which has no magic number and would only ever be identified by its (untrusted)
+ * label.
+ */
+export function sniffImageMime(bytes: Bytes): string | null {
+  if (startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return 'image/png';
+  if (startsWith(bytes, [0xff, 0xd8, 0xff])) return 'image/jpeg';
+  if (ascii(bytes, 0, 'GIF87a') || ascii(bytes, 0, 'GIF89a')) return 'image/gif';
+  if (ascii(bytes, 0, 'RIFF') && ascii(bytes, 8, 'WEBP')) return 'image/webp';
+  // ISO-BMFF: 4-byte size, then 'ftyp', then the brand.
+  if (ascii(bytes, 4, 'ftyp') && (ascii(bytes, 8, 'avif') || ascii(bytes, 8, 'avis'))) {
+    return 'image/avif';
+  }
+  return null;
+}
+
+/** True when a GIF header declares more than one frame, i.e. it animates. */
+export function isAnimatedGif(bytes: Bytes): boolean {
+  if (!ascii(bytes, 0, 'GIF87a') && !ascii(bytes, 0, 'GIF89a')) return false;
+  // Count Graphic Control Extensions (0x21 0xF9). More than one means frames.
+  let count = 0;
+  for (let i = 0; i < bytes.length - 1; i++) {
+    if (bytes[i] === 0x21 && bytes[i + 1] === 0xf9) {
+      count++;
+      if (count > 1) return true;
+    }
+  }
+  return false;
+}
+
+/* ------------------------------------------------------------------ */
+/* untrusted files                                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Make a peer-supplied filename safe to show and to save.
+ *
+ * The dangerous one is U+202E (RIGHT-TO-LEFT OVERRIDE) and friends: a file
+ * named `invoice‮fdp.exe` renders as `invoiceexe.pdf`, which is a
+ * decades-old way to get someone to run a binary they thought was a document.
+ * Path separators and NUL matter too -- the browser's download attribute is not
+ * a sandbox.
+ */
+export function sanitizeFilename(name: string): string {
+  const cleaned = (name || '')
+    // Bidi overrides/embeddings, zero-width joiners, BOM.
+    .replace(/[\u202A-\u202E\u2066-\u2069\u200B-\u200F\uFEFF]/g, '')
+    // Control characters.
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001F\u007F]/g, '')
+    .replace(/[/\\]/g, '_')
+    .replace(/^\.+/, '')
+    .trim();
+
+  const safe = cleaned.slice(0, 180);
+  return safe || 'file';
+}
+
+/** Bytes for humans. */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB'];
+  let value = bytes / 1024;
+  let i = 0;
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024;
+    i++;
+  }
+  return `${value.toFixed(value < 10 ? 1 : 0)} ${units[i]}`;
+}
+
+/**
+ * Save bytes to disk without ever letting the browser render them.
+ *
+ * The MIME is forced to application/octet-stream regardless of what the sender
+ * claimed. A blob URL served as text/html or image/svg+xml executes script in
+ * this origin if it is ever navigated to -- so untrusted files are only ever
+ * downloaded, never previewed. Only the image allowlist in `unpackAsset` gets
+ * to render.
+ */
+export function saveBytes(bytes: Bytes, filename: string): void {
+  const blob = bytesToBlob(bytes, 'application/octet-stream');
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = sanitizeFilename(filename);
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+export function saveBlob(blob: Blob, filename: string): void {
+  // Re-wrap so the stored MIME cannot make this navigable as markup.
+  const safe = blob.type === 'application/octet-stream'
+    ? blob
+    : new Blob([blob], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(safe);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = sanitizeFilename(filename);
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+/* ------------------------------------------------------------------ */
 /* framing                                                             */
 /* ------------------------------------------------------------------ */
 

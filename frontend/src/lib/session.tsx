@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode, useCallback } from 'react';
 import { api } from './api';
 import { generateIdentity, Identity, importKeyBundle, EncryptedBundle } from './crypto';
+import { clearImageCache } from './blob';
 import {
   Vault,
   AccountDescriptor,
@@ -253,11 +254,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const lock = useCallback(() => {
     state.vault?.lock();
+    // Decrypted images are held as object URLs outside the vault. Locking must
+    // drop them too, or plaintext attachments outlive the key that opened them.
+    clearImageCache();
     setState((s) => ({ ...s, status: s.account ? 'locked' : 'anonymous', vault: null }));
   }, [state.vault]);
 
   const logout = useCallback(() => {
     state.vault?.lock();
+    clearImageCache();
     if (state.account) sessionStorage.removeItem(tokenKey(state.account.userId));
     localStorage.removeItem(ACTIVE_KEY);
     // The vault itself stays on disk -- logging out is not "destroy my keys".

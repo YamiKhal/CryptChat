@@ -107,7 +107,7 @@ export default function Auth() {
               </div>
             </div>
 
-            <p className="rounded border border-info/30 bg-info/10 p-2 text-xs text-info">
+            <p className="rounded border border-info/30 bg-info/10 p-4 text-xs text-info">
               Your password is correct, but this device has none of your keys — the server never had
               them to give back. Import the key file you exported from your other device.
             </p>
@@ -149,7 +149,7 @@ export default function Auth() {
             </label>
 
             {error && (
-              <p className="rounded border border-error/30 bg-error/10 p-2 text-xs text-error">
+              <p className="rounded border border-error/30 bg-error/10 p-4 text-xs text-error">
                 {error}
               </p>
             )}
@@ -223,7 +223,7 @@ export default function Auth() {
                   onChange={(e) => setConfirm(e.target.value)}
                 />
               </label>
-              <p className="rounded border border-warn/30 bg-warn/10 p-2 text-xs text-warn">
+              <p className="rounded border border-warn/30 bg-warn/10 p-4 text-xs text-warn">
                 This password also encrypts your keys on this device. There is no reset: if you
                 forget it, your channels are unrecoverable. Minimum 12 characters.
               </p>
@@ -241,7 +241,7 @@ export default function Auth() {
           </label>
 
           {error && (
-            <p className="rounded border border-error/30 bg-error/10 p-2 text-xs text-error">
+            <p className="rounded border border-error/30 bg-error/10 p-4 text-xs text-error">
               {error}
             </p>
           )}
@@ -284,7 +284,7 @@ export default function Auth() {
                   setUsername(account.username);
                   setMode('login');
                 }}
-                className="flex w-full items-center gap-3 rounded border border-border p-2 text-left
+                className="flex w-full items-center gap-3 rounded border border-border p-4 text-left
                            transition-colors hover:border-primary/50"
               >
                 <Avatar name={account.username} size="sm" />

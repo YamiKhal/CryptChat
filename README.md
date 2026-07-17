@@ -72,7 +72,8 @@ end-to-end encrypted envelope and are only ever sent to people who already hold
 the channel key.
 
 The relay does see metadata it cannot avoid seeing: which user IDs share a
-channel, and when they send.
+channel, when they send, and the **size** of messages and files. It also learns
+any URL you explicitly ask it to preview (see [Link previews](#link-previews)).
 
 ## Key exchange
 
@@ -102,6 +103,92 @@ UI rather than silently accepted. Unverified messages render an
 
 Compare fingerprints (Settings → identity) out of band to confirm nobody
 swapped keys in between.
+
+## File attachments
+
+Any file type, up to **50MB**. Files never travel in the message envelope —
+base64 would add 33%, and the relay duplicates each queued message *per
+recipient*. Instead:
+
+1. The client mints a **random per-file key** (never the channel key) and
+   encrypts with `crypto_secretstream_xchacha20poly1305` in 1MB chunks.
+2. Chunks upload sequentially to the blob store as raw
+   `application/octet-stream`. **One ciphertext copy**, regardless of member
+   count. Resumable via `GET /blob/:id/status`.
+3. The envelope carries only `{blobId, key, header, name, mime, size, hash}` —
+   a few hundred bytes, well under the 256KB cap.
+4. Recipients stream it back and decrypt. `TAG_FINAL` catches truncation, and
+   the signed `hash` and `size` are verified before the file is saved.
+
+The server stores ciphertext plus routing metadata. It never learns the
+filename, the type, or the contents — the `blobs` table has no column for them.
+Blob IDs are **random, not content hashes**: content-addressing would enable
+dedup, which hands the server a confirmation oracle for known files.
+
+Chunking also keeps every HTTP body ~1MB, which sidesteps proxy body limits
+(Cloudflare's free tier rejects a single body over 100MB).
+
+### Images render inline; everything else downloads
+
+Images (`png`/`jpeg`/`gif`/`webp`/`avif`) display in the chat with no download
+button. **Animated GIFs play** — the *original* bytes are served, not the
+envelope thumbnail, which is canvas-flattened and would show only frame one.
+The thumbnail is used as an instant poster while the real file arrives.
+
+Loading is lazy (`IntersectionObserver`), cached with an LRU budget so scrolling
+doesn't refetch, and the cache is dropped on lock so decrypted images never
+outlive the key. Images above 12MB need a click — decoding is the risk, not
+downloading: a 40MB PNG can declare 30000×30000 and expand to gigabytes.
+
+**The declared MIME is never trusted.** A file's type is chosen by the sender,
+so bytes are sniffed by magic number and only rendered if they really are a
+bitmap on the allowlist. **SVG is excluded and must stay excluded** — it's a
+document, not a bitmap, and a blob URL holding one executes script in this
+origin. A file named `.png` containing HTML falls back to a download-only card.
+
+Non-images are download-only, forced to `application/octet-stream`, with
+filenames sanitized against bidi-override tricks (`invoice‮fdp.exe`).
+
+**Honest limits.** The server *cannot scan attachments for malware* — it holds
+ciphertext. That's inherent to E2E. And unlike images (which are re-encoded
+through a canvas, stripping EXIF), **metadata inside a `.pdf`, `.docx`, `.zip`,
+or `.mp4` cannot be stripped** — author names, GPS, local paths ride along
+inside the format. Encryption hides that from the *relay*, not from the people
+in the channel.
+
+## Link previews
+
+**Off by default.** Links render as plain clickable text and fetch nothing.
+
+- Prefix a link with `!` to preview that one: `!https://example.com`
+- Settings → *Always preview links* makes it the default for the first link.
+
+The **sender** builds the preview: their client asks the relay to fetch the
+URL's Open Graph tags (CORS stops the browser doing it directly), re-encodes
+the thumbnail through the canvas path, and ships the result **inside the
+encrypted envelope**. Recipients render it having made **zero network
+requests**.
+
+A link that *is* an image renders as the image. If the original is ≤150KB it is
+embedded whole rather than canvas-thumbnailed, so a linked **GIF keeps its
+frames and animates**; larger ones fall back to a static thumbnail to stay under
+the 256KB envelope cap.
+
+That last part is the whole point. If recipients unfurled links themselves,
+posting a link to a server you control would harvest the IP address of everyone
+in the channel. Same reason YouTube is a thumbnail and a link, **not an
+iframe** — clicking is the user's own explicit choice to reveal themselves.
+
+**The cost, stated plainly:** generating a preview tells the relay which URL you
+sent. That's the one place the server learns message content, which is why it is
+never automatic. Set `UNFURL_ENABLED=false` to remove the endpoint entirely.
+
+`/unfurl` fetches user-supplied URLs, so it is hardened against SSRF: http/https
+only, no credentials in URL, private/loopback/link-local/CGNAT/metadata ranges
+rejected for **both** hostnames and literal IPs, DNS validated at connect time
+via a `lookup` hook (closing DNS rebinding), redirects followed manually and
+re-validated, plus size and time caps. Errors are generic so it can't be used as
+an internal port scanner.
 
 ## Keys at rest, and moving devices
 

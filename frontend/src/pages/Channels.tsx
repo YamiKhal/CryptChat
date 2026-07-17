@@ -197,10 +197,10 @@ export default function Channels() {
         </div>
 
         {error && (
-          <p className="rounded border border-error/30 bg-error/10 p-2 text-xs text-error">{error}</p>
+          <p className="rounded border border-error/30 bg-error/10 p-4 text-xs text-error">{error}</p>
         )}
         {notice && (
-          <p className="rounded border border-info/30 bg-info/10 p-2 text-xs text-info">{notice}</p>
+          <p className="rounded border border-info/30 bg-info/10 p-4 text-xs text-info">{notice}</p>
         )}
       </section>
 

@@ -3,9 +3,28 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useSession } from '../lib/session';
 import { useRelayContext } from '../lib/relayContext';
 import { StoredMessage } from '../lib/vault';
-import { fileToAsset, BinaryAsset } from '../lib/binary';
+import {
+  formatBytes,
+  base64ToBytes,
+  bytesToBase64Url,
+  encodeImage,
+  packAsset,
+  sniffImageMime,
+} from '../lib/binary';
+import { Attachment, LinkPreview } from '../lib/crypto';
+import { encryptAndUpload, MAX_FILE_BYTES, TransferProgress } from '../lib/blob';
+import { pickPreviewUrl, stripPreviewMarkers } from '../lib/links';
 import { api } from '../lib/api';
 import MessageBubble from '../components/MessageBubble';
+
+/**
+ * Ceiling for embedding an image link's original bytes in the envelope.
+ *
+ * The envelope caps at 256KB and base64 adds ~33%, so ~150KB of image is the
+ * most that fits alongside the message. Anything larger falls back to a
+ * canvas-made thumbnail (which loses GIF animation, but fits).
+ */
+const MAX_INLINE_PREVIEW_BYTES = 150 * 1024;
 
 export default function Chat() {
   const { channelId } = useParams<{ channelId: string }>();
@@ -15,7 +34,9 @@ export default function Chat() {
 
   const [messages, setMessages] = useState<StoredMessage[]>([]);
   const [text, setText] = useState('');
-  const [pendingAsset, setPendingAsset] = useState<BinaryAsset | null>(null);
+  const [pending, setPending] = useState<Attachment[]>([]);
+  const [upload, setUpload] = useState<TransferProgress | null>(null);
+  const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -56,31 +77,117 @@ export default function Chat() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length]);
 
+  /**
+   * Build a preview for one link, if the user asked for one.
+   *
+   * "!https://…" marks a single link; the settings toggle makes it the default
+   * for the first link in a message. Either way it is a deliberate act: this
+   * call tells the relay the URL, which is the one place the server learns
+   * message content.
+   */
+  const buildPreview = useCallback(
+    async (body: string): Promise<LinkPreview | undefined> => {
+      if (!token || !vault) return undefined;
+
+      const url = pickPreviewUrl(body, vault.preferences.alwaysPreviewLinks);
+      if (!url) return undefined;
+
+      try {
+        const meta = await api.unfurl(token, url);
+
+        let image;
+        if (meta.image) {
+          const raw = base64ToBytes(meta.image.data);
+          const sniffed = sniffImageMime(raw);
+
+          // A link that *is* an image gets embedded whole when it fits, so an
+          // animated GIF keeps its frames. Running it through the canvas would
+          // flatten it to the first frame -- correct for a thumbnail, wrong for
+          // the thing itself.
+          if (meta.kind === 'image' && sniffed && raw.length <= MAX_INLINE_PREVIEW_BYTES) {
+            image = { mime: sniffed, data: bytesToBase64Url(raw) };
+          } else {
+            // Anything else is a thumbnail: re-encode through canvas, which
+            // strips EXIF and bounds it so the envelope stays under its cap.
+            try {
+              image = packAsset(
+                await encodeImage(raw, {
+                  maxDimension: 400,
+                  mime: 'image/webp',
+                  quality: 0.7,
+                })
+              );
+            } catch {
+              image = undefined;
+            }
+          }
+        }
+
+        return {
+          url: meta.url,
+          kind: meta.kind,
+          title: meta.title,
+          description: meta.description,
+          siteName: meta.siteName,
+          videoId: meta.videoId,
+          image,
+        };
+      } catch {
+        // A preview is a nicety. Send the message regardless.
+        return undefined;
+      }
+    },
+    [token, vault]
+  );
+
   const handleSend = useCallback(async () => {
-    if (!channelId || (!text.trim() && !pendingAsset)) return;
+    if (!channelId || sending) return;
+    if (!text.trim() && pending.length === 0) return;
+
     setError('');
+    setSending(true);
     try {
+      // The "!" is a marker for us, not part of what anyone reads.
+      const body = stripPreviewMarkers(text.trim());
+      const preview = await buildPreview(text.trim());
+
       const message = await send(channelId, {
-        body: text.trim(),
-        asset: pendingAsset ?? undefined,
+        body,
+        attachments: pending.length > 0 ? pending : undefined,
+        preview,
       });
+
       if (message) setMessages((current) => [...current, message]);
       setText('');
-      setPendingAsset(null);
+      setPending([]);
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      setSending(false);
     }
-  }, [channelId, text, pendingAsset, send]);
+  }, [channelId, text, pending, send, sending, buildPreview]);
 
+  /**
+   * Encrypt and upload immediately on pick, so the message send itself is
+   * instant and the attachment is already in the blob store by then.
+   */
   async function handleFile(file: File | undefined) {
-    if (!file) return;
+    if (!file || !channelId || !token) return;
     setError('');
+
+    if (file.size > MAX_FILE_BYTES) {
+      setError(`file too large (max ${formatBytes(MAX_FILE_BYTES)})`);
+      return;
+    }
+
     try {
-      // Re-encoded through a canvas: strips EXIF (GPS, device serial) and
-      // normalises the bytes before they are sealed into the envelope.
-      setPendingAsset(await fileToAsset(file, { maxDimension: 1024, mime: 'image/webp' }));
+      const attachment = await encryptAndUpload(file, channelId, token, setUpload);
+      setPending((current) => [...current, attachment]);
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      setUpload(null);
+      if (fileRef.current) fileRef.current.value = '';
     }
   }
 
@@ -145,7 +252,7 @@ export default function Chat() {
         </div>
       )}
 
-      <div className="flex-1 space-y-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-1">
         {loading && <p className="text-center text-xs text-muted">decrypting…</p>}
 
         {!loading && messages.length === 0 && channel.hasKey && (
@@ -175,28 +282,57 @@ export default function Chat() {
 
       {error && <p className="border-t border-error/30 bg-error/10 px-4 py-2 text-xs text-error">{error}</p>}
 
-      {pendingAsset && (
-        <div className="flex items-center gap-2 border-t border-border px-4 py-2 text-xs">
-          <span className="tag bg-secondary/10 text-secondary">image ready</span>
-          <button onClick={() => setPendingAsset(null)} className="text-muted hover:text-error">
-            remove
-          </button>
+      {upload && (
+        <div className="border-t border-border px-4 py-2">
+          <div className="flex items-center justify-between text-[11px] text-muted">
+            <span>encrypting &amp; uploading…</span>
+            <span>{Math.round((upload.loaded / Math.max(1, upload.total)) * 100)}%</span>
+          </div>
+          <div className="mt-1 h-0.5 w-full bg-border">
+            <div
+              className="h-full bg-primary transition-all"
+              style={{ width: `${Math.round((upload.loaded / Math.max(1, upload.total)) * 100)}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {pending.length > 0 && (
+        <div className="flex flex-wrap gap-2 border-t border-border px-4 py-2 text-xs">
+          {pending.map((attachment) => (
+            <span
+              key={attachment.blobId}
+              className="inline-flex items-center gap-1.5 rounded border border-primary/30
+                         bg-primary/10 px-2 py-1"
+            >
+              <span className="max-w-40 truncate text-primary">{attachment.name}</span>
+              <span className="text-muted">{formatBytes(attachment.size)}</span>
+              <button
+                onClick={() => setPending((c) => c.filter((a) => a.blobId !== attachment.blobId))}
+                className="text-muted hover:text-error"
+                title="Remove"
+              >
+                ×
+              </button>
+            </span>
+          ))}
         </div>
       )}
 
       <div className="flex gap-2 border-t border-border bg-surface p-3">
+        {/* Any type. The bytes are encrypted client-side before upload, so the
+            relay stores something it cannot read or scan. */}
         <input
           ref={fileRef}
           type="file"
-          accept="image/png,image/jpeg,image/webp,image/gif"
           className="hidden"
           onChange={(e) => handleFile(e.target.files?.[0])}
         />
         <button
           onClick={() => fileRef.current?.click()}
-          disabled={!channel.hasKey}
+          disabled={!channel.hasKey || Boolean(upload)}
           className="btn-ghost px-3"
-          title="Attach image"
+          title={`Attach a file (max ${formatBytes(MAX_FILE_BYTES)})`}
         >
           +
         </button>
@@ -210,10 +346,10 @@ export default function Chat() {
         />
         <button
           onClick={handleSend}
-          disabled={!channel.hasKey || (!text.trim() && !pendingAsset)}
+          disabled={!channel.hasKey || sending || (!text.trim() && pending.length === 0)}
           className="btn-primary"
         >
-          Send
+          {sending ? '…' : 'Send'}
         </button>
       </div>
     </div>

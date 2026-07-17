@@ -5,6 +5,11 @@ node_modules/
 dist/
 build/
 
+# encrypted blob store (local dev). In production this is a mounted volume on a
+# separate disk from Postgres, never inside the repo or the image.
+backend/data/
+data/
+
 # env / secrets
 .env
 .env.example

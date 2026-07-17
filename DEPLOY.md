@@ -57,9 +57,40 @@ same GitHub repo; they differ by **Base Directory** and build settings.
   | `DATABASE_URL` | internal Postgres URL from step 1 (point db name at the one you want, e.g. `.../darkchat`) |
   | `JWT_SECRET`   | long random string (`openssl rand -hex 32`)                |
   | `CORS_ORIGIN`  | the frontend's public URL (step 3), e.g. `https://CryptChat.example.com` |
+  | `BLOB_DIR`     | `/data/blobs` — must match the persistent storage mount below |
 
 - WebSocket relay is served on the same domain at path `/ws`. Coolify's Traefik
   proxy passes WebSockets through on the app's domain by default — no extra config.
+
+#### Persistent storage for attachments (required)
+
+Encrypted files are written to `BLOB_DIR`. Without a volume they live in the
+container filesystem and **every redeploy wipes them**.
+
+- Coolify → backend app → **Storages** → add persistent storage mounted at
+  `/data/blobs`.
+- Back it with a **Hetzner Volume** (block storage, ~€0.044/GB/mo, resizes live)
+  rather than the VPS root disk — plans are small, and 50MB files fill them fast.
+
+> **Put blobs on a different disk from Postgres.** If they share one and blobs
+> fill it, Postgres cannot write and the whole app goes down. Separate volumes
+> turn a storage incident into a failed upload instead of an outage.
+
+**Backups:** Coolify backs up Postgres, *not* arbitrary volumes — the blob volume
+is unprotected by default. Use `restic`/`borg` from the Volume to a **Hetzner
+Storage Box** (cheap, off-box; it speaks SFTP/Borg, not S3, so it's a backup
+target, not a live store).
+
+**Uploads and proxies:** files upload in ~1MB chunks, so no single request is
+large. If you ever put Cloudflare in front of this, that matters — the free tier
+rejects any request body over 100MB.
+
+**Scaling out:** `src/blobStore.js` is a narrow interface (`append` /
+`createReadStream` / `size` / `remove` / `downloadUrl`). Swapping local disk for
+S3-compatible storage (e.g. Hetzner Object Storage) is one adapter with no
+call-site changes. Worth doing if you go multi-node, pass a few hundred GB, or
+want browsers to talk straight to storage via presigned URLs instead of
+streaming through Node.
 
 ### 3. Frontend (static site)
 
