@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, ChangeEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useSession } from '../lib/session';
 import { useRelayContext } from '../lib/relayContext';
-import { fileToAsset, BinaryAsset } from '../lib/binary';
+import { fileToAsset, BinaryAsset, base64UrlToBytes, bytesToDataUrl } from '../lib/binary';
 import {
   exportKeyBundle,
   importKeyBundle,
@@ -25,6 +25,8 @@ export default function Settings() {
 
   const [displayName, setDisplayName] = useState('');
   const [avatar, setAvatar] = useState<BinaryAsset | undefined>();
+  const [bio, setBio] = useState('');
+  const [background, setBackground] = useState<BinaryAsset | undefined>();
   const [fingerprint, setFingerprint] = useState('');
   const [alwaysPreview, setAlwaysPreview] = useState(false);
   const [showBadge, setShowBadge] = useState(false);
@@ -47,12 +49,15 @@ export default function Settings() {
   const [redeemCode, setRedeemCode] = useState('');
 
   const avatarInput = useRef<HTMLInputElement>(null);
+  const backgroundInput = useRef<HTMLInputElement>(null);
   const bundleInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!vault) return;
     setDisplayName(vault.profile.displayName);
     setAvatar(vault.profile.avatar);
+    setBio(vault.profile.bio ?? '');
+    setBackground(vault.profile.background);
     setAlwaysPreview(vault.preferences.alwaysPreviewLinks);
     setShowBadge(Boolean(vault.preferences.showSupporterBadge));
     keyFingerprint(vault.identity.signPublicKey).then(setFingerprint);
@@ -119,6 +124,28 @@ export default function Settings() {
     }
   }
 
+  async function handleBackground(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setStatus(null);
+    try {
+      // A wider banner than the avatar, but the same EXIF-stripping re-encode.
+      // Broadcast to channel members like the rest of the profile, so metadata
+      // must not ride along. Kept modest (640px / q0.7): the banner shares the
+      // profile envelope with the avatar and must stay well under the 256KB cap,
+      // and it is only ever shown as a small header strip.
+      const asset = await fileToAsset(file, {
+        maxDimension: 640,
+        mime: 'image/webp',
+        quality: 0.7,
+      });
+      setBackground(asset);
+      setStatus({ kind: 'info', text: 'Banner ready. Save to apply.' });
+    } catch (err) {
+      setStatus({ kind: 'error', text: (err as Error).message });
+    }
+  }
+
   // Applied immediately rather than on Save: a privacy toggle should never sit
   // in a state the user thinks is active but is not yet persisted.
   async function handlePreviewToggle(next: boolean) {
@@ -150,7 +177,12 @@ export default function Settings() {
     }
     setBusy(true);
     try {
-      await vault!.setProfile({ displayName: displayName.trim(), avatar });
+      await vault!.setProfile({
+        displayName: displayName.trim(),
+        avatar,
+        bio: bio.trim() || undefined,
+        background,
+      });
       // Peers only know a name if it is sent to them, encrypted and signed.
       await broadcastProfileEverywhere();
       session.refresh();
@@ -416,9 +448,59 @@ export default function Settings() {
           />
         </label>
 
+        <label className="block space-y-1">
+          <span className="text-xs text-muted">bio</span>
+          <textarea
+            className="field min-h-20 resize-y"
+            value={bio}
+            onChange={(e) => setBio(e.target.value)}
+            maxLength={500}
+            placeholder="A few words about you. Links: [my site](https://example.com)"
+          />
+          <span className="text-[10px] text-muted">
+            {bio.length}/500 — wrap a link as [label](https://…)
+          </span>
+        </label>
+
+        <div className="space-y-1">
+          <span className="text-xs text-muted">profile banner</span>
+          <div className="flex items-center gap-3">
+            <div className="h-12 w-24 shrink-0 overflow-hidden rounded border border-border bg-surface-raised">
+              {background && (
+                <img
+                  src={bytesToDataUrl(base64UrlToBytes(background.data), background.mime)}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              )}
+            </div>
+            <div className="space-y-1">
+              <input
+                ref={backgroundInput}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                className="hidden"
+                onChange={handleBackground}
+              />
+              <button onClick={() => backgroundInput.current?.click()} className="btn-ghost text-xs">
+                choose banner
+              </button>
+              {background && (
+                <button
+                  onClick={() => setBackground(undefined)}
+                  className="block text-xs text-muted hover:text-error"
+                >
+                  remove
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
         <p className="text-[11px] text-muted">
-          Your name and picture are encrypted and signed, then sent only to members of channels you
-          are in. The server stores neither — it only ever holds a hash of your username.
+          Your name, picture, bio, and banner are encrypted and signed, then sent only to members of
+          channels you are in. The server stores none of it — it only ever holds a hash of your
+          username.
         </p>
 
         <button onClick={handleSaveProfile} disabled={busy} className="btn-primary w-full">

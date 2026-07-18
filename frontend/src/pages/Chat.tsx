@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, useReducer } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { CornerUpLeft, Smile, Copy, Download, Pencil, Trash2, Lock, LockKeyhole, Timer, ShieldCheck, MessageCircle, Phone, Video, Ban } from 'lucide-react';
+import { CornerUpLeft, Smile, Copy, Download, Pencil, Trash2, Lock, LockKeyhole, Timer, ShieldCheck, MessageCircle, Phone, Video, Ban, LogOut, Image as ImageIcon, User } from 'lucide-react';
 import { incognitoHue, incognitoLabel } from '../lib/incognito';
 import TrustPanel from '../components/TrustPanel';
 import { useCall } from '../lib/callContext';
@@ -15,7 +15,7 @@ const BURN_OPTIONS = [
 ] as const;
 import { useSession } from '../lib/session';
 import { useRelayContext } from '../lib/relayContext';
-import { StoredMessage, Vault, Contact } from '../lib/vault';
+import { StoredMessage, Vault, Contact, UserProfile } from '../lib/vault';
 import {
   formatBytes,
   base64ToBytes,
@@ -27,6 +27,7 @@ import {
   BinaryAsset,
   base64UrlToBytes,
   bytesToDataUrl,
+  fileToAsset,
 } from '../lib/binary';
 import { Attachment, LinkPreview, ReplyRef } from '../lib/crypto';
 import { encryptAndUpload, downloadAndDecrypt, TransferProgress } from '../lib/blob';
@@ -36,6 +37,9 @@ import { api } from '../lib/api';
 import MessageBubble from '../components/MessageBubble';
 import Composer from '../components/Composer';
 import { ContextMenu, useContextMenu, MenuItem } from '../components/ContextMenu';
+import { ChannelNameModal } from '../components/ChannelNameModal';
+import { ChannelIcon } from '../components/ChannelIcon';
+import { UserProfileModal } from '../components/UserProfileModal';
 import { ReplyComposing } from '../components/ReplyRefCard';
 
 /**
@@ -248,6 +252,7 @@ export default function Chat() {
   const [lockCode, setLockCode] = useState('');
   const [lockHint, setLockHint] = useState('');
   const [burnTtl, setBurnTtl] = useState<number | null>(null);
+  const [spoilerArmed, setSpoilerArmed] = useState(false);
   // The contact whose safety number is open, from a message's context menu.
   const [verifyingContact, setVerifyingContact] = useState<Contact | null>(null);
   const [unlocking, setUnlocking] = useState<StoredMessage | null>(null);
@@ -257,9 +262,23 @@ export default function Chat() {
   // Mirrors channel.blocked so a block/unblock re-renders the composer without a
   // full vault-driven refresh.
   const [dmBlocked, setDmBlocked] = useState(false);
+  // The header name's own context menu (copy code / rename / block / leave).
+  const [headerMenu, setHeaderMenu] = useState<{ x: number; y: number } | null>(null);
+  const [renamingChannel, setRenamingChannel] = useState(false);
+  // The user profile card currently open, or null.
+  const [viewingProfile, setViewingProfile] = useState<UserProfile | null>(null);
+  // Bumped after a local channel edit (icon) so the header, which reads `channel`
+  // straight from the vault, re-renders once the mutated value is in place.
+  const [, bumpChannel] = useReducer((n: number) => n + 1, 0);
+  const {
+    handlers: headerHandlers,
+    position: headerPos,
+    close: closeHeaderPress,
+  } = useContextMenu();
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const iconInput = useRef<HTMLInputElement>(null);
   const announced = useRef<string | null>(null);
 
   const channel = channelId && vault ? vault.getChannel(channelId) : undefined;
@@ -513,6 +532,7 @@ export default function Chat() {
             ? { code: lockCode.trim(), hint: lockHint.trim() || undefined }
             : undefined,
         burn: burnTtl ?? undefined,
+        spoiler: spoilerArmed || undefined,
       });
 
       if (message) setMessages((current) => [...current, message]);
@@ -523,6 +543,7 @@ export default function Chat() {
       setLockCode('');
       setLockHint('');
       setBurnTtl(null);
+      setSpoilerArmed(false);
       // Retract our typing indicator immediately; recipients also clear it when
       // this message lands, but the stop makes it instant even before delivery.
       lastTypingSent.current = 0;
@@ -547,6 +568,7 @@ export default function Chat() {
     lockCode,
     lockHint,
     burnTtl,
+    spoilerArmed,
     sendTyping,
   ]);
 
@@ -681,6 +703,116 @@ export default function Chat() {
     }
   }
 
+  // A right-click / long-press on the header name arms useContextMenu; lift its
+  // position into the page-owned menu, matching how message rows do it.
+  useEffect(() => {
+    if (headerPos) {
+      setHeaderMenu({ x: headerPos.x, y: headerPos.y });
+      closeHeaderPress();
+    }
+  }, [headerPos, closeHeaderPress]);
+
+  async function copyChannelCode() {
+    if (!channel) return;
+    try {
+      await navigator.clipboard.writeText(channel.code);
+      setError('');
+    } catch {
+      // Clipboard blocked (insecure context / denied): surface the code so it
+      // can still be copied by hand rather than failing silently.
+      setError(`Channel code: ${channel.code}`);
+    }
+  }
+
+  async function handleRenameChannel(name: string) {
+    if (!channel || !vault) return;
+    await vault.saveChannel({ ...channel, label: name.trim() || undefined });
+    // saveChannel mutates the vault in place; closing the modal re-renders and
+    // getChannel returns the new label.
+  }
+
+  async function handleIconFile(file: File | undefined) {
+    if (iconInput.current) iconInput.current.value = '';
+    if (!file || !channel || !vault) return;
+    try {
+      // Same pipeline as the profile avatar: square, downscaled, re-encoded to
+      // WebP (which strips EXIF). Only ever called for a group -- the menu hides
+      // this for a DM, whose icon tracks the peer.
+      const icon = await fileToAsset(file, {
+        maxDimension: 256,
+        square: true,
+        mime: 'image/webp',
+        quality: 0.85,
+      });
+      await vault.saveChannel({ ...channel, icon });
+      setError('');
+      bumpChannel();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function handleRemoveIcon() {
+    if (!channel || !vault) return;
+    await vault.saveChannel({ ...channel, icon: undefined });
+    bumpChannel();
+  }
+
+  function headerMenuItems(): MenuItem[] {
+    if (!channel) return [];
+    const items: MenuItem[] = [];
+    // A DM's header opens the peer's profile; a group has no single person.
+    if (isDm && channel.peerId && !channel.incognito && contacts[channel.peerId]) {
+      items.push({
+        label: 'View profile',
+        icon: <User size={14} />,
+        onSelect: () => openProfile(channel.peerId!),
+      });
+    }
+    items.push(
+      {
+        label: 'Copy channel code',
+        icon: <Copy size={14} />,
+        onSelect: () => copyChannelCode(),
+      },
+      {
+        label: channel.label ? 'Rename' : 'Set a name',
+        icon: <Pencil size={14} />,
+        onSelect: () => setRenamingChannel(true),
+      }
+    );
+    // A group's picture is settable; a DM's icon always tracks the peer.
+    if (!isDm) {
+      items.push({
+        label: channel.icon ? 'Change picture' : 'Set a picture',
+        icon: <ImageIcon size={14} />,
+        onSelect: () => iconInput.current?.click(),
+      });
+      if (channel.icon) {
+        items.push({
+          label: 'Remove picture',
+          icon: <Trash2 size={14} />,
+          onSelect: () => handleRemoveIcon(),
+        });
+      }
+    }
+    if (isDm) {
+      items.push({
+        label: dmBlocked ? 'Unblock' : 'Block',
+        icon: <Ban size={14} />,
+        danger: !dmBlocked,
+        onSelect: () => handleToggleBlock(),
+      });
+    }
+    items.push({
+      label: isDm ? 'Leave conversation' : 'Leave channel',
+      icon: <LogOut size={14} />,
+      danger: true,
+      onSelect: () => handleLeave(),
+    });
+    return items;
+  }
+
   /** Open a DM with a member from the message menu, then jump to it. */
   const handleStartDm = useCallback(
     async (userId: string) => {
@@ -727,6 +859,39 @@ export default function Chat() {
       return contacts[userId]?.displayName ?? 'unknown';
     },
     [contacts, account, vault, channel?.incognito, channelId]
+  );
+
+  /**
+   * Open the profile card for a user. Assembles a UserProfile from your own
+   * Profile or the peer's pinned Contact. Never in incognito, where there is no
+   * stable identity to show a profile for.
+   */
+  const openProfile = useCallback(
+    (userId: string) => {
+      if (channel?.incognito) return;
+      if (userId === account?.userId && vault) {
+        const p = vault.profile;
+        setViewingProfile({
+          userId,
+          displayName: p.displayName,
+          avatar: p.avatar,
+          bio: p.bio,
+          background: p.background,
+        });
+        return;
+      }
+      const c = contacts[userId];
+      if (c) {
+        setViewingProfile({
+          userId,
+          displayName: c.displayName ?? 'unknown',
+          avatar: c.avatar,
+          bio: c.bio,
+          background: c.background,
+        });
+      }
+    },
+    [contacts, account, vault, channel?.incognito]
   );
 
   /** Built per-target so the menu can offer download only where there is a file. */
@@ -787,6 +952,20 @@ export default function Chat() {
         });
       }
 
+      // View this member's profile card. Only for others with a pinned identity,
+      // and never in incognito -- there is no profile to show for a colour tag.
+      if (
+        message.senderId !== account?.userId &&
+        !channel?.incognito &&
+        contacts[message.senderId]
+      ) {
+        items.push({
+          label: 'View profile',
+          icon: <User size={13} />,
+          onSelect: () => openProfile(message.senderId),
+        });
+      }
+
       // Start a 1:1 DM with this member. Not offered inside a DM (already one) or
       // in incognito (there is no stable identity to open a DM against).
       if (message.senderId !== account?.userId && !channel?.incognito && !isDm) {
@@ -818,7 +997,7 @@ export default function Chat() {
 
       return items;
     },
-    [menu, token, account?.userId, handleStartEdit, handleDelete, contacts, channel?.incognito, isVerified, isDm, handleStartDm]
+    [menu, token, account?.userId, handleStartEdit, handleDelete, contacts, channel?.incognito, isVerified, isDm, handleStartDm, openProfile]
   );
 
   if (!vault || !account) return null;
@@ -842,25 +1021,43 @@ export default function Chat() {
         <Link to="/channels" className="text-muted transition-colors hover:text-primary">
           ←
         </Link>
-        <div className="min-w-0 flex-1">
-          {isDm ? (
+        {/* Clicking (or right-click / long-press) the icon or name opens the
+            channel menu: copy code, rename, set a picture, block, leave. */}
+        <button
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            setHeaderMenu({ x: r.left, y: r.bottom + 4 });
+          }}
+          {...headerHandlers}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+          title="Channel options"
+        >
+          <ChannelIcon
+            channel={channel}
+            peerName={channel.peerId ? nameFor(channel.peerId) : undefined}
+            peerAvatar={channel.peerId ? vault.getContact(channel.peerId)?.avatar : undefined}
+            size="md"
+          />
+          <div className="min-w-0">
             <p className="truncate text-sm font-medium text-foreground">
-              {channel.peerId ? nameFor(channel.peerId) : 'direct message'}
+              {isDm
+                ? channel.peerId
+                  ? nameFor(channel.peerId)
+                  : 'direct message'
+                : channel.label || 'Group'}
             </p>
-          ) : (
-            <p className="font-mono text-sm tracking-widest text-primary">{channel.code || '········'}</p>
-          )}
-          <p className="flex items-center gap-1.5 text-[11px] text-muted">
-            <span
-              className={`inline-block h-1.5 w-1.5 rounded-full ${connected ? 'bg-primary' : 'bg-warn'}`}
-            />
-            {connected ? 'encrypted' : 'reconnecting…'}
-            {isDm && <span className="tag bg-primary/10 text-primary">direct</span>}
-            {channel.incognito && (
-              <span className="tag bg-secondary/10 text-secondary">incognito</span>
-            )}
-          </p>
-        </div>
+            <p className="flex items-center gap-1.5 text-[11px] text-muted">
+              <span
+                className={`inline-block h-1.5 w-1.5 rounded-full ${connected ? 'bg-primary' : 'bg-warn'}`}
+              />
+              {connected ? 'encrypted' : 'reconnecting…'}
+              {isDm && <span className="tag bg-primary/10 text-primary">direct</span>}
+              {channel.incognito && (
+                <span className="tag bg-secondary/10 text-secondary">incognito</span>
+              )}
+            </p>
+          </div>
+        </button>
 
         {isDm && channel.hasKey && !dmBlocked && (
           <>
@@ -1173,6 +1370,8 @@ export default function Chat() {
         canBurn={Boolean(limits.premium)}
         burnArmed={burnTtl != null}
         onToggleBurn={() => setBurnTtl((t) => (t == null ? 30 : null))}
+        spoilerArmed={spoilerArmed}
+        onToggleSpoiler={editingId ? undefined : () => setSpoilerArmed((s) => !s)}
       />
 
       {verifyingContact && (
@@ -1200,6 +1399,34 @@ export default function Chat() {
           onClose={() => setMenu(null)}
         />
       )}
+
+      {headerMenu && (
+        <ContextMenu
+          items={headerMenuItems()}
+          position={{ x: headerMenu.x, y: headerMenu.y }}
+          onClose={() => setHeaderMenu(null)}
+        />
+      )}
+
+      {renamingChannel && channel && (
+        <ChannelNameModal
+          channel={channel}
+          onClose={() => setRenamingChannel(false)}
+          onSubmit={handleRenameChannel}
+        />
+      )}
+
+      {viewingProfile && (
+        <UserProfileModal profile={viewingProfile} onClose={() => setViewingProfile(null)} />
+      )}
+
+      <input
+        ref={iconInput}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => handleIconFile(e.target.files?.[0])}
+      />
 
       {/* The quick-reaction strip. A full picker is one tap further in, but the
           common case is one of eight and should not need a search box. */}

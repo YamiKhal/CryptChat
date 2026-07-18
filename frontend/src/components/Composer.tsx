@@ -1,5 +1,5 @@
 import { useRef, useEffect, useLayoutEffect, useState, KeyboardEvent } from 'react';
-import { Paperclip, Send, Smile, Lock, Timer } from 'lucide-react';
+import { Paperclip, Send, Smile, Lock, Timer, EyeOff } from 'lucide-react';
 import EmojiPicker from './EmojiPicker';
 import { Limits, countChars } from '../lib/limits';
 
@@ -35,6 +35,9 @@ interface ComposerProps {
   /** Whether the next message will disappear after being read. */
   burnArmed?: boolean;
   onToggleBurn?: () => void;
+  /** Whether the next message will be sent covered as a spoiler. */
+  spoilerArmed?: boolean;
+  onToggleSpoiler?: () => void;
 }
 
 export default function Composer({
@@ -54,6 +57,8 @@ export default function Composer({
   canBurn,
   burnArmed,
   onToggleBurn,
+  spoilerArmed,
+  onToggleSpoiler,
 }: ComposerProps) {
   const textarea = useRef<HTMLTextAreaElement>(null);
   const [showEmoji, setShowEmoji] = useState(false);
@@ -186,6 +191,21 @@ export default function Composer({
             aria-pressed={lockArmed}
           >
             <Lock size={16} />
+          </button>
+        )}
+
+        {onToggleSpoiler && (
+          <button
+            onClick={onToggleSpoiler}
+            disabled={disabled}
+            className={`btn-ghost flex-none px-2.5 py-2 ${
+              spoilerArmed ? 'border-primary/60 text-primary' : ''
+            }`}
+            title={spoilerArmed ? 'This message will be hidden until tapped' : 'Mark as a spoiler'}
+            aria-label="Mark message as a spoiler"
+            aria-pressed={spoilerArmed}
+          >
+            <EyeOff size={16} />
           </button>
         )}
 

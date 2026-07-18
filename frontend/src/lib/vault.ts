@@ -58,6 +58,13 @@ export interface StoredChannel {
   /** False until a member has wrapped and delivered the channel key. */
   hasKey: boolean;
   label?: string;
+  /**
+   * A group channel's picture, set locally from the context menu. Like `label`,
+   * it lives only in this vault and is never sent -- naming or picturing a
+   * channel is a personal, device-local choice. Not used for DMs, which show the
+   * peer's own profile avatar instead.
+   */
+  icon?: BinaryAsset;
   /** Incognito mode: members shown as colours only, no names or avatars sent. */
   incognito?: boolean;
   /** 'dm' for a 1:1 direct message; absent/undefined for a normal group channel. */
@@ -70,6 +77,12 @@ export interface StoredChannel {
    * delivery. Reconciled from /channel/list.
    */
   blocked?: boolean;
+  /**
+   * For a DM: an invitation to this user that they have not accepted. While set,
+   * the relay withholds the channel key and messages; the list shows accept /
+   * decline instead of opening the chat. Cleared on accept. Mirrors the server.
+   */
+  request?: boolean;
   /**
    * When this channel was last opened. Drives the unread badge on the channel
    * list: messages newer than this (and not our own) are unread. Absent means
@@ -85,6 +98,10 @@ export interface Contact {
   signPublicKey: string;
   displayName?: string;
   avatar?: BinaryAsset;
+  /** Free-text bio, may contain [label](url) links. Carried in profile updates. */
+  bio?: string;
+  /** A profile banner image, broadcast alongside the avatar. */
+  background?: BinaryAsset;
   firstSeenAt: string;
   /** Set when the pinned signing key stops matching what the server serves. */
   keyChangedAt?: string;
@@ -93,7 +110,24 @@ export interface Contact {
 export interface Profile {
   displayName: string;
   avatar?: BinaryAsset;
+  /** Free-text bio, may contain [label](url) links. Broadcast to your channels. */
+  bio?: string;
+  /** A profile banner image, shown behind the profile card. */
+  background?: BinaryAsset;
   updatedAt: string;
+}
+
+/**
+ * The public face of a user, assembled for the profile card. Yours comes from
+ * `Profile`, a peer's from their pinned `Contact`. Same shape either way, so one
+ * viewer renders both.
+ */
+export interface UserProfile {
+  userId: string;
+  displayName: string;
+  avatar?: BinaryAsset;
+  bio?: string;
+  background?: BinaryAsset;
 }
 
 /**
@@ -193,6 +227,8 @@ export interface StoredMessage {
   supporterClaimed?: boolean;
   /** Burn-after-read: seconds to keep the message after it is first seen. */
   burnTtl?: number;
+  /** Whole-message spoiler: the UI covers the bubble until the reader clicks it. */
+  spoiler?: boolean;
   /** When this device first displayed the message; the burn clock starts here. */
   firstViewedAt?: string;
   /**
@@ -483,7 +519,12 @@ export class Vault {
 
   async updateContactProfile(
     userId: string,
-    profile: { displayName?: string; avatar?: BinaryAsset }
+    profile: {
+      displayName?: string;
+      avatar?: BinaryAsset;
+      bio?: string;
+      background?: BinaryAsset;
+    }
   ): Promise<void> {
     const existing = this.data.contacts[userId];
     if (!existing) return;

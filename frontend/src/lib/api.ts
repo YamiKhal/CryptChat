@@ -107,6 +107,8 @@ export interface ChannelSummary {
   peerId?: string;
   /** DM only: whether I have blocked the peer. */
   blocked?: boolean;
+  /** DM only: an invitation to me I have not accepted yet (shows accept / decline). */
+  request?: boolean;
 }
 
 export interface IceResponse {
@@ -370,11 +372,18 @@ export const api = {
    * channel key for them, exactly as a group join does.
    */
   createDm: (token: string, peerId: string) =>
-    request<{ channelId: string; type: 'dm'; created: boolean; peer: MemberInfo }>(
-      '/channel/dm',
-      { method: 'POST', body: JSON.stringify({ peerId }) },
-      token
-    ),
+    request<{
+      channelId: string;
+      type: 'dm';
+      created: boolean;
+      /** The peer is an active member holding the key; false means mint a fresh one. */
+      peerActive: boolean;
+      peer: MemberInfo;
+    }>('/channel/dm', { method: 'POST', body: JSON.stringify({ peerId }) }, token),
+
+  /** Accept a pending DM invitation: releases the withheld key and messages. */
+  acceptDm: (token: string, channelId: string) =>
+    request<{ ok: true }>(`/channel/${channelId}/accept`, { method: 'POST' }, token),
 
   blockDm: (token: string, channelId: string) =>
     request<{ ok: true }>(`/channel/${channelId}/block`, { method: 'POST' }, token),

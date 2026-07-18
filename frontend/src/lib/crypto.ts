@@ -54,8 +54,8 @@ function fromB64(value: string): Bytes {
  * vault were signed under the v2 field list, and refusing to open them would
  * silently destroy every existing transcript. New envelopes are always v3.
  */
-export const ENVELOPE_VERSION = 6;
-const SUPPORTED_VERSIONS = new Set([2, 3, 4, 5, 6]);
+export const ENVELOPE_VERSION = 8;
+const SUPPORTED_VERSIONS = new Set([2, 3, 4, 5, 6, 7, 8]);
 
 /* ------------------------------------------------------------------ */
 /* identity                                                            */
@@ -478,6 +478,19 @@ export interface EnvelopeContent {
    * only when the user enables it and never in incognito channels.
    */
   supporter?: boolean;
+  /**
+   * Profile-only (kind === 'profile'): a free-text bio, which may contain
+   * [label](url) links, and a banner image. Signed like the avatar, so a relay
+   * can neither rewrite a bio nor swap a banner. Empty on message envelopes.
+   */
+  bio?: string;
+  background?: BinaryAsset;
+  /**
+   * Whole-message spoiler: the recipient's UI covers the bubble until clicked.
+   * Signed (v7) so a relay can neither strip the cover off a message meant to be
+   * hidden nor slap one onto a message that was not.
+   */
+  spoiler?: boolean;
   /** Present on a 'call' envelope: WebRTC signaling for a 1:1 DM call. */
   call?: CallSignal;
   sentAt: string;
@@ -635,6 +648,21 @@ function canonicalBytes(env: Omit<SignedEnvelope, 'sig'>): Bytes {
     }
   }
 
+  // v7 adds the whole-message spoiler flag. Appended after v6 so every v6
+  // message already in a vault verifies unchanged.
+  if (env.v >= 7) {
+    fields.push(env.spoiler ? '1' : '0');
+  }
+
+  // v8 adds the profile bio and banner. Signed even on message envelopes (as
+  // empty strings) so the encoding stays fixed; only profile envelopes ever set
+  // them. Appended after v7 so every v7 message already in a vault verifies
+  // unchanged.
+  if (env.v >= 8) {
+    fields.push(env.bio ?? '');
+    fields.push(assetField(env.background));
+  }
+
   const parts: Bytes[] = [stringToBytes(`darkchat-envelope-v${env.v}`)];
   for (const field of fields) {
     const bytes = stringToBytes(field);
@@ -673,6 +701,12 @@ export async function createEnvelope(
  * can push into every recipient's vault.
  */
 export const MAX_REPLY_EXCERPT = 140;
+
+/**
+ * Bound on a profile bio. A peer picks this and it lands in every recipient's
+ * vault, so it is capped rather than trusted to be reasonable.
+ */
+export const MAX_BIO = 500;
 
 /**
  * One emoji. Not "a short string" -- a peer picks this and it is rendered
@@ -874,6 +908,12 @@ export async function openEnvelope(
   }
   if (envelope.call && !isValidCallSignal(envelope.call)) {
     throw new Error('malformed call signal');
+  }
+  // A peer controls the bio. Cap it so a hostile profile cannot push an
+  // unbounded string into every recipient's vault. The banner is validated on
+  // render (unpackAsset enforces the image allowlist), like any other asset.
+  if (envelope.bio !== undefined && (typeof envelope.bio !== 'string' || envelope.bio.length > MAX_BIO)) {
+    throw new Error('malformed bio');
   }
 
   // The transport's claim about the sender and channel must match what the

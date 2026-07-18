@@ -41,6 +41,15 @@ CREATE TABLE IF NOT EXISTS channel_members (
 
 ALTER TABLE channel_members ADD COLUMN IF NOT EXISTS joined_at TIMESTAMPTZ DEFAULT now();
 
+-- Membership state. 'active' is a full member; 'pending' is a DM invitee who has
+-- not accepted yet. The default is 'active' so every existing row and every
+-- group join is a full member with no migration -- only the invited side of a
+-- new DM is ever 'pending'. While pending, the relay withholds that channel's
+-- messages and wrapped key from the user (see flushQueue / flushKeyOffers): the
+-- invitee sees a request with the inviter's identity, never the content, until
+-- they accept. Accepting flips this to 'active' and releases what was held.
+ALTER TABLE channel_members ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+
 CREATE TABLE IF NOT EXISTS message_queue (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   channel_id UUID REFERENCES channels(id) ON DELETE CASCADE,

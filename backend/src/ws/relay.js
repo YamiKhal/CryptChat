@@ -249,7 +249,7 @@ async function handleSend(senderId, msg, ws) {
   // what makes a block "stop receiving". dm_blocks only ever holds DM pairs, so
   // this predicate is a no-op for group channels.
   const members = await pool.query(
-    `SELECT user_id FROM channel_members cm
+    `SELECT user_id, status FROM channel_members cm
       WHERE cm.channel_id = $1 AND cm.user_id != $2
         AND NOT EXISTS (
           SELECT 1 FROM dm_blocks b WHERE b.blocker_id = cm.user_id AND b.blocked_id = $2
@@ -257,7 +257,7 @@ async function handleSend(senderId, msg, ws) {
     [channelId, senderId]
   );
 
-  for (const { user_id: recipientId } of members.rows) {
+  for (const { user_id: recipientId, status } of members.rows) {
     const backlog = await pool.query(
       'SELECT count(*)::int AS n FROM message_queue WHERE recipient_id = $1',
       [recipientId]
@@ -274,6 +274,16 @@ async function handleSend(senderId, msg, ws) {
       [channelId, senderId, recipientId, ciphertext, nonce, kind, clientId]
     );
     const queued = inserted.rows[0];
+
+    // A pending DM invitee is not delivered the body -- it stays queued until
+    // they accept. They are only nudged that a request now exists (identity, not
+    // content: the client fetches the inviter's name from /channel/list). This is
+    // what makes "accept before you can read it" real, not just a client-side
+    // hide of already-delivered ciphertext.
+    if (status === 'pending') {
+      sendTo(recipientId, { type: 'dm-request', channelId });
+      continue;
+    }
 
     sendTo(recipientId, {
       type: 'message',
@@ -318,7 +328,17 @@ async function handleKeyOffer(senderId, msg, ws) {
   if (recipientId === senderId) return;
 
   if (!(await isMember(channelId, senderId))) return;
-  if (!(await isMember(channelId, recipientId))) return;
+
+  // The recipient's membership state gates delivery. A pending DM invitee is a
+  // member (the row exists) but must not receive the wrapped key yet -- so the
+  // offer is stored for later but never sent live. It is released by
+  // flushKeyOffers once they accept and become active.
+  const recipient = await pool.query(
+    'SELECT status FROM channel_members WHERE channel_id = $1 AND user_id = $2',
+    [channelId, recipientId]
+  );
+  if (recipient.rowCount === 0) return;
+  const recipientActive = recipient.rows[0].status === 'active';
 
   const inserted = await pool.query(
     `INSERT INTO key_offers (channel_id, sender_id, recipient_id, ciphertext, nonce)
@@ -332,17 +352,19 @@ async function handleKeyOffer(senderId, msg, ws) {
 
   const sender = await pool.query('SELECT pubkey, sign_pubkey FROM users WHERE id = $1', [senderId]);
 
-  sendTo(recipientId, {
-    type: 'key-offer',
-    offerId: offer.id,
-    channelId,
-    senderId,
-    senderPubkey: sender.rows[0].pubkey,
-    senderSignPubkey: sender.rows[0].sign_pubkey,
-    ciphertext,
-    nonce,
-    createdAt: offer.created_at,
-  });
+  if (recipientActive) {
+    sendTo(recipientId, {
+      type: 'key-offer',
+      offerId: offer.id,
+      channelId,
+      senderId,
+      senderPubkey: sender.rows[0].pubkey,
+      senderSignPubkey: sender.rows[0].sign_pubkey,
+      ciphertext,
+      nonce,
+      createdAt: offer.created_at,
+    });
+  }
 
   ws.send(JSON.stringify({ type: 'key-offer-sent', channelId, recipientId }));
 }
@@ -499,11 +521,17 @@ export function notifyMemberLeft(channelId) {
 }
 
 async function flushQueue(userId, ws) {
+  // The JOIN both scopes to current membership and enforces the pending gate:
+  // messages queued for a DM this user has not accepted stay put until the
+  // accept flips them to 'active'. Group rows are always 'active', so unaffected.
   const pending = await pool.query(
-    `SELECT id, channel_id, sender_id, ciphertext, nonce, kind, client_id, created_at
-     FROM message_queue
-     WHERE recipient_id = $1
-     ORDER BY created_at ASC
+    `SELECT mq.id, mq.channel_id, mq.sender_id, mq.ciphertext, mq.nonce, mq.kind,
+            mq.client_id, mq.created_at
+     FROM message_queue mq
+     JOIN channel_members cm
+       ON cm.channel_id = mq.channel_id AND cm.user_id = mq.recipient_id
+     WHERE mq.recipient_id = $1 AND cm.status = 'active'
+     ORDER BY mq.created_at ASC
      LIMIT 1000`,
     [userId]
   );
@@ -524,12 +552,16 @@ async function flushQueue(userId, ws) {
 }
 
 async function flushKeyOffers(userId, ws) {
+  // Same pending gate as flushQueue: a wrapped key parked for a DM invitee is
+  // held until they accept (status flips to 'active').
   const pending = await pool.query(
     `SELECT ko.id, ko.channel_id, ko.sender_id, ko.ciphertext, ko.nonce, ko.created_at,
             u.pubkey, u.sign_pubkey
      FROM key_offers ko
      JOIN users u ON u.id = ko.sender_id
-     WHERE ko.recipient_id = $1
+     JOIN channel_members cm
+       ON cm.channel_id = ko.channel_id AND cm.user_id = ko.recipient_id
+     WHERE ko.recipient_id = $1 AND cm.status = 'active'
      ORDER BY ko.created_at ASC`,
     [userId]
   );
@@ -547,6 +579,24 @@ async function flushKeyOffers(userId, ws) {
       createdAt: row.created_at,
     }));
   }
+}
+
+// Called from the accept route once a DM invitee becomes active. Pushes what was
+// withheld while pending to their live sockets -- the wrapped key first, then the
+// queued messages, so the key is installed before the bodies that need it. If
+// they are offline, the ordinary connect-time flush covers it on reconnect.
+export function resumeDelivery(userId) {
+  (async () => {
+    for (const ws of socketsFor(userId)) {
+      if (ws.readyState !== ws.OPEN) continue;
+      try {
+        await flushKeyOffers(userId, ws);
+        await flushQueue(userId, ws);
+      } catch (err) {
+        console.error('resumeDelivery failed:', err.message);
+      }
+    }
+  })();
 }
 
 // Undelivered mail is not an archive. Anything past the TTL is dropped so the

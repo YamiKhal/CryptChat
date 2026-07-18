@@ -4,7 +4,7 @@ import { pool } from '../db.js';
 import { config } from '../config.js';
 import { requireAuth } from '../middleware/auth.js';
 import { joinLimiter, apiLimiter } from '../middleware/security.js';
-import { notifyMemberJoined, notifyMemberLeft } from '../ws/relay.js';
+import { notifyMemberJoined, notifyMemberLeft, resumeDelivery } from '../ws/relay.js';
 import { entitlementsFor } from '../lib/entitlements.js';
 
 const router = Router();
@@ -190,7 +190,8 @@ router.post('/join', joinLimiter, requireAuth, async (req, res, next) => {
 router.get('/list', apiLimiter, requireAuth, async (req, res, next) => {
   try {
     const result = await pool.query(
-      `SELECT c.id, c.code, c.code_expires_at, c.created_at, c.incognito, c.type, cm.joined_at,
+      `SELECT c.id, c.code, c.code_expires_at, c.created_at, c.incognito, c.type,
+              cm.joined_at, cm.status,
               (SELECT count(*) FROM channel_members x WHERE x.channel_id = c.id) AS member_count,
               (SELECT x.user_id FROM channel_members x
                 WHERE x.channel_id = c.id AND x.user_id != $1 LIMIT 1) AS peer_id,
@@ -203,6 +204,16 @@ router.get('/list', apiLimiter, requireAuth, async (req, res, next) => {
        FROM channel_members cm
        JOIN channels c ON c.id = cm.channel_id
        WHERE cm.user_id = $1
+         -- A pending DM invitation only surfaces once the inviter has actually
+         -- sent something: "they need to message you first". An empty DM someone
+         -- opened but never wrote in stays invisible until it has content.
+         AND (
+           cm.status = 'active'
+           OR EXISTS (
+             SELECT 1 FROM message_queue mq
+              WHERE mq.channel_id = c.id AND mq.recipient_id = $1
+           )
+         )
        ORDER BY cm.joined_at DESC`,
       [req.userId]
     );
@@ -218,8 +229,12 @@ router.get('/list', apiLimiter, requireAuth, async (req, res, next) => {
         incognito: r.incognito,
         type: r.type,
         memberCount: Number(r.member_count),
-        // Peer identity and block state are meaningful only for a DM.
-        ...(r.type === 'dm' ? { peerId: r.peer_id, blocked: r.blocked === true } : {}),
+        // Peer identity, block state, and a pending-invite flag are meaningful
+        // only for a DM. `request` marks a DM this user has been invited to but
+        // not yet accepted -- the client shows accept / decline instead of opening.
+        ...(r.type === 'dm'
+          ? { peerId: r.peer_id, blocked: r.blocked === true, request: r.status === 'pending' }
+          : {}),
       })),
     });
   } catch (err) {
@@ -280,6 +295,33 @@ router.post('/:channelId/rotate-code', apiLimiter, requireAuth, async (req, res,
   }
 });
 
+// Accept a pending DM invitation. Flips this user's membership to 'active',
+// which is what releases the withheld key and queued messages -- so the relay is
+// then asked to deliver them immediately rather than waiting for a reconnect.
+// Declining an invitation is just leaving it (DELETE /leave), which removes the
+// membership and its queued mail; there is nothing distinct to accept.
+router.post('/:channelId/accept', apiLimiter, requireAuth, async (req, res, next) => {
+  try {
+    const updated = await pool.query(
+      `UPDATE channel_members cm SET status = 'active'
+         FROM channels c
+        WHERE cm.channel_id = $1 AND cm.user_id = $2 AND cm.status = 'pending'
+          AND c.id = cm.channel_id AND c.type = 'dm'
+        RETURNING cm.user_id`,
+      [req.params.channelId, req.userId]
+    );
+    if (updated.rowCount === 0) {
+      return res.status(404).json({ error: 'no pending request' });
+    }
+    // Release what was held back while pending: the wrapped key first, then the
+    // queued messages, so the client has the key before the bodies it decrypts.
+    resumeDelivery(req.userId);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.delete('/:channelId/leave', apiLimiter, requireAuth, async (req, res, next) => {
   try {
     const removed = await pool.query(
@@ -290,11 +332,31 @@ router.delete('/:channelId/leave', apiLimiter, requireAuth, async (req, res, nex
       'DELETE FROM message_queue WHERE channel_id = $1 AND recipient_id = $2',
       [req.params.channelId, req.userId]
     );
+    // Declining a DM invite lands here too: drop any wrapped key parked for us,
+    // so a re-invite starts clean rather than reusing a stale offer.
+    await pool.query(
+      'DELETE FROM key_offers WHERE channel_id = $1 AND recipient_id = $2',
+      [req.params.channelId, req.userId]
+    );
 
-    // Tell the remaining members someone left -- anonymously. Only when a
-    // membership row was actually removed, so a repeated leave does not emit a
-    // phantom event.
-    if (removed.rowCount > 0) notifyMemberLeft(req.params.channelId);
+    if (removed.rowCount > 0) {
+      // If that was the last member of a DM, delete the channel outright so its
+      // dm_key is freed. A DM row both sides have left holds a key nobody has any
+      // more: kept around, a later re-open returns that same room with
+      // created=false, and the re-opener waits forever for a key no member can
+      // supply. Deleting it makes the next DM between the pair a clean, new room.
+      // Scoped to DMs -- a group's code must keep resolving even when empty.
+      await pool.query(
+        `DELETE FROM channels c
+          WHERE c.id = $1 AND c.type = 'dm'
+            AND NOT EXISTS (SELECT 1 FROM channel_members m WHERE m.channel_id = c.id)`,
+        [req.params.channelId]
+      );
+
+      // Tell any remaining member someone left -- anonymously. A no-op once the
+      // channel above is gone (no members to notify).
+      notifyMemberLeft(req.params.channelId);
+    }
 
     res.json({ ok: true });
   } catch (err) {
@@ -376,12 +438,30 @@ router.post('/dm', apiLimiter, requireAuth, async (req, res, next) => {
       return res.status(503).json({ error: 'could not allocate a channel, retry' });
     }
 
-    // Both memberships, idempotently: re-DMing after one side left re-adds them.
+    // Both memberships, idempotently. The initiator joins active; the peer joins
+    // 'pending' -- an invitation, not yet a full member. ON CONFLICT DO NOTHING
+    // means re-opening an already-accepted DM never downgrades the peer back to
+    // pending, while re-DMing after they left (their row gone) re-invites them.
     await client.query(
-      `INSERT INTO channel_members (channel_id, user_id) VALUES ($1, $2), ($1, $3)
+      `INSERT INTO channel_members (channel_id, user_id, status)
+       VALUES ($1, $2, 'active'), ($1, $3, 'pending')
        ON CONFLICT DO NOTHING`,
       [channelId, req.userId, peerId]
     );
+
+    // Whether the peer is an active member -- i.e. a key-holder the opener can
+    // ask. The peer is only active if they were already a full member (this call
+    // never activates them: a fresh invite is 'pending'). When they are NOT
+    // active, nobody holds the channel key, so the opener must mint one instead of
+    // waiting for a key-offer that will never come -- which is the "waiting for
+    // the channel key" deadlock a both-sides-left orphan otherwise causes. The
+    // opener's own client still checks its local key first, so this never forces
+    // a needless re-mint on a DM it already holds.
+    const peerRow = await client.query(
+      "SELECT status FROM channel_members WHERE channel_id = $1 AND user_id = $2",
+      [channelId, peerId]
+    );
+    const peerActive = peerRow.rows[0]?.status === 'active';
 
     await client.query('COMMIT');
 
@@ -389,6 +469,9 @@ router.post('/dm', apiLimiter, requireAuth, async (req, res, next) => {
       channelId,
       type: 'dm',
       created,
+      // The peer is an active member who can supply the existing key. False means
+      // the opener should mint a fresh one (new or revived DM).
+      peerActive,
       peer: {
         userId: peerId,
         pubkey: peer.rows[0].pubkey,

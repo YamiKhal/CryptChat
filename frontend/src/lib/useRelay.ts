@@ -52,6 +52,8 @@ export interface SendPayload {
   lock?: { code: string; hint?: string };
   /** Burn-after-read ttl in seconds; the message self-destructs after first view. */
   burn?: number;
+  /** Cover the whole message until the reader clicks to reveal it. */
+  spoiler?: boolean;
 }
 
 interface ParkedReaction {
@@ -138,7 +140,8 @@ type Incoming =
   | { type: 'signal'; channelId: string; senderId: string; ciphertext: string; nonce: string }
   | { type: 'profile-request'; channelId: string; requesterId: string }
   | { type: 'sent'; clientId: string; channelId: string }
-  | { type: 'key-offer-sent'; channelId: string; recipientId: string };
+  | { type: 'key-offer-sent'; channelId: string; recipientId: string }
+  | { type: 'dm-request'; channelId: string };
 
 export function useRelay({
   vault,
@@ -206,6 +209,8 @@ export function useRelay({
         await v.updateContactProfile(data.senderId, {
           displayName: envelope.displayName,
           avatar: envelope.avatar,
+          bio: envelope.bio,
+          background: envelope.background,
         });
         handlers.current.onChannelKey?.(data.channelId);
       }
@@ -314,6 +319,7 @@ export function useRelay({
       // The recipient's burn clock starts when the message is first shown, not
       // now -- so firstViewedAt is left unset for processBurns to stamp.
       burnTtl: envelope.burn?.ttl,
+      spoiler: envelope.spoiler === true,
       // Only honour the crown on a verified message: an unverified one has no
       // trustworthy sender to attribute a badge to.
       supporterClaimed: verified && envelope.supporter === true,
@@ -390,6 +396,7 @@ export function useRelay({
       hasKey: true,
       joinedAt: existing?.joinedAt ?? new Date().toISOString(),
       label: existing?.label,
+      icon: existing?.icon,
       // Preserve the incognito flag: dropping it here reverted a joiner to a
       // normal channel the moment the key arrived, leaking their real name.
       incognito: existing?.incognito,
@@ -467,6 +474,8 @@ export function useRelay({
           body: '',
           displayName: profile.displayName,
           avatar: profile.avatar,
+          bio: profile.bio,
+          background: profile.background,
           sentAt: new Date().toISOString(),
         },
         channelId,
@@ -580,6 +589,13 @@ export function useRelay({
               // trade profiles forever.
               await broadcastProfile(data.channelId);
               break;
+            case 'dm-request':
+              // A DM invitation just gained its first message. Nothing is
+              // delivered yet -- just nudge the UI to refetch /channel/list so the
+              // request appears. onChannelKey bumps the relay revision, which is
+              // what the channel list reloads on.
+              handlers.current.onChannelKey?.(data.channelId);
+              break;
             default:
               break;
           }
@@ -650,6 +666,7 @@ export function useRelay({
           locked,
           burn,
           supporter,
+          spoiler: payload.spoiler ? true : undefined,
           sentAt,
         },
         channelId,
@@ -689,6 +706,7 @@ export function useRelay({
         // Our own copy burns too, clocked from send -- we have already read it.
         burnTtl: payload.burn,
         firstViewedAt: payload.burn ? sentAt : undefined,
+        spoiler: payload.spoiler || undefined,
         createdAt: sentAt,
         verified: true,
         pending: ws?.readyState !== WebSocket.OPEN,
@@ -895,13 +913,17 @@ export function useRelay({
    * Open (or re-open) a 1:1 DM with a peer, returning the channel id to navigate
    * to.
    *
-   * Three cases, distinguished by the server's `created` flag and what we already
-   * hold locally:
-   *  - already keyed here    -> just tag it as a DM.
-   *  - freshly created       -> I am the creator: mint the channel key and wrap
-   *                             it for the peer (same handshake as a group join).
-   *  - existed, key not here  -> new device, or I left and re-opened: record it
-   *                             unkeyed and ask the peer for the key.
+   * Three cases, distinguished by what we hold locally and whether any keyed
+   * peer exists (`created` = a brand-new room; `peerActive` = the peer is a full
+   * member who holds the key):
+   *  - already keyed here          -> just tag it as a DM.
+   *  - new room, or no active peer  -> mint the channel key and wrap it for the
+   *                                    peer. "No active peer" is the both-sides-
+   *                                    left case: nobody holds the old key, so
+   *                                    asking for it would hang forever ("waiting
+   *                                    for the channel key") -- mint a fresh one.
+   *  - peer is active, key not here -> new device, or only I left and re-opened:
+   *                                    the peer still holds it, so ask them.
    */
   const openDirectMessage = useCallback(
     async (peerId: string): Promise<string | null> => {
@@ -914,7 +936,7 @@ export function useRelay({
 
       if (existing?.hasKey) {
         await v.saveChannel({ ...existing, type: 'dm', peerId: res.peer.userId });
-      } else if (res.created) {
+      } else if (res.created || !res.peerActive) {
         const key = await generateChannelKey();
         await v.saveChannel({
           channelId: res.channelId,

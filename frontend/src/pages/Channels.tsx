@@ -1,11 +1,149 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { Copy, Pencil, LogOut, Ban, Image as ImageIcon, Trash2, Check, X } from 'lucide-react';
 import { api } from '../lib/api';
 import { generateChannelKey } from '../lib/crypto';
+import { fileToAsset, BinaryAsset } from '../lib/binary';
 import { useSession } from '../lib/session';
 import { useRelayContext } from '../lib/relayContext';
 import { StoredChannel } from '../lib/vault';
+import { ContextMenu, useContextMenu, MenuItem } from '../components/ContextMenu';
+import { ChannelNameModal, MAX_CHANNEL_NAME } from '../components/ChannelNameModal';
+import { ChannelIcon } from '../components/ChannelIcon';
 import Avatar from '../components/Avatar';
+
+/**
+ * One channel row plus its context-menu wiring.
+ *
+ * Split out for the same reason MessageRow is in Chat: `useContextMenu` is a
+ * hook and cannot be called inside the list's map(). Each row tracks its own
+ * press, then lifts the opened position up to the page, which owns the single
+ * menu so two rows never render one at once.
+ */
+function ChannelRow({
+  channel,
+  peerName,
+  peerAvatar,
+  unread,
+  onOpen,
+  onOpenMenu,
+  onAccept,
+  onDecline,
+}: {
+  channel: StoredChannel;
+  peerName?: string;
+  peerAvatar?: BinaryAsset;
+  unread: number;
+  onOpen: () => void;
+  onOpenMenu: (x: number, y: number) => void;
+  onAccept: () => void;
+  onDecline: () => void;
+}) {
+  const { handlers, position, close } = useContextMenu();
+
+  // A touch long-press opens the menu, then releasing the finger synthesises a
+  // click on the button -- which would navigate into the chat as the menu opens.
+  // Swallow exactly that trailing click. Only for touch: a mouse right-click
+  // fires no click, so leaving the flag set would wrongly eat a later real one.
+  const pointerType = useRef('mouse');
+  const swallowClick = useRef(false);
+
+  useEffect(() => {
+    if (position) {
+      if (pointerType.current !== 'mouse') swallowClick.current = true;
+      onOpenMenu(position.x, position.y);
+      close();
+    }
+  }, [position, onOpenMenu, close]);
+
+  const isDm = channel.type === 'dm';
+  // The code is never a title -- it is an identifier, not a name. An unnamed
+  // channel is just "Group"; a DM is the peer. The code lives in the menu.
+  const title = isDm ? peerName || 'direct message' : channel.label || 'Group';
+  // A pending DM invitation: the row does not open (there is no key and nothing
+  // to read yet), it offers accept / decline instead.
+  const request = Boolean(channel.request);
+
+  // Nested buttons are invalid, so the row is a div: the identity is one button
+  // (open / menu), and the accept/decline controls are their own buttons beside it.
+  return (
+    <div
+      className="flex w-full items-center gap-3 rounded-lg border border-border bg-surface p-3
+                 transition-colors hover:border-primary/50"
+    >
+      <button
+        onPointerDownCapture={(e) => {
+          pointerType.current = e.pointerType;
+        }}
+        onClick={() => {
+          if (swallowClick.current) {
+            swallowClick.current = false;
+            return;
+          }
+          if (request) return; // nothing to open until accepted
+          onOpen();
+        }}
+        {...handlers}
+        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+      >
+        <ChannelIcon channel={channel} peerName={peerName} peerAvatar={peerAvatar} size="md" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-foreground">{title}</p>
+          {request ? (
+            <p className="text-[11px] text-primary">wants to message you</p>
+          ) : (
+            <p className="flex items-center gap-1.5 text-[11px] text-muted">
+              joined {new Date(channel.joinedAt).toLocaleDateString()}
+              {isDm && <span className="tag bg-primary/10 text-primary">direct</span>}
+              {channel.blocked && <span className="tag bg-error/10 text-error">blocked</span>}
+              {channel.incognito && (
+                <span className="tag bg-secondary/10 text-secondary">incognito</span>
+              )}
+            </p>
+          )}
+        </div>
+      </button>
+
+      {request ? (
+        <div className="flex flex-none items-center gap-1.5">
+          <button
+            onClick={onAccept}
+            title="Accept"
+            aria-label="Accept message request"
+            className="rounded-full p-1.5 text-ok transition-colors hover:bg-ok/10"
+          >
+            <Check size={17} />
+          </button>
+          <button
+            onClick={onDecline}
+            title="Decline"
+            aria-label="Decline message request"
+            className="rounded-full p-1.5 text-error transition-colors hover:bg-error/10"
+          >
+            <X size={17} />
+          </button>
+        </div>
+      ) : (
+        <>
+          {unread > 0 && (
+            <span
+              className="inline-flex min-w-5 flex-none items-center justify-center rounded-full
+                         bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground"
+              aria-label={`${unread} unread`}
+            >
+              {unread > 99 ? '99+' : unread}
+            </span>
+          )}
+          {channel.hasKey ? (
+            <span className="tag flex-none bg-primary/10 text-primary">keyed</span>
+          ) : (
+            <span className="tag flex-none animate-pulse bg-warn/10 text-warn">no key</span>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
 export default function Channels() {
   const { vault, token, account, lock } = useSession();
@@ -20,6 +158,12 @@ export default function Channels() {
   const [busy, setBusy] = useState(false);
   const [premium, setPremium] = useState(false);
   const [incognitoNew, setIncognitoNew] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [menu, setMenu] = useState<{ channel: StoredChannel; x: number; y: number } | null>(null);
+  const [renaming, setRenaming] = useState<StoredChannel | null>(null);
+  // The group whose picture the hidden file input is about to set.
+  const iconTarget = useRef<StoredChannel | null>(null);
+  const iconInput = useRef<HTMLInputElement>(null);
 
   const reload = useCallback(() => {
     if (!vault) return;
@@ -94,6 +238,7 @@ export default function Channels() {
               type: dmType,
               peerId: summary.peerId,
               blocked: summary.blocked,
+              request: summary.request,
               joinedAt: summary.joinedAt,
             });
             changed = true;
@@ -102,9 +247,10 @@ export default function Channels() {
             local.incognito !== summary.incognito ||
             local.type !== dmType ||
             local.peerId !== summary.peerId ||
-            Boolean(local.blocked) !== Boolean(summary.blocked)
+            Boolean(local.blocked) !== Boolean(summary.blocked) ||
+            Boolean(local.request) !== Boolean(summary.request)
           ) {
-            // Code rotated, or we learned DM/incognito/block state from the server.
+            // Code rotated, or we learned DM/incognito/block/request state.
             await vault.saveChannel({
               ...local,
               code: summary.code,
@@ -112,6 +258,7 @@ export default function Channels() {
               type: dmType,
               peerId: summary.peerId,
               blocked: summary.blocked,
+              request: summary.request,
             });
             changed = true;
           }
@@ -127,7 +274,10 @@ export default function Channels() {
     return () => {
       cancelled = true;
     };
-  }, [vault, token, reload]);
+    // revision: a relay event (notably a 'dm-request' nudge, which bumps it) must
+    // re-pull the server list so an incoming DM invitation appears without a
+    // manual refresh.
+  }, [vault, token, reload, revision]);
 
   async function handleCreate() {
     if (!vault || !token) return;
@@ -146,9 +296,11 @@ export default function Channels() {
         key,
         hasKey: true,
         incognito: res.incognito,
+        label: newName.trim() || undefined,
         joinedAt: new Date().toISOString(),
       });
       setIncognitoNew(false);
+      setNewName('');
 
       reload();
       navigate(`/chat/${res.channelId}`);
@@ -203,6 +355,152 @@ export default function Channels() {
     }
   }
 
+  async function copyCode(code: string) {
+    try {
+      await navigator.clipboard.writeText(code);
+      setNotice('Channel code copied.');
+    } catch {
+      // Clipboard blocked (insecure context, denied permission): surface the
+      // code so it can still be copied by hand rather than failing silently.
+      setNotice(`Channel code: ${code}`);
+    }
+    setError('');
+  }
+
+  async function handleRename(channel: StoredChannel, name: string) {
+    if (!vault) return;
+    await vault.saveChannel({ ...channel, label: name.trim() || undefined });
+    reload();
+  }
+
+  function pickIcon(channel: StoredChannel) {
+    iconTarget.current = channel;
+    iconInput.current?.click();
+  }
+
+  async function handleIconFile(file: File | undefined) {
+    const channel = iconTarget.current;
+    iconTarget.current = null;
+    if (iconInput.current) iconInput.current.value = '';
+    if (!file || !vault || !channel) return;
+    try {
+      // Square, downscaled, re-encoded to WebP -- the re-encode strips EXIF, same
+      // pipeline as the profile avatar. A channel icon is local, but a picture a
+      // user drops in should never keep GPS metadata regardless.
+      const icon = await fileToAsset(file, {
+        maxDimension: 256,
+        square: true,
+        mime: 'image/webp',
+        quality: 0.85,
+      });
+      await vault.saveChannel({ ...channel, icon });
+      reload();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function handleRemoveIcon(channel: StoredChannel) {
+    if (!vault) return;
+    await vault.saveChannel({ ...channel, icon: undefined });
+    reload();
+  }
+
+  async function handleAcceptDm(channel: StoredChannel) {
+    if (!vault || !token) return;
+    setError('');
+    try {
+      await api.acceptDm(token, channel.channelId);
+      // Drop the request flag locally; the withheld key and messages now flow
+      // over the relay (resumeDelivery), which lands the key via a key-offer.
+      await vault.saveChannel({ ...channel, request: false });
+      reload();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function handleDeclineDm(channel: StoredChannel) {
+    if (!vault || !token) return;
+    if (!confirm('Decline this message request? It is removed and they are not told.')) return;
+    // Declining is leaving the pending DM: the server drops the membership, the
+    // queued messages, and the parked key.
+    await api.leaveChannel(token, channel.channelId).catch(() => {});
+    await vault.removeChannel(channel.channelId);
+    reload();
+  }
+
+  async function handleLeave(channel: StoredChannel) {
+    if (!vault || !token) return;
+    const message =
+      channel.type === 'dm'
+        ? 'Leave this direct message? It is removed from this device; the other person keeps their copy.'
+        : 'Leave this channel? Its key and local messages are deleted from this device.';
+    if (!confirm(message)) return;
+    await api.leaveChannel(token, channel.channelId).catch(() => {});
+    await vault.removeChannel(channel.channelId);
+    reload();
+  }
+
+  async function handleToggleBlock(channel: StoredChannel) {
+    if (!vault || !token) return;
+    const next = !channel.blocked;
+    try {
+      if (next) await api.blockDm(token, channel.channelId);
+      else await api.unblockDm(token, channel.channelId);
+      await vault.saveChannel({ ...channel, blocked: next });
+      reload();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  function menuItems(channel: StoredChannel): MenuItem[] {
+    const items: MenuItem[] = [
+      {
+        label: 'Copy channel code',
+        icon: <Copy size={14} />,
+        onSelect: () => copyCode(channel.code),
+      },
+      {
+        label: channel.label ? 'Rename' : 'Set a name',
+        icon: <Pencil size={14} />,
+        onSelect: () => setRenaming(channel),
+      },
+    ];
+    // A group's picture is settable; a DM's icon always tracks the peer's own
+    // avatar, so there is nothing to set here.
+    if (channel.type !== 'dm') {
+      items.push({
+        label: channel.icon ? 'Change picture' : 'Set a picture',
+        icon: <ImageIcon size={14} />,
+        onSelect: () => pickIcon(channel),
+      });
+      if (channel.icon) {
+        items.push({
+          label: 'Remove picture',
+          icon: <Trash2 size={14} />,
+          onSelect: () => handleRemoveIcon(channel),
+        });
+      }
+    }
+    if (channel.type === 'dm') {
+      items.push({
+        label: channel.blocked ? 'Unblock' : 'Block',
+        icon: <Ban size={14} />,
+        danger: !channel.blocked,
+        onSelect: () => handleToggleBlock(channel),
+      });
+    }
+    items.push({
+      label: channel.type === 'dm' ? 'Leave conversation' : 'Leave channel',
+      icon: <LogOut size={14} />,
+      danger: true,
+      onSelect: () => handleLeave(channel),
+    });
+    return items;
+  }
+
   if (!vault || !account) return null;
 
   const profile = vault.profile;
@@ -231,6 +529,14 @@ export default function Channels() {
       </header>
 
       <section className="card space-y-3">
+        <input
+          className="field w-full"
+          placeholder="channel name (optional)"
+          maxLength={MAX_CHANNEL_NAME}
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && !busy && handleCreate()}
+        />
         <button onClick={handleCreate} disabled={busy} className="btn-primary w-full">
           Create {incognitoNew ? 'incognito ' : ''}channel
         </button>
@@ -290,46 +596,43 @@ export default function Channels() {
         )}
 
         {channels.map((channel) => (
-          <button
+          <ChannelRow
             key={channel.channelId}
-            onClick={() => navigate(`/chat/${channel.channelId}`)}
-            className="flex w-full items-center gap-3 rounded-lg border border-border bg-surface p-3
-                       text-left transition-colors hover:border-primary/50"
-          >
-            <div className="min-w-0 flex-1">
-              {channel.type === 'dm' ? (
-                <p className="truncate text-sm font-medium text-foreground">
-                  {(channel.peerId && vault.getContact(channel.peerId)?.displayName) || 'direct message'}
-                </p>
-              ) : (
-                <p className="font-mono text-sm tracking-widest text-primary">
-                  {channel.code || '········'}
-                </p>
-              )}
-              <p className="flex items-center gap-1.5 text-[11px] text-muted">
-                joined {new Date(channel.joinedAt).toLocaleDateString()}
-                {channel.type === 'dm' && <span className="tag bg-primary/10 text-primary">direct</span>}
-                {channel.blocked && <span className="tag bg-error/10 text-error">blocked</span>}
-                {channel.incognito && <span className="tag bg-secondary/10 text-secondary">incognito</span>}
-              </p>
-            </div>
-            {unread[channel.channelId] > 0 && (
-              <span
-                className="inline-flex min-w-5 items-center justify-center rounded-full bg-primary
-                           px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground"
-                aria-label={`${unread[channel.channelId]} unread`}
-              >
-                {unread[channel.channelId] > 99 ? '99+' : unread[channel.channelId]}
-              </span>
-            )}
-            {channel.hasKey ? (
-              <span className="tag bg-primary/10 text-primary">keyed</span>
-            ) : (
-              <span className="tag animate-pulse bg-warn/10 text-warn">no key</span>
-            )}
-          </button>
+            channel={channel}
+            peerName={channel.peerId ? vault.getContact(channel.peerId)?.displayName : undefined}
+            peerAvatar={channel.peerId ? vault.getContact(channel.peerId)?.avatar : undefined}
+            unread={unread[channel.channelId] ?? 0}
+            onOpen={() => navigate(`/chat/${channel.channelId}`)}
+            onOpenMenu={(x, y) => setMenu({ channel, x, y })}
+            onAccept={() => handleAcceptDm(channel)}
+            onDecline={() => handleDeclineDm(channel)}
+          />
         ))}
       </section>
+
+      {menu && (
+        <ContextMenu
+          items={menuItems(menu.channel)}
+          position={{ x: menu.x, y: menu.y }}
+          onClose={() => setMenu(null)}
+        />
+      )}
+
+      {renaming && (
+        <ChannelNameModal
+          channel={renaming}
+          onClose={() => setRenaming(null)}
+          onSubmit={(name) => handleRename(renaming, name)}
+        />
+      )}
+
+      <input
+        ref={iconInput}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => handleIconFile(e.target.files?.[0])}
+      />
     </div>
   );
 }
