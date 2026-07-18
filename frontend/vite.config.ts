@@ -25,10 +25,16 @@ import crypto from 'node:crypto';
  *
  * NOTE: this cannot be verified from a headless build -- a green build does not
  * prove the running app is allowed. Smoke-test the production bundle in a real
- * browser (log in, send a message, upload an image, open a 2FA prompt) before
- * relying on it. The riskiest line is `require-trusted-types-for 'script'`: the
- * code uses no HTML/script sinks today, but an unforeseen one would throw. If a
- * violation shows up, drop that single directive.
+ * browser (log in, send a message, upload an image, open a 2FA prompt, PLACE A
+ * CALL) before relying on it. The riskiest line is `require-trusted-types-for
+ * 'script'`: the code uses no HTML/script sinks today, but an unforeseen one
+ * would throw. If a violation shows up, drop that single directive.
+ *
+ * WebRTC: `webrtc 'allow'` explicitly permits RTCPeerConnection under
+ * `default-src 'none'` (engines implementing the CSP3 webrtc directive gate it
+ * otherwise). ICE/STUN/TURN traffic is not governed by connect-src per spec, so
+ * the coturn host does not need listing there. `media-src blob:` covers any
+ * stream bound through a blob URL.
  */
 function contentSecurityPolicy(): Plugin {
   return {
@@ -66,8 +72,14 @@ function contentSecurityPolicy(): Plugin {
         // blob: for decrypted images, data: for the theme wallpaper.
         `img-src 'self' blob: data:`,
         `font-src 'self'`,
+        // blob: covers any call stream bound through a blob URL. srcObject
+        // MediaStreams are not CSP-governed, but this is the safe superset.
+        `media-src 'self' blob:`,
         `connect-src 'self' ${apiOrigin} ${wsOrigin}`.trim(),
         `worker-src 'self' blob:`,
+        // Explicitly permit RTCPeerConnection for 1:1 DM calls under the strict
+        // default-src. ICE/TURN traffic itself is not connect-src-governed.
+        `webrtc 'allow'`,
         `base-uri 'none'`,
         `object-src 'none'`,
         `frame-ancestors 'none'`,

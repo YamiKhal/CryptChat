@@ -331,3 +331,44 @@ ALTER TABLE channels ADD COLUMN IF NOT EXISTS incognito BOOLEAN NOT NULL DEFAULT
 -- id while recipients used this table's row id -- so an edit/delete/reaction
 -- targeting a message could never be matched on the other side.
 ALTER TABLE message_queue ADD COLUMN IF NOT EXISTS client_id TEXT;
+
+-- ------------------------------------------------------------------
+-- Direct messages (1:1 channels) + blocking.
+--
+-- A DM is an ordinary channel with type='dm' and exactly two members, created by
+-- one user against another rather than joined by a code. It reuses the whole
+-- channel-key handshake (the initiator mints a key and wraps it for the peer),
+-- so nothing below changes what the server can see: message bodies and call
+-- signaling stay end-to-end encrypted ciphertext it only routes.
+-- ------------------------------------------------------------------
+
+-- 'group' (code-joinable, N members) | 'dm' (1:1, created against a user).
+ALTER TABLE channels ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'group';
+
+-- The two members' UUIDs sorted and joined 'min:max'. Its uniqueness is what
+-- makes DM creation idempotent: a pair has at most one DM, so a second attempt
+-- returns the existing room instead of a duplicate. Null for group channels;
+-- the partial unique index below lets those NULLs coexist.
+ALTER TABLE channels ADD COLUMN IF NOT EXISTS dm_key TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS channels_dm_key_idx
+  ON channels (dm_key) WHERE dm_key IS NOT NULL;
+
+-- One row = "blocker no longer wants blocked's DM messages, and blocked cannot
+-- open a new DM with blocker". Pair-scoped, not channel-scoped, so it survives
+-- leaving and re-creating the DM. DM-scoped by design: it never touches a shared
+-- group channel (see the block-scope decision in the plan).
+--
+-- Enforced in two places: the relay skips queueing a message to a recipient who
+-- blocked the sender (delivery stops), and POST /channel/dm refuses a blocked
+-- initiator (no new DM).
+CREATE TABLE IF NOT EXISTS dm_blocks (
+  blocker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  blocked_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  PRIMARY KEY (blocker_id, blocked_id)
+);
+
+-- Lookup by (recipient blocked sender?) on every relayed DM frame, so index the
+-- direction the relay queries.
+CREATE INDEX IF NOT EXISTS dm_blocks_pair_idx ON dm_blocks (blocker_id, blocked_id);

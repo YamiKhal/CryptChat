@@ -130,6 +130,35 @@ if (mailApiKey && /yourdomain\.example|example\.com>?$|@localhost/i.test(mailFro
   process.exit(1);
 }
 
+// WebRTC 1:1 calls (DMs). Media is peer-to-peer and DTLS-SRTP encrypted; the
+// server never sees it. These only configure ICE -- how the two peers find a
+// path to each other.
+//
+//   STUN  -- public-IP discovery. Cheap, and self-hosted (coturn) so no third
+//            party learns the caller's address.
+//   TURN  -- relays SRTP when direct P2P fails on a strict NAT (~10-20% of
+//            calls). The relay carries only ciphertext it cannot read, but it
+//            costs bandwidth, so it runs on the same coturn.
+//
+// TURN credentials are NOT static here. /rtc/ice mints short-lived ones with
+// coturn's use-auth-secret (HMAC) scheme, so a leaked credential expires in an
+// hour rather than granting relay access forever. TURN_SECRET must match
+// coturn's `static-auth-secret`.
+//
+// All optional: with none set, calls still connect on the same LAN / open NATs,
+// and the UI says so. See docs/calls.md for the coturn-on-Coolify setup.
+const turnUrl = process.env.TURN_URL || '';
+const turnSecret = process.env.TURN_SECRET || '';
+
+if (isProd && turnUrl && !turnSecret) {
+  console.error(
+    'FATAL: TURN_URL is set but TURN_SECRET is missing. /rtc/ice cannot mint\n' +
+      '  credentials, so every call that needs relaying would fail. Set TURN_SECRET\n' +
+      "  to coturn's static-auth-secret."
+  );
+  process.exit(1);
+}
+
 // Rate limits are a security control, not a nuisance: they are what keep
 // /auth/login from being a cheap guessing oracle and an Argon2id CPU-exhaustion
 // vector. The test suite needs them off (it registers dozens of accounts in
@@ -266,6 +295,17 @@ export const config = {
     rpName: 'CryptChat',
     rpId: webauthnRpId,
     origin: webauthnOrigin,
+  },
+
+  rtc: {
+    // Whether the app offers calls at all. STUN alone is enough to advertise
+    // them (LAN / open-NAT calls work); TURN just widens who can connect.
+    stunUrl: process.env.STUN_URL || turnUrl.replace(/^turns?:/, 'stun:') || '',
+    turnUrl,
+    turnSecret,
+    // Lifetime of a minted TURN credential. Long enough to place a call and
+    // reconnect once, short enough that a leaked one is soon useless.
+    credentialTtlSeconds: Number(process.env.TURN_CRED_TTL_SECONDS) || 3600,
   },
 
   mail: {

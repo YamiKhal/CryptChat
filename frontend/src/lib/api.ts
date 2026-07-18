@@ -101,6 +101,19 @@ export interface ChannelSummary {
   joinedAt: string;
   memberCount: number;
   incognito?: boolean;
+  /** 'dm' for a direct message, 'group' (or absent) otherwise. */
+  type?: 'dm' | 'group';
+  /** DM only: the other member. */
+  peerId?: string;
+  /** DM only: whether I have blocked the peer. */
+  blocked?: boolean;
+}
+
+export interface IceResponse {
+  iceServers: RTCIceServer[];
+  ttl: number;
+  /** True when a TURN relay is configured, i.e. strict-NAT calls should connect. */
+  relay: boolean;
 }
 
 export interface UnfurlResponse {
@@ -350,6 +363,27 @@ export const api = {
 
   leaveChannel: (token: string, channelId: string) =>
     request<{ ok: true }>(`/channel/${channelId}/leave`, { method: 'DELETE' }, token),
+
+  /**
+   * Open (or re-open) a 1:1 DM with a peer. Idempotent server-side: a pair has
+   * at most one DM. Returns the peer's public keys so the caller can wrap the
+   * channel key for them, exactly as a group join does.
+   */
+  createDm: (token: string, peerId: string) =>
+    request<{ channelId: string; type: 'dm'; created: boolean; peer: MemberInfo }>(
+      '/channel/dm',
+      { method: 'POST', body: JSON.stringify({ peerId }) },
+      token
+    ),
+
+  blockDm: (token: string, channelId: string) =>
+    request<{ ok: true }>(`/channel/${channelId}/block`, { method: 'POST' }, token),
+
+  unblockDm: (token: string, channelId: string) =>
+    request<{ ok: true }>(`/channel/${channelId}/block`, { method: 'DELETE' }, token),
+
+  /** ICE servers + a freshly minted, short-lived TURN credential for a call. */
+  ice: (token: string) => request<IceResponse>('/rtc/ice', {}, token),
 
   /* --- encrypted blobs --- */
 

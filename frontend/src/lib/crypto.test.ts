@@ -491,6 +491,95 @@ describe('envelopes', () => {
     });
     expect(verified).toBe(false);
   });
+
+  it('round-trips a v6 call signal and verifies it', async () => {
+    const id = await generateIdentity();
+    const key = await generateChannelKey();
+
+    const call = {
+      kind: 'offer' as const,
+      callId: 'call-1',
+      media: 'video' as const,
+      sdp: 'v=0\r\no=- 1 1 IN IP4 0.0.0.0\r\n',
+    };
+
+    const sealed = await createEnvelope(
+      { kind: 'call', body: '', displayName: '', sentAt: '', call },
+      channelId,
+      senderId,
+      id.signPrivateKey,
+      key
+    );
+
+    const { envelope, verified } = await openEnvelope(sealed, key, {
+      senderId,
+      channelId,
+      signPublicKey: id.signPublicKey,
+    });
+
+    expect(verified).toBe(true);
+    expect(envelope.kind).toBe('call');
+    expect(envelope.call).toEqual(call);
+  });
+
+  it('does not verify a call signal whose SDP was swapped by the relay', async () => {
+    // The relay holds the channel key in this scenario (worst case), so it can
+    // re-encrypt -- but it cannot re-sign. A swapped SDP must fail verification,
+    // or a man-in-the-middle could steer the media path.
+    const id = await generateIdentity();
+    const key = await generateChannelKey();
+
+    const sealed = await createEnvelope(
+      {
+        kind: 'call',
+        body: '',
+        displayName: '',
+        sentAt: '',
+        call: { kind: 'offer', callId: 'c', media: 'audio', sdp: 'good-sdp' },
+      },
+      channelId,
+      senderId,
+      id.signPrivateKey,
+      key
+    );
+
+    // Tamper: open, rewrite the SDP, re-seal under the same channel key.
+    const { openWithKey, sealWithKey } = await import('./crypto');
+    const opened = JSON.parse(await openWithKey(sealed, key));
+    opened.call.sdp = 'attacker-sdp';
+    const reSealed = await sealWithKey(JSON.stringify(opened), key);
+
+    const { verified } = await openEnvelope(reSealed, key, {
+      senderId,
+      channelId,
+      signPublicKey: id.signPublicKey,
+    });
+    expect(verified).toBe(false);
+  });
+
+  it('rejects a call signal with an unknown kind', async () => {
+    const id = await generateIdentity();
+    const key = await generateChannelKey();
+
+    const sealed = await createEnvelope(
+      {
+        kind: 'call',
+        body: '',
+        displayName: '',
+        sentAt: '',
+        // Not one of the allowed control kinds.
+        call: { kind: 'evil' as unknown as 'offer', callId: 'c' },
+      },
+      channelId,
+      senderId,
+      id.signPrivateKey,
+      key
+    );
+
+    await expect(
+      openEnvelope(sealed, key, { senderId, channelId, signPublicKey: id.signPublicKey })
+    ).rejects.toThrow(/malformed call signal/);
+  });
 });
 
 describe('channel key wrapping', () => {
@@ -856,7 +945,9 @@ describe('opt-in supporter badge (v5)', () => {
     });
 
     expect(verified).toBe(true);
-    expect(envelope.v).toBe(5);
+    // New envelopes are always the current version; the supporter flag rides the
+    // v5+ block, so the property that matters is that it is carried and signed.
+    expect(envelope.v).toBe(ENVELOPE_VERSION);
     expect(envelope.supporter).toBe(true);
   });
 

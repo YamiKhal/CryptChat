@@ -5,11 +5,13 @@ import {
   openEnvelope,
   wrapChannelKeyForRecipient,
   unwrapChannelKey,
+  generateChannelKey,
   isSingleEmoji,
   sealWithPassword,
   Attachment,
   LinkPreview,
   ReplyRef,
+  CallSignal,
 } from './crypto';
 import { BinaryAsset } from './binary';
 import { Vault, StoredMessage } from './vault';
@@ -36,6 +38,8 @@ interface RelayOptions {
   onTyping?: (event: { channelId: string; senderId: string; stop: boolean }) => void;
   /** Anonymous join/leave notice for a channel. Carries no identity. */
   onPresence?: (event: { channelId: string; event: 'joined' | 'left' }) => void;
+  /** A verified WebRTC call-control frame for a DM. Never stored. */
+  onSignal?: (event: { channelId: string; senderId: string; signal: CallSignal }) => void;
 }
 
 export interface SendPayload {
@@ -131,6 +135,7 @@ type Incoming =
   | { type: 'member-joined'; channelId: string; userId: string; pubkey: string; signPubkey: string }
   | { type: 'member-left'; channelId: string }
   | { type: 'typing'; channelId: string; senderId: string; stop?: boolean }
+  | { type: 'signal'; channelId: string; senderId: string; ciphertext: string; nonce: string }
   | { type: 'profile-request'; channelId: string; requesterId: string }
   | { type: 'sent'; clientId: string; channelId: string }
   | { type: 'key-offer-sent'; channelId: string; recipientId: string };
@@ -144,13 +149,14 @@ export function useRelay({
   onKeyChangeWarning,
   onTyping,
   onPresence,
+  onSignal,
 }: RelayOptions) {
   const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
 
   // Handlers change every render; the socket must not.
-  const handlers = useRef({ onMessage, onChannelKey, onKeyChangeWarning, onTyping, onPresence });
-  handlers.current = { onMessage, onChannelKey, onKeyChangeWarning, onTyping, onPresence };
+  const handlers = useRef({ onMessage, onChannelKey, onKeyChangeWarning, onTyping, onPresence, onSignal });
+  handlers.current = { onMessage, onChannelKey, onKeyChangeWarning, onTyping, onPresence, onSignal };
   const vaultRef = useRef(vault);
   vaultRef.current = vault;
 
@@ -325,6 +331,36 @@ export function useRelay({
     return true;
   }, []);
 
+  const handleIncomingSignal = useCallback(async (data: Extract<Incoming, { type: 'signal' }>) => {
+    const v = vaultRef.current;
+    if (!v) return;
+
+    const channel = v.getChannel(data.channelId);
+    if (!channel?.hasKey) return;
+
+    const contact = v.getContact(data.senderId);
+    const { envelope, verified } = await openEnvelope(
+      { ciphertext: data.ciphertext, nonce: data.nonce },
+      channel.key,
+      {
+        senderId: data.senderId,
+        channelId: data.channelId,
+        signPublicKey: contact?.signPublicKey ?? null,
+      }
+    );
+
+    // A call frame is only honoured if the signature checks out. An unverified
+    // one could ring a user with a fabricated peer or inject an SDP to steer the
+    // media path -- both are dropped rather than surfaced.
+    if (!verified || envelope.kind !== 'call' || !envelope.call) return;
+
+    handlers.current.onSignal?.({
+      channelId: data.channelId,
+      senderId: data.senderId,
+      signal: envelope.call,
+    });
+  }, []);
+
   const handleKeyOffer = useCallback(async (data: Extract<Incoming, { type: 'key-offer' }>) => {
     const v = vaultRef.current;
     if (!v) return false;
@@ -357,6 +393,12 @@ export function useRelay({
       // Preserve the incognito flag: dropping it here reverted a joiner to a
       // normal channel the moment the key arrived, leaking their real name.
       incognito: existing?.incognito,
+      // Preserve DM metadata for the same reason -- for the DM peer this offer
+      // arrives before the /channel/list reconcile that first set these, but on
+      // a reconnect the fields are already local and must not be dropped.
+      type: existing?.type,
+      peerId: existing?.peerId,
+      blocked: existing?.blocked,
     });
 
     handlers.current.onChannelKey?.(data.channelId);
@@ -530,6 +572,9 @@ export function useRelay({
                 stop: data.stop === true,
               });
               break;
+            case 'signal':
+              await handleIncomingSignal(data);
+              break;
             case 'profile-request':
               // Answer only; never chain another request, or two clients would
               // trade profiles forever.
@@ -565,7 +610,7 @@ export function useRelay({
       wsRef.current?.close();
       wsRef.current = null;
     };
-  }, [token, userId, handleIncomingMessage, handleKeyOffer, offerKeyTo, broadcastProfile]);
+  }, [token, userId, handleIncomingMessage, handleKeyOffer, handleIncomingSignal, offerKeyTo, broadcastProfile]);
 
   const send = useCallback(
     async (channelId: string, payload: SendPayload): Promise<StoredMessage | null> => {
@@ -809,6 +854,103 @@ export function useRelay({
     [userId]
   );
 
+  /**
+   * Send a WebRTC call-control frame to the DM peer.
+   *
+   * Wrapped in a signed 'call' envelope and relayed as ciphertext, so the server
+   * routes it without seeing the SDP or candidates. Fire-and-forget: a call is
+   * realtime, so a signal that cannot be sent (socket down) is simply dropped,
+   * never queued.
+   */
+  const sendSignal = useCallback(
+    async (channelId: string, signal: CallSignal) => {
+      const v = vaultRef.current;
+      const ws = wsRef.current;
+      if (!v || !userId || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+      const channel = v.getChannel(channelId);
+      if (!channel?.hasKey) return;
+
+      const sealed = await createEnvelope(
+        { kind: 'call', body: '', displayName: '', call: signal, sentAt: new Date().toISOString() },
+        channelId,
+        userId,
+        v.identity.signPrivateKey,
+        channel.key
+      );
+
+      ws.send(
+        JSON.stringify({
+          type: 'signal',
+          channelId,
+          ciphertext: sealed.ciphertext,
+          nonce: sealed.nonce,
+        })
+      );
+    },
+    [userId]
+  );
+
+  /**
+   * Open (or re-open) a 1:1 DM with a peer, returning the channel id to navigate
+   * to.
+   *
+   * Three cases, distinguished by the server's `created` flag and what we already
+   * hold locally:
+   *  - already keyed here    -> just tag it as a DM.
+   *  - freshly created       -> I am the creator: mint the channel key and wrap
+   *                             it for the peer (same handshake as a group join).
+   *  - existed, key not here  -> new device, or I left and re-opened: record it
+   *                             unkeyed and ask the peer for the key.
+   */
+  const openDirectMessage = useCallback(
+    async (peerId: string): Promise<string | null> => {
+      const v = vaultRef.current;
+      const ws = wsRef.current;
+      if (!v || !token) return null;
+
+      const res = await api.createDm(token, peerId);
+      const existing = v.getChannel(res.channelId);
+
+      if (existing?.hasKey) {
+        await v.saveChannel({ ...existing, type: 'dm', peerId: res.peer.userId });
+      } else if (res.created) {
+        const key = await generateChannelKey();
+        await v.saveChannel({
+          channelId: res.channelId,
+          code: '',
+          key,
+          hasKey: true,
+          type: 'dm',
+          peerId: res.peer.userId,
+          joinedAt: new Date().toISOString(),
+        });
+        await offerKeyTo(res.channelId, {
+          userId: res.peer.userId,
+          pubkey: res.peer.pubkey,
+          signPubkey: res.peer.signPubkey,
+        });
+      } else {
+        await v.saveChannel({
+          channelId: res.channelId,
+          code: '',
+          key: '',
+          hasKey: false,
+          type: 'dm',
+          peerId: res.peer.userId,
+          joinedAt: new Date().toISOString(),
+        });
+        if (ws?.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'request-key', channelId: res.channelId }));
+        }
+      }
+
+      handlers.current.onChannelKey?.(res.channelId);
+      return res.channelId;
+    },
+    [token, offerKeyTo]
+  );
+
   const broadcastProfileEverywhere = useCallback(async () => {
     const v = vaultRef.current;
     if (!v) return;
@@ -822,6 +964,8 @@ export function useRelay({
     send,
     sendReaction,
     sendTyping,
+    sendSignal,
+    openDirectMessage,
     editMessage,
     deleteMessage,
     broadcastProfile,

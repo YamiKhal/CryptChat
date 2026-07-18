@@ -60,6 +60,16 @@ export interface StoredChannel {
   label?: string;
   /** Incognito mode: members shown as colours only, no names or avatars sent. */
   incognito?: boolean;
+  /** 'dm' for a 1:1 direct message; absent/undefined for a normal group channel. */
+  type?: 'dm';
+  /** For a DM: the other member's userId. Drives the header name and call target. */
+  peerId?: string;
+  /**
+   * For a DM: whether I have blocked the peer. Mirrors the server (dm_blocks) so
+   * the composer can be disabled locally; the server is what actually stops
+   * delivery. Reconciled from /channel/list.
+   */
+  blocked?: boolean;
   /**
    * When this channel was last opened. Drives the unread badge on the channel
    * list: messages newer than this (and not our own) are unread. Absent means

@@ -2,6 +2,14 @@ import { createContext, useContext, ReactNode, useCallback, useEffect, useRef, u
 import { useRelay } from './useRelay';
 import { useSession } from './session';
 import { StoredMessage } from './vault';
+import type { CallSignal } from './crypto';
+
+/** A decrypted, verified call-control frame for a DM, handed to the call layer. */
+export interface IncomingSignal {
+  channelId: string;
+  senderId: string;
+  signal: CallSignal;
+}
 
 /**
  * One relay socket for the whole app.
@@ -41,6 +49,12 @@ type RelayValue = ReturnType<typeof useRelay> & {
    */
   isVerified: (userId: string) => boolean;
   setVerified: (userId: string, verified: boolean) => void;
+  /**
+   * Subscribe to incoming DM call frames. A subscription (not a `lastSignal`
+   * state) so the call layer never misses a frame when an offer and its ICE
+   * candidates arrive back-to-back. Returns an unsubscribe.
+   */
+  subscribeSignals: (fn: (event: IncomingSignal) => void) => () => void;
 };
 
 const RelayContext = createContext<RelayValue | null>(null);
@@ -146,6 +160,19 @@ export function RelayProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  // Fan incoming call frames out to the call layer. A listener set, so no frame
+  // is lost to React batching the way a single state value could be.
+  const signalListeners = useRef<Set<(event: IncomingSignal) => void>>(new Set());
+  const onSignal = useCallback((event: IncomingSignal) => {
+    for (const listener of signalListeners.current) listener(event);
+  }, []);
+  const subscribeSignals = useCallback((fn: (event: IncomingSignal) => void) => {
+    signalListeners.current.add(fn);
+    return () => {
+      signalListeners.current.delete(fn);
+    };
+  }, []);
+
   // Clear every pending timer if the provider unmounts (lock/logout), so a
   // stale timer never fires against an unmounted tree.
   useEffect(() => {
@@ -165,6 +192,7 @@ export function RelayProvider({ children }: { children: ReactNode }) {
     onKeyChangeWarning,
     onTyping,
     onPresence,
+    onSignal,
   });
 
   const typingIn = useCallback((channelId: string) => typing[channelId] ?? [], [typing]);
@@ -187,6 +215,7 @@ export function RelayProvider({ children }: { children: ReactNode }) {
         lastPresence,
         isVerified,
         setVerified,
+        subscribeSignals,
       }}
     >
       {children}

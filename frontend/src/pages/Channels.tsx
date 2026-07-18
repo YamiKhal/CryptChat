@@ -79,20 +79,40 @@ export default function Channels() {
         let changed = false;
 
         for (const summary of remote) {
+          const dmType = summary.type === 'dm' ? 'dm' : undefined;
           const local = vault.getChannel(summary.channelId);
           if (!local) {
+            // This is also how the *peer* of a DM learns the channel is a DM:
+            // they never called /channel/dm, they just received a key-offer, so
+            // the server's list is where type/peerId/blocked arrive.
             await vault.saveChannel({
               channelId: summary.channelId,
               code: summary.code,
               key: '',
               hasKey: false,
               incognito: summary.incognito,
+              type: dmType,
+              peerId: summary.peerId,
+              blocked: summary.blocked,
               joinedAt: summary.joinedAt,
             });
             changed = true;
-          } else if (local.code !== summary.code || local.incognito !== summary.incognito) {
-            // Code rotated, or we learned the incognito flag from the server.
-            await vault.saveChannel({ ...local, code: summary.code, incognito: summary.incognito });
+          } else if (
+            local.code !== summary.code ||
+            local.incognito !== summary.incognito ||
+            local.type !== dmType ||
+            local.peerId !== summary.peerId ||
+            Boolean(local.blocked) !== Boolean(summary.blocked)
+          ) {
+            // Code rotated, or we learned DM/incognito/block state from the server.
+            await vault.saveChannel({
+              ...local,
+              code: summary.code,
+              incognito: summary.incognito,
+              type: dmType,
+              peerId: summary.peerId,
+              blocked: summary.blocked,
+            });
             changed = true;
           }
         }
@@ -277,11 +297,19 @@ export default function Channels() {
                        text-left transition-colors hover:border-primary/50"
           >
             <div className="min-w-0 flex-1">
-              <p className="font-mono text-sm tracking-widest text-primary">
-                {channel.code || '········'}
-              </p>
+              {channel.type === 'dm' ? (
+                <p className="truncate text-sm font-medium text-foreground">
+                  {(channel.peerId && vault.getContact(channel.peerId)?.displayName) || 'direct message'}
+                </p>
+              ) : (
+                <p className="font-mono text-sm tracking-widest text-primary">
+                  {channel.code || '········'}
+                </p>
+              )}
               <p className="flex items-center gap-1.5 text-[11px] text-muted">
                 joined {new Date(channel.joinedAt).toLocaleDateString()}
+                {channel.type === 'dm' && <span className="tag bg-primary/10 text-primary">direct</span>}
+                {channel.blocked && <span className="tag bg-error/10 text-error">blocked</span>}
                 {channel.incognito && <span className="tag bg-secondary/10 text-secondary">incognito</span>}
               </p>
             </div>

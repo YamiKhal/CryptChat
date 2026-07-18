@@ -5,11 +5,22 @@
 Shipped (built, tested, `npm run verify` green): **#1 theme + light mode, #2
 custom themes + wallpaper, #3 typing / anon join-leave / unread, #4 delete +
 edit (envelope v4), #5 WebAuthn 2FA, #6 password-locked messages, #7 incognito
-channels.**
+channels, direct messages + block/leave, #8 1:1 WebRTC calls (voice free;
+video + screen-share premium; envelope v6, coturn signaling).**
 
-Deferred by decision: voice/video/screen-share calls (#8) and group-call SFrame
-(#9) — dropped from this pass. TOTP fallback for #5 remains a later addition;
-WebAuthn shipped first as planned.
+**Direct messages + 1:1 calls shipped.** A `type='dm'` channel created by
+right-clicking a user (no join code), with DM-scoped blocking and leave. Calls
+are peer-to-peer WebRTC: media is DTLS-SRTP end-to-end and never touches the
+server; signaling rides the relay as signed, channel-key-encrypted `call`
+envelopes (v6), so the server sees neither SDP nor media. ICE is served from
+`GET /rtc/ice` with short-lived coturn HMAC credentials — see
+[docs/calls.md](docs/calls.md) for the coturn-on-Coolify/Hetzner setup. The
+video/screen-share premium gate is an honest client-side check (bypassable by a
+patched client, documented as such), the same model as custom themes.
+
+Deferred by decision: **group-call SFrame (#9)** — 1:1 calls do not need
+per-frame encryption (no media server sees the stream), so this is only required
+if group calls are added later. TOTP fallback for #5 remains a later addition.
 
 **#7 shipped as display-only.** Members are shown as per-channel colours and no
 name/avatar is sent — but the envelope still carries the real `senderId`, so the

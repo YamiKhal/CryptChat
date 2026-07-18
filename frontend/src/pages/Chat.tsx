@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { CornerUpLeft, Smile, Copy, Download, Pencil, Trash2, Lock, LockKeyhole, Timer, ShieldCheck } from 'lucide-react';
+import { CornerUpLeft, Smile, Copy, Download, Pencil, Trash2, Lock, LockKeyhole, Timer, ShieldCheck, MessageCircle, Phone, Video, Ban } from 'lucide-react';
 import { incognitoHue, incognitoLabel } from '../lib/incognito';
 import TrustPanel from '../components/TrustPanel';
+import { useCall } from '../lib/callContext';
 
 /** Disappearing-message durations offered in the composer. */
 const BURN_OPTIONS = [
@@ -221,6 +222,7 @@ export default function Chat() {
     sendTyping,
     editMessage,
     deleteMessage,
+    openDirectMessage,
     broadcastProfile,
     connected,
     revision,
@@ -229,6 +231,7 @@ export default function Chat() {
     isVerified,
     setVerified,
   } = useRelayContext();
+  const call = useCall();
   const navigate = useNavigate();
 
   const [messages, setMessages] = useState<StoredMessage[]>([]);
@@ -251,12 +254,22 @@ export default function Chat() {
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ message: StoredMessage; x: number; y: number } | null>(null);
   const [reactingTo, setReactingTo] = useState<{ id: string; x: number; y: number } | null>(null);
+  // Mirrors channel.blocked so a block/unblock re-renders the composer without a
+  // full vault-driven refresh.
+  const [dmBlocked, setDmBlocked] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const announced = useRef<string | null>(null);
 
   const channel = channelId && vault ? vault.getChannel(channelId) : undefined;
+  const isDm = channel?.type === 'dm';
+
+  // Keep the local block flag in step with the vault (reconciled from the server
+  // on the channel list), so opening a DM already shows the right composer state.
+  useEffect(() => {
+    setDmBlocked(Boolean(channel?.blocked));
+  }, [channelId, channel?.blocked]);
 
   // Tier limits come from the server, never hardcoded here: it is the only
   // authority, and a client that believes the wrong cap produces uploads that
@@ -646,12 +659,44 @@ export default function Chat() {
 
   async function handleLeave() {
     if (!channelId || !vault || !token) return;
-    if (!confirm('Leave this channel? Its key and local messages are deleted from this device.')) {
-      return;
-    }
+    const prompt = isDm
+      ? 'Leave this direct message? It is removed from this device; the other person keeps their copy.'
+      : 'Leave this channel? Its key and local messages are deleted from this device.';
+    if (!confirm(prompt)) return;
     await api.leaveChannel(token, channelId).catch(() => {});
     await vault.removeChannel(channelId);
     navigate('/channels');
+  }
+
+  async function handleToggleBlock() {
+    if (!channelId || !vault || !token || !channel) return;
+    const next = !dmBlocked;
+    try {
+      if (next) await api.blockDm(token, channelId);
+      else await api.unblockDm(token, channelId);
+      setDmBlocked(next);
+      await vault.saveChannel({ ...channel, blocked: next });
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  /** Open a DM with a member from the message menu, then jump to it. */
+  const handleStartDm = useCallback(
+    async (userId: string) => {
+      try {
+        const id = await openDirectMessage(userId);
+        if (id) navigate(`/chat/${id}`);
+      } catch (err) {
+        setError((err as Error).message);
+      }
+    },
+    [openDirectMessage, navigate]
+  );
+
+  function startCall(kind: 'audio' | 'video') {
+    if (!channelId || !channel?.peerId) return;
+    void call.startCall(channelId, channel.peerId, kind);
   }
 
   const contacts = useMemo(() => {
@@ -742,6 +787,16 @@ export default function Chat() {
         });
       }
 
+      // Start a 1:1 DM with this member. Not offered inside a DM (already one) or
+      // in incognito (there is no stable identity to open a DM against).
+      if (message.senderId !== account?.userId && !channel?.incognito && !isDm) {
+        items.push({
+          label: 'Direct message',
+          icon: <MessageCircle size={13} />,
+          onSelect: () => handleStartDm(message.senderId),
+        });
+      }
+
       // Edit and delete are author-only: the vault enforces it on both ends, but
       // there is no reason to offer the action on someone else's message. A
       // tombstone offers neither.
@@ -763,7 +818,7 @@ export default function Chat() {
 
       return items;
     },
-    [menu, token, account?.userId, handleStartEdit, handleDelete, contacts, channel?.incognito, isVerified]
+    [menu, token, account?.userId, handleStartEdit, handleDelete, contacts, channel?.incognito, isVerified, isDm, handleStartDm]
   );
 
   if (!vault || !account) return null;
@@ -788,17 +843,57 @@ export default function Chat() {
           ←
         </Link>
         <div className="min-w-0 flex-1">
-          <p className="font-mono text-sm tracking-widest text-primary">{channel.code || '········'}</p>
+          {isDm ? (
+            <p className="truncate text-sm font-medium text-foreground">
+              {channel.peerId ? nameFor(channel.peerId) : 'direct message'}
+            </p>
+          ) : (
+            <p className="font-mono text-sm tracking-widest text-primary">{channel.code || '········'}</p>
+          )}
           <p className="flex items-center gap-1.5 text-[11px] text-muted">
             <span
               className={`inline-block h-1.5 w-1.5 rounded-full ${connected ? 'bg-primary' : 'bg-warn'}`}
             />
             {connected ? 'encrypted' : 'reconnecting…'}
+            {isDm && <span className="tag bg-primary/10 text-primary">direct</span>}
             {channel.incognito && (
               <span className="tag bg-secondary/10 text-secondary">incognito</span>
             )}
           </p>
         </div>
+
+        {isDm && channel.hasKey && !dmBlocked && (
+          <>
+            <button
+              onClick={() => startCall('audio')}
+              className="text-muted transition-colors hover:text-primary"
+              title="Voice call"
+              aria-label="Voice call"
+            >
+              <Phone size={18} />
+            </button>
+            <button
+              onClick={() => startCall('video')}
+              className="text-muted transition-colors hover:text-primary"
+              title={limits.premium ? 'Video call' : 'Video calling is a supporter feature'}
+              aria-label="Video call"
+            >
+              <Video size={18} />
+            </button>
+          </>
+        )}
+
+        {isDm && (
+          <button
+            onClick={handleToggleBlock}
+            className={`transition-colors ${dmBlocked ? 'text-error' : 'text-muted hover:text-error'}`}
+            title={dmBlocked ? 'Unblock' : 'Block'}
+            aria-label={dmBlocked ? 'Unblock' : 'Block'}
+          >
+            <Ban size={17} />
+          </button>
+        )}
+
         <button onClick={handleLeave} className="btn-ghost px-2 py-1 text-[11px]">
           leave
         </button>
@@ -1052,12 +1147,21 @@ export default function Chat() {
         onChange={(e) => handleFile(e.target.files?.[0])}
       />
 
+      {dmBlocked && (
+        <div className="flex items-center justify-between border-t border-error/30 bg-error/10 px-4 py-2 text-[11px] text-error">
+          <span>You blocked this person. Their messages won't reach you.</span>
+          <button onClick={handleToggleBlock} className="underline hover:no-underline">
+            unblock
+          </button>
+        </div>
+      )}
+
       <Composer
         value={text}
         onChange={handleType}
         onSend={handleSend}
         onAttach={() => fileRef.current?.click()}
-        disabled={!channel.hasKey}
+        disabled={!channel.hasKey || dmBlocked}
         sending={sending}
         uploading={Boolean(upload)}
         canSend={Boolean(text.trim()) || pending.length > 0}

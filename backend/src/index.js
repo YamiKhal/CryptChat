@@ -8,6 +8,7 @@ import webauthnRoutes from './routes/webauthn.js';
 import recoveryRoutes from './routes/recovery.js';
 import billingRoutes from './routes/billing.js';
 import channelRoutes from './routes/channels.js';
+import rtcRoutes from './routes/rtc.js';
 import blobRoutes, { startBlobReaper } from './routes/blobs.js';
 import unfurlRoutes from './routes/unfurl.js';
 import { attachRelay, startQueueReaper } from './ws/relay.js';
@@ -41,6 +42,7 @@ app.use('/account', accountRoutes);
 app.use('/recovery', recoveryRoutes);
 app.use('/billing', billingRoutes);
 app.use('/channel', channelRoutes);
+app.use('/rtc', rtcRoutes);
 // Chunk uploads arrive as application/octet-stream and are parsed by
 // express.raw inside the router. express.json above ignores them -- it only
 // touches application/json -- so opaque ciphertext never reaches a body parser.

@@ -13,6 +13,7 @@
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
+    "@sapphi-red/web-noise-suppressor": "^0.3.5",
     "@scure/bip39": "^2.2.0",
     "@simplewebauthn/browser": "^13.3.0",
     "libsodium-wrappers-sumo": "^0.7.16",

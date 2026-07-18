@@ -205,6 +205,7 @@ export function attachRelay(server) {
           case 'send':        return await handleSend(userId, msg, ws);
           case 'ack':         return await handleAck(userId, msg);
           case 'typing':          return await handleTyping(userId, msg);
+          case 'signal':          return await handleSignal(userId, msg);
           case 'key-offer':       return await handleKeyOffer(userId, msg, ws);
           case 'key-ack':         return await handleKeyAck(userId, msg);
           case 'request-key':     return await handleRequestKey(userId, msg);
@@ -244,8 +245,15 @@ async function handleSend(senderId, msg, ws) {
   // client did not send one.
   const clientId = UUID.test(msg.clientId ?? '') ? msg.clientId : null;
 
+  // Skip any recipient who has blocked the sender: no row is queued, which is
+  // what makes a block "stop receiving". dm_blocks only ever holds DM pairs, so
+  // this predicate is a no-op for group channels.
   const members = await pool.query(
-    'SELECT user_id FROM channel_members WHERE channel_id = $1 AND user_id != $2',
+    `SELECT user_id FROM channel_members cm
+      WHERE cm.channel_id = $1 AND cm.user_id != $2
+        AND NOT EXISTS (
+          SELECT 1 FROM dm_blocks b WHERE b.blocker_id = cm.user_id AND b.blocked_id = $2
+        )`,
     [channelId, senderId]
   );
 
@@ -369,6 +377,39 @@ async function handleTyping(userId, msg) {
   for (const { user_id: memberId } of members.rows) {
     sendTo(memberId, { type: 'typing', channelId, senderId: userId, stop });
   }
+}
+
+// WebRTC call signaling for a DM: offer / answer / ICE candidate / hangup.
+//
+// The payload is a signed, channel-key-encrypted envelope (same shape as a
+// message), so the relay routes ciphertext and learns neither the SDP -- which
+// carries IP candidates and DTLS fingerprints -- nor whether a call even
+// connected. Unlike a message it is NEVER queued: a call is realtime, and a
+// stale offer delivered an hour later is noise. Only the other DM member, only
+// if online, and never across a block.
+async function handleSignal(userId, msg) {
+  const { channelId, ciphertext, nonce } = msg;
+  if (!UUID.test(channelId ?? '') || !validCiphertext(ciphertext) || !validNonce(nonce)) return;
+
+  const peer = await pool.query(
+    `SELECT other.user_id
+       FROM channels c
+       JOIN channel_members me    ON me.channel_id = c.id AND me.user_id = $2
+       JOIN channel_members other ON other.channel_id = c.id AND other.user_id != $2
+      WHERE c.id = $1 AND c.type = 'dm'`,
+    [channelId, userId]
+  );
+  const peerId = peer.rows[0]?.user_id;
+  if (!peerId) return;
+
+  // A blocked caller cannot even ring: drop the signal if the peer blocked them.
+  const blocked = await pool.query(
+    'SELECT 1 FROM dm_blocks WHERE blocker_id = $1 AND blocked_id = $2',
+    [peerId, userId]
+  );
+  if (blocked.rowCount > 0) return;
+
+  sendTo(peerId, { type: 'signal', channelId, senderId: userId, ciphertext, nonce });
 }
 
 // A member with no local key asks the channel for one (new device, cleared

@@ -9,6 +9,8 @@ import VerifyEmail from './pages/VerifyEmail';
 import Subscribe from './pages/Subscribe';
 import { useSession } from './lib/session';
 import { RelayProvider } from './lib/relayContext';
+import { CallProvider } from './lib/callContext';
+import CallOverlay from './components/CallOverlay';
 
 function Restoring() {
   return (
@@ -29,12 +31,16 @@ function Restoring() {
  * `restoring` must not redirect. Session restore is async, so redirecting on
  * the first render would throw away the requested route on every refresh and
  * deep link.
+ *
+ * The relay socket and call layer live above the router (see App), not here, so
+ * navigating between the channel list and a DM does not tear down the socket --
+ * which would drop an in-progress call and re-request every channel key.
  */
 function RequireUnlocked({ children }: { children: ReactNode }) {
   const { status } = useSession();
   if (status === 'restoring') return <Restoring />;
   if (status !== 'unlocked') return <Navigate to="/" replace />;
-  return <RelayProvider>{children}</RelayProvider>;
+  return <>{children}</>;
 }
 
 export default function App() {
@@ -42,7 +48,7 @@ export default function App() {
 
   if (status === 'restoring') return <Restoring />;
 
-  return (
+  const routes = (
     <Routes>
       <Route path="/" element={status === 'unlocked' ? <Navigate to="/channels" replace /> : <Auth />} />
 
@@ -91,4 +97,21 @@ export default function App() {
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
+
+  // One relay socket and one call layer for the whole authenticated session,
+  // mounted above the router so they survive navigation. RelayProvider tolerates
+  // a logged-out render (it just does not connect), but there is no reason to pay
+  // for it until the vault is unlocked.
+  if (status === 'unlocked') {
+    return (
+      <RelayProvider>
+        <CallProvider>
+          {routes}
+          <CallOverlay />
+        </CallProvider>
+      </RelayProvider>
+    );
+  }
+
+  return routes;
 }

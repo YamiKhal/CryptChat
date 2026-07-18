@@ -54,8 +54,8 @@ function fromB64(value: string): Bytes {
  * vault were signed under the v2 field list, and refusing to open them would
  * silently destroy every existing transcript. New envelopes are always v3.
  */
-export const ENVELOPE_VERSION = 5;
-const SUPPORTED_VERSIONS = new Set([2, 3, 4, 5]);
+export const ENVELOPE_VERSION = 6;
+const SUPPORTED_VERSIONS = new Set([2, 3, 4, 5, 6]);
 
 /* ------------------------------------------------------------------ */
 /* identity                                                            */
@@ -412,6 +412,37 @@ export interface DeleteRef {
 }
 
 /**
+ * A WebRTC call-control frame for a DM: ring, offer/answer, trickled ICE, or
+ * hangup/decline. Signed like every other envelope so a malicious relay cannot
+ * forge a ringing peer, inject an SDP, or spoof a hangup.
+ *
+ * These are never stored -- they ride the relay in real time and the recipient's
+ * call layer consumes them directly. The SDP and candidates are the sensitive
+ * part (they carry IP addresses and DTLS fingerprints); keeping them inside the
+ * signed, channel-key-encrypted envelope is what stops the server from seeing
+ * the shape of a call.
+ */
+export interface CallSignal {
+  kind: 'ringing' | 'offer' | 'answer' | 'ice' | 'hangup' | 'decline' | 'video';
+  /** Ties frames to one call attempt, so a late hangup can't kill a new call. */
+  callId: string;
+  /** What media the caller is offering. Screen-share rides 'video' with screen:true. */
+  media?: 'audio' | 'video';
+  screen?: boolean;
+  /** SDP for offer/answer. */
+  sdp?: string;
+  /** A single trickled ICE candidate (JSON string), for kind 'ice'. */
+  candidate?: string;
+  /**
+   * For kind 'video': whether the sender is now sending live video (camera on, or
+   * a screen being shared). Sent on every change so the receiver toggles the
+   * remote video tile deterministically -- a replaceTrack(null) does not reliably
+   * mute the far track, so relying on that alone leaves a frozen last frame.
+   */
+  on?: boolean;
+}
+
+/**
  * Burn-after-read: the message self-destructs `ttl` seconds after the recipient
  * first sees it. Signed so a relay cannot strip or shorten it.
  *
@@ -427,7 +458,7 @@ export interface BurnRef {
 
 export interface EnvelopeContent {
   v: number;
-  kind: 'message' | 'profile' | 'reaction' | 'edit' | 'delete';
+  kind: 'message' | 'profile' | 'reaction' | 'edit' | 'delete' | 'call';
   body: string;
   displayName: string;
   avatar?: BinaryAsset;
@@ -447,6 +478,8 @@ export interface EnvelopeContent {
    * only when the user enables it and never in incognito channels.
    */
   supporter?: boolean;
+  /** Present on a 'call' envelope: WebRTC signaling for a 1:1 DM call. */
+  call?: CallSignal;
   sentAt: string;
 }
 
@@ -583,6 +616,25 @@ function canonicalBytes(env: Omit<SignedEnvelope, 'sig'>): Bytes {
     fields.push(env.supporter ? '1' : '0');
   }
 
+  // v6 adds call signaling. Appended after v5 so every v5 message already in a
+  // vault verifies unchanged. The whole signal is signed -- kind, callId, media,
+  // and the SDP/candidate -- so a relay cannot forge a ring, swap an SDP (which
+  // would let it man-in-the-middle the media path), or spoof a hangup.
+  if (env.v >= 6) {
+    fields.push(env.call ? '1' : '0');
+    if (env.call) {
+      fields.push(
+        env.call.kind,
+        env.call.callId,
+        env.call.media ?? '',
+        env.call.screen ? '1' : '0',
+        env.call.sdp ?? '',
+        env.call.candidate ?? '',
+        env.call.on ? '1' : '0'
+      );
+    }
+  }
+
   const parts: Bytes[] = [stringToBytes(`darkchat-envelope-v${env.v}`)];
   for (const field of fields) {
     const bytes = stringToBytes(field);
@@ -711,6 +763,28 @@ function isValidDeleteRef(value: unknown): value is DeleteRef {
   return typeof d === 'object' && d !== null && isValidTargetId(d.targetId);
 }
 
+/** Bound on an SDP blob. Real offers are a few KB; this only fences the outer size. */
+export const MAX_SDP = 64 * 1024;
+const CALL_KINDS = new Set(['ringing', 'offer', 'answer', 'ice', 'hangup', 'decline', 'video']);
+
+function isValidCallSignal(value: unknown): value is CallSignal {
+  const c = value as CallSignal;
+  return (
+    typeof c === 'object' &&
+    c !== null &&
+    typeof c.kind === 'string' &&
+    CALL_KINDS.has(c.kind) &&
+    typeof c.callId === 'string' &&
+    c.callId.length > 0 &&
+    c.callId.length <= 64 &&
+    (c.media === undefined || c.media === 'audio' || c.media === 'video') &&
+    (c.screen === undefined || typeof c.screen === 'boolean') &&
+    (c.sdp === undefined || (typeof c.sdp === 'string' && c.sdp.length <= MAX_SDP)) &&
+    (c.candidate === undefined || (typeof c.candidate === 'string' && c.candidate.length <= 4096)) &&
+    (c.on === undefined || typeof c.on === 'boolean')
+  );
+}
+
 /** Bound on the sealed body, matching the envelope's overall generosity. */
 export const MAX_LOCKED_CT = 16384;
 export const MAX_LOCK_HINT = 140;
@@ -797,6 +871,9 @@ export async function openEnvelope(
   }
   if (envelope.burn && !isValidBurnRef(envelope.burn)) {
     throw new Error('malformed burn timer');
+  }
+  if (envelope.call && !isValidCallSignal(envelope.call)) {
+    throw new Error('malformed call signal');
   }
 
   // The transport's claim about the sender and channel must match what the
