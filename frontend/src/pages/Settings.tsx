@@ -1,21 +1,70 @@
 import { useState, useEffect, useRef, ChangeEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import {
+  User,
+  Palette,
+  Volume2,
+  Play,
+  Upload,
+  X,
+  ShieldCheck,
+  CreditCard,
+  KeyRound,
+  AlertTriangle,
+} from 'lucide-react';
 import { useSession } from '../lib/session';
 import { useRelayContext } from '../lib/relayContext';
-import { fileToAsset, BinaryAsset, base64UrlToBytes, bytesToDataUrl } from '../lib/binary';
+import {
+  fileToAsset,
+  BinaryAsset,
+  base64UrlToBytes,
+  bytesToDataUrl,
+  bytesToBase64Url,
+} from '../lib/binary';
 import {
   exportKeyBundle,
   importKeyBundle,
   keyFingerprint,
   EncryptedBundle,
 } from '../lib/crypto';
-import { saveAccount, Vault } from '../lib/vault';
+import { saveAccount, Vault, ChatTextSize } from '../lib/vault';
 import { api, EmailState, Badge as BadgeState } from '../lib/api';
 import Avatar from '../components/Avatar';
+import Badge from '../components/Badge';
 import SubscriptionSection from '../components/SubscriptionSection';
 import ThemeToggle from '../components/ThemeToggle';
 import ThemeCustomizer from '../components/ThemeCustomizer';
 import TwoFactorSection from '../components/TwoFactorSection';
+import { Toggle } from '../components/Toggle';
+import { InfoTip } from '../components/InfoTip';
+import { SettingsSection, SettingRow, SegmentedControl, SettingBlock } from '../components/SettingsUI';
+import {
+  SoundSettings,
+  DEFAULT_SOUND_SETTINGS,
+  configureSounds,
+  configureCustomSounds,
+  previewSound,
+  type SoundEvent,
+} from '../lib/sounds';
+
+const TEXT_SIZE_OPTIONS: { value: ChatTextSize; label: string }[] = [
+  { value: 'tiny', label: 'Tiny' },
+  { value: 'small', label: 'Small' },
+  { value: 'normal', label: 'Normal' },
+  { value: 'large', label: 'Large' },
+];
+
+type TabId = 'profile' | 'appearance' | 'sounds' | 'account' | 'billing' | 'keys' | 'danger';
+
+const TABS: { id: TabId; label: string; icon: typeof User }[] = [
+  { id: 'profile', label: 'Profile', icon: User },
+  { id: 'appearance', label: 'Appearance', icon: Palette },
+  { id: 'sounds', label: 'Sounds', icon: Volume2 },
+  { id: 'account', label: 'Account', icon: ShieldCheck },
+  { id: 'billing', label: 'Subscription', icon: CreditCard },
+  { id: 'keys', label: 'Keys & devices', icon: KeyRound },
+  { id: 'danger', label: 'Danger zone', icon: AlertTriangle },
+];
 
 export default function Settings() {
   const session = useSession();
@@ -30,8 +79,16 @@ export default function Settings() {
   const [fingerprint, setFingerprint] = useState('');
   const [alwaysPreview, setAlwaysPreview] = useState(false);
   const [showBadge, setShowBadge] = useState(false);
+  const [leftAligned, setLeftAligned] = useState(false);
+  const [textSize, setTextSize] = useState<ChatTextSize>('normal');
+  const [hideImages, setHideImages] = useState(false);
+  const [sound, setSound] = useState<SoundSettings>(DEFAULT_SOUND_SETTINGS);
+  const [customSounds, setCustomSounds] = useState<Partial<Record<SoundEvent, BinaryAsset>>>({});
   const [status, setStatus] = useState<{ kind: 'ok' | 'error' | 'info'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  // Active category. null = the category list itself, which is the mobile
+  // landing view; desktop shows both panes and uses it for the empty hint.
+  const [tab, setTab] = useState<TabId | null>(null);
 
   const [exportPassphrase, setExportPassphrase] = useState('');
   const [importPassphrase, setImportPassphrase] = useState('');
@@ -51,6 +108,10 @@ export default function Settings() {
   const avatarInput = useRef<HTMLInputElement>(null);
   const backgroundInput = useRef<HTMLInputElement>(null);
   const bundleInput = useRef<HTMLInputElement>(null);
+  // One hidden file input shared by every sound row; the pending event says which
+  // cue the chosen file belongs to.
+  const soundFileInput = useRef<HTMLInputElement>(null);
+  const pendingSoundEvent = useRef<SoundEvent | null>(null);
 
   useEffect(() => {
     if (!vault) return;
@@ -60,6 +121,11 @@ export default function Settings() {
     setBackground(vault.profile.background);
     setAlwaysPreview(vault.preferences.alwaysPreviewLinks);
     setShowBadge(Boolean(vault.preferences.showSupporterBadge));
+    setLeftAligned(Boolean(vault.preferences.messagesLeftAligned));
+    setTextSize(vault.preferences.chatTextSize ?? 'normal');
+    setHideImages(Boolean(vault.preferences.hideProfileImages));
+    setSound({ ...DEFAULT_SOUND_SETTINGS, ...(vault.preferences.sound ?? {}) });
+    setCustomSounds(vault.preferences.customSounds ?? {});
     keyFingerprint(vault.identity.signPublicKey).then(setFingerprint);
   }, [vault]);
 
@@ -92,7 +158,7 @@ export default function Settings() {
 
   if (!vault || !account) {
     return (
-      <div className="min-h-screen grid place-items-center p-4">
+      <div className="grid h-full place-items-center p-4">
         <div className="card space-y-3 text-center">
           <p className="text-sm">Unlock your vault to change settings.</p>
           <Link to="/" className="btn-ghost">
@@ -166,6 +232,107 @@ export default function Settings() {
       session.refresh();
     } catch (err) {
       setShowBadge(!next);
+      setStatus({ kind: 'error', text: (err as Error).message });
+    }
+  }
+
+  async function handleSetLeftAligned(next: boolean) {
+    setLeftAligned(next);
+    try {
+      await vault!.setPreferences({ messagesLeftAligned: next });
+      session.refresh();
+    } catch (err) {
+      setLeftAligned(!next);
+      setStatus({ kind: 'error', text: (err as Error).message });
+    }
+  }
+
+  async function handleSetTextSize(next: ChatTextSize) {
+    const prev = textSize;
+    setTextSize(next);
+    try {
+      await vault!.setPreferences({ chatTextSize: next });
+      session.refresh();
+    } catch (err) {
+      setTextSize(prev);
+      setStatus({ kind: 'error', text: (err as Error).message });
+    }
+  }
+
+  async function handleSetHideImages(next: boolean) {
+    setHideImages(next);
+    try {
+      await vault!.setPreferences({ hideProfileImages: next });
+      session.refresh();
+    } catch (err) {
+      setHideImages(!next);
+      setStatus({ kind: 'error', text: (err as Error).message });
+    }
+  }
+
+  // Sound cues apply the instant they change (so a toggle is audible right away)
+  // and persist to the local vault. The engine is reconfigured immediately rather
+  // than waiting for the relay layer's effect, so a test press reflects the new
+  // setting without a round-trip.
+  async function updateSound(patch: Partial<SoundSettings>) {
+    const prev = sound;
+    const next = { ...sound, ...patch };
+    setSound(next);
+    configureSounds(next);
+    try {
+      await vault!.setPreferences({ sound: next });
+      session.refresh();
+    } catch (err) {
+      setSound(prev);
+      configureSounds(prev);
+      setStatus({ kind: 'error', text: (err as Error).message });
+    }
+  }
+
+  function pickCustomSound(event: SoundEvent) {
+    pendingSoundEvent.current = event;
+    soundFileInput.current?.click();
+  }
+
+  // Store the chosen audio file raw (no re-encode) as a small vault asset, then
+  // reinstall it in the engine so a test press plays it right away.
+  async function handleCustomSoundFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    const event = pendingSoundEvent.current;
+    if (soundFileInput.current) soundFileInput.current.value = '';
+    pendingSoundEvent.current = null;
+    if (!file || !event) return;
+    // Kept small: the whole vault is re-sealed on save, and these live in local
+    // storage alongside everything else.
+    if (file.size > 1024 * 1024) {
+      setStatus({ kind: 'error', text: 'Sound file must be under 1MB.' });
+      return;
+    }
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const asset: BinaryAsset = {
+        mime: file.type || 'audio/mpeg',
+        data: bytesToBase64Url(bytes),
+      };
+      const next = { ...customSounds, [event]: asset };
+      setCustomSounds(next);
+      configureCustomSounds(next);
+      await vault!.setPreferences({ customSounds: next });
+      session.refresh();
+    } catch (err) {
+      setStatus({ kind: 'error', text: (err as Error).message });
+    }
+  }
+
+  async function clearCustomSound(event: SoundEvent) {
+    const next = { ...customSounds };
+    delete next[event];
+    setCustomSounds(next);
+    configureCustomSounds(next);
+    try {
+      await vault!.setPreferences({ customSounds: next });
+      session.refresh();
+    } catch (err) {
       setStatus({ kind: 'error', text: (err as Error).message });
     }
   }
@@ -393,417 +560,845 @@ export default function Settings() {
     info: 'border-info/30 bg-info/10 text-info',
   } as const;
 
+  const activeTab = TABS.find((t) => t.id === tab);
+
+  // Current wallpaper as a data URL, so the preview can show it behind the
+  // sample messages. Reads straight from the vault, which ThemeCustomizer
+  // persists to; session.refresh re-renders this after a change.
+  const wallpaperAsset = vault.preferences.chatBackground;
+  const wallpaperUrl = wallpaperAsset
+    ? bytesToDataUrl(base64UrlToBytes(wallpaperAsset.data), wallpaperAsset.mime)
+    : undefined;
+
   return (
-    <div className="mx-auto min-h-screen max-w-md space-y-4 p-4">
-      <header className="flex items-center gap-3">
-        <Link to="/channels" className="text-muted transition-colors hover:text-primary">
-          ←
-        </Link>
-        <h1 className="flex-1 text-sm font-semibold uppercase tracking-wider">settings</h1>
-        <ThemeToggle />
-        <button onClick={session.lock} className="btn-ghost px-3 py-1.5 text-xs">
-          lock
-        </button>
-      </header>
-
-      {status && (
-        <p className={`rounded border p-4 text-xs ${statusStyles[status.kind]}`}>{status.text}</p>
-      )}
-
-      {/* profile */}
-      <section className="card space-y-4">
-        <h2 className="text-xs uppercase tracking-wider text-muted">profile</h2>
-
-        <div className="flex items-center gap-4">
-          <Avatar asset={avatar} name={displayName || account.username} size="lg" />
-          <div className="space-y-2">
-            <input
-              ref={avatarInput}
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
-              className="hidden"
-              onChange={handleAvatar}
-            />
-            <button onClick={() => avatarInput.current?.click()} className="btn-ghost text-xs">
-              choose image
-            </button>
-            {avatar && (
-              <button
-                onClick={() => setAvatar(undefined)}
-                className="block text-xs text-muted hover:text-error"
-              >
-                remove
-              </button>
-            )}
-          </div>
-        </div>
-
-        <label className="block space-y-1">
-          <span className="text-xs text-muted">display name</span>
-          <input
-            className="field"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            maxLength={48}
-          />
-        </label>
-
-        <label className="block space-y-1">
-          <span className="text-xs text-muted">bio</span>
-          <textarea
-            className="field min-h-20 resize-y"
-            value={bio}
-            onChange={(e) => setBio(e.target.value)}
-            maxLength={500}
-            placeholder="A few words about you. Links: [my site](https://example.com)"
-          />
-          <span className="text-[10px] text-muted">
-            {bio.length}/500 — wrap a link as [label](https://…)
-          </span>
-        </label>
-
-        <div className="space-y-1">
-          <span className="text-xs text-muted">profile banner</span>
-          <div className="flex items-center gap-3">
-            <div className="h-12 w-24 shrink-0 overflow-hidden rounded border border-border bg-surface-raised">
-              {background && (
-                <img
-                  src={bytesToDataUrl(base64UrlToBytes(background.data), background.mime)}
-                  alt=""
-                  className="h-full w-full object-cover"
-                />
-              )}
-            </div>
-            <div className="space-y-1">
-              <input
-                ref={backgroundInput}
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/gif"
-                className="hidden"
-                onChange={handleBackground}
-              />
-              <button onClick={() => backgroundInput.current?.click()} className="btn-ghost text-xs">
-                choose banner
-              </button>
-              {background && (
-                <button
-                  onClick={() => setBackground(undefined)}
-                  className="block text-xs text-muted hover:text-error"
-                >
-                  remove
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <p className="text-[11px] text-muted">
-          Your name, picture, bio, and banner are encrypted and signed, then sent only to members of
-          channels you are in. The server stores none of it — it only ever holds a hash of your
-          username.
-        </p>
-
-        <button onClick={handleSaveProfile} disabled={busy} className="btn-primary w-full">
-          Save profile
-        </button>
-      </section>
-
-      {/* appearance */}
-      <section className="card space-y-3">
-        <h2 className="text-xs uppercase tracking-wider text-muted">appearance</h2>
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-xs">Theme</span>
+    <div className="flex h-full">
+      {/* category list — the left column, mirroring the channel list. On mobile
+          it is the whole screen until a category is chosen. */}
+      <aside
+        className={`w-full flex-col border-r border-border lg:flex lg:w-72 lg:shrink-0 ${
+          tab ? 'hidden lg:flex' : 'flex'
+        }`}
+      >
+        <div className="flex h-14.25 shrink-0 items-center gap-3 border-b border-border px-3">
+          <Link
+            to="/channels"
+            className="text-muted transition-colors hover:text-primary"
+            aria-label="Back to channels"
+          >
+            ←
+          </Link>
+          <h1 className="flex-1 text-sm font-semibold uppercase tracking-wider">settings</h1>
           <ThemeToggle />
         </div>
-        <p className="text-[11px] text-muted">
-          Stored only on this device — the server never sees it. Dark is the default.
-        </p>
-
-        <ThemeCustomizer vault={vault} isPremium={!!badge} onChange={session.refresh} />
-      </section>
-
-      {/* privacy */}
-      <section className="card space-y-3">
-        <h2 className="text-xs uppercase tracking-wider text-muted">link previews</h2>
-
-        <label className="flex items-start gap-2">
-          <input
-            type="checkbox"
-            className="mt-0.5 accent-primary"
-            checked={alwaysPreview}
-            onChange={(e) => handlePreviewToggle(e.target.checked)}
-          />
-          <span className="text-xs">
-            Always preview links
-            <span className="mt-1 block text-[11px] text-muted">
-              Off by default. Prefix a link with <span className="text-primary">!</span> to preview
-              just that one.
-            </span>
-          </span>
-        </label>
-
-        <p className="rounded border border-warn/30 bg-warn/10 p-4 text-[11px] text-warn">
-          Building a preview asks the server to fetch that URL, so the relay learns which link you
-          sent — the one thing it otherwise never sees. The preview itself is encrypted and sent
-          with your message, so people reading it never load anything and their IP stays private.
-          Links always work as plain clickable text with this off.
-        </p>
-      </section>
-
-      {/* identity */}
-      <section className="card space-y-2">
-        <h2 className="text-xs uppercase tracking-wider text-muted">identity</h2>
-        <div className="space-y-1 text-xs">
-          <p className="text-muted">username</p>
-          <p className="font-mono">{account.username}</p>
+        <nav className="flex-1 space-y-1 overflow-y-auto p-2">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                tab === t.id
+                  ? 'bg-primary/10 text-primary'
+                  : t.id === 'danger'
+                    ? 'text-error hover:bg-error/10'
+                    : 'text-foreground hover:bg-surface-raised'
+              }`}
+            >
+              <t.icon size={16} className="flex-none" />
+              {t.label}
+            </button>
+          ))}
+        </nav>
+        <div className="flex min-h-15 shrink-0 items-center border-t border-border px-3">
+          <button onClick={session.lock} className="btn-ghost w-full text-xs">
+            Lock vault
+          </button>
         </div>
-        <div className="space-y-1 text-xs">
-          <p className="text-muted">key fingerprint</p>
-          <p className="font-mono tracking-wider text-primary">{fingerprint}</p>
+      </aside>
+
+      {/* active category — the right pane, mirroring the chat panel. */}
+      <main className={`min-w-0 flex-1 flex-col ${tab ? 'flex' : 'hidden lg:flex'}`}>
+        <div className="flex h-14.25 shrink-0 items-center gap-3 border-b border-border px-4">
+          <button
+            onClick={() => setTab(null)}
+            className="text-muted transition-colors hover:text-primary lg:hidden"
+            aria-label="Back to settings"
+          >
+            ←
+          </button>
+          <h2 className="text-sm font-semibold uppercase tracking-wider">
+            {activeTab?.label ?? 'settings'}
+          </h2>
         </div>
-        <p className="text-[11px] text-muted">
-          Read this to a contact over another channel. If it matches what they see next to your
-          name, no one swapped keys in between.
-        </p>
-      </section>
 
-      {/* two-factor */}
-      {session.token && <TwoFactorSection token={session.token} />}
-
-      {/* email */}
-      <section className="card space-y-3">
-        <h2 className="text-xs uppercase tracking-wider text-muted">email</h2>
-
-        {email === null ? (
-          <p className="text-xs text-muted">loading…</p>
-        ) : email.mask ? (
-          <div className="space-y-1 text-xs">
-            <p className="text-muted">on file</p>
-            <p className="flex items-center gap-2 font-mono">
-              {email.mask}
-              {email.verified ? (
-                <span className="tag bg-ok/10 text-ok">verified</span>
-              ) : (
-                <span className="tag bg-warn/10 text-warn">unconfirmed</span>
-              )}
-            </p>
+        {tab === null ? (
+          <div className="grid h-full place-items-center p-6 text-center text-muted">
+            <p className="text-sm">Select a settings category.</p>
           </div>
         ) : (
-          <p className="text-xs text-muted">No email on this account.</p>
-        )}
+          <div className="mx-auto w-full max-w-2xl flex-1 space-y-4 overflow-y-auto p-4">
+            {status && (
+              <p className={`rounded border p-4 text-xs ${statusStyles[status.kind]}`}>
+                {status.text}
+              </p>
+            )}
 
-        {email?.pendingMask && (
-          <p className="rounded border border-info/30 bg-info/10 p-4 text-xs text-info">
-            Waiting on confirmation for <span className="font-mono">{email.pendingMask}</span>. The
-            link expires in 24 hours.
-          </p>
-        )}
+            {tab === 'profile' && (
+              <div className="space-y-4">
+                <SettingsSection
+                  title="Profile"
+                  info="Only channel members see this — never the server."
+                  infoDetails="Your name, picture, bio, and banner are encrypted and signed, then sent only to members of channels you are in. The server stores none of it — it only ever holds a hash of your username."
+                >
+                  <SettingBlock>
+                    <div className="flex items-center gap-4">
+                      <Avatar asset={avatar} name={displayName || account.username} size="lg" />
+                      <div className="space-y-2">
+                        <input
+                          ref={avatarInput}
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp,image/gif"
+                          className="hidden"
+                          onChange={handleAvatar}
+                        />
+                        <button
+                          onClick={() => avatarInput.current?.click()}
+                          className="btn-ghost text-xs"
+                        >
+                          choose image
+                        </button>
+                        {avatar && (
+                          <button
+                            onClick={() => setAvatar(undefined)}
+                            className="block text-xs text-muted hover:text-error"
+                          >
+                            remove
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </SettingBlock>
 
-        <p className="text-[11px] text-muted">
-          Shown partially on purpose — the full address is encrypted and the server only decrypts it
-          to send you mail. Nobody can read it back out, including you. It exists so you can reset a
-          forgotten password; it cannot decrypt your channels, and an account without one works
-          exactly the same otherwise.
-        </p>
+                  <SettingBlock>
+                    <label className="block space-y-1">
+                      <span className="text-xs text-muted">display name</span>
+                      <input
+                        className="field"
+                        value={displayName}
+                        onChange={(e) => setDisplayName(e.target.value)}
+                        maxLength={48}
+                      />
+                    </label>
+                  </SettingBlock>
 
-        <label className="block space-y-1">
-          <span className="text-xs text-muted">{email?.mask ? 'change to' : 'add an address'}</span>
-          <input
-            className="field"
-            type="email"
-            autoComplete="email"
-            value={emailInput}
-            onChange={(e) => setEmailInput(e.target.value)}
-          />
-        </label>
+                  <SettingBlock>
+                    <label className="block space-y-1">
+                      <span className="text-xs text-muted">bio</span>
+                      <textarea
+                        className="field min-h-20 resize-y"
+                        value={bio}
+                        onChange={(e) => setBio(e.target.value)}
+                        maxLength={500}
+                        placeholder="A few words about you. Links: [my site](https://example.com)"
+                      />
+                      <span className="text-[10px] text-muted">
+                        {bio.length}/500 — wrap a link as [label](https://…)
+                      </span>
+                    </label>
+                  </SettingBlock>
 
-        <label className="block space-y-1">
-          <span className="text-xs text-muted">your account password</span>
-          <input
-            className="field"
-            type="password"
-            autoComplete="current-password"
-            value={emailPassword}
-            onChange={(e) => setEmailPassword(e.target.value)}
-          />
-        </label>
+                  <SettingBlock>
+                    <span className="text-xs text-muted">profile banner</span>
+                    <div className="flex items-center gap-3">
+                      <div className="h-12 w-24 shrink-0 overflow-hidden rounded border border-border bg-surface-raised">
+                        {background && (
+                          <img
+                            src={bytesToDataUrl(base64UrlToBytes(background.data), background.mime)}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        <input
+                          ref={backgroundInput}
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp,image/gif"
+                          className="hidden"
+                          onChange={handleBackground}
+                        />
+                        <button
+                          onClick={() => backgroundInput.current?.click()}
+                          className="btn-ghost text-xs"
+                        >
+                          choose banner
+                        </button>
+                        {background && (
+                          <button
+                            onClick={() => setBackground(undefined)}
+                            className="block text-xs text-muted hover:text-error"
+                          >
+                            remove
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </SettingBlock>
+                </SettingsSection>
 
-        <p className="text-[11px] text-muted">
-          Your password is required here because anyone who could silently swap this address could
-          take the account by resetting it.
-        </p>
+                <button onClick={handleSaveProfile} disabled={busy} className="btn-primary w-full">
+                  Save profile
+                </button>
+              </div>
+            )}
 
-        <button
-          className="btn-ghost w-full text-xs"
-          disabled={busy || !emailInput.trim() || !emailPassword}
-          onClick={handleSetEmail}
-        >
-          {email?.mask ? 'change address' : 'add address'}
-        </button>
+            {tab === 'appearance' && (
+              <div className="space-y-4">
+                {/* Live preview. Reflects text size and the picture / column
+                    choices, the custom palette (which applies to the page's CSS
+                    tokens live), a set wallpaper, and the supporter crown. */}
+                <ChatPreview
+                  size={textSize}
+                  hideImages={hideImages}
+                  leftAligned={leftAligned}
+                  wallpaper={wallpaperUrl}
+                  supporter={showBadge && Boolean(badge)}
+                />
 
-        {email?.mask && (
-          <button
-            className="w-full text-xs text-error hover:underline"
-            disabled={busy || !emailPassword}
-            onClick={handleRemoveEmail}
-          >
-            remove my address
-          </button>
-        )}
-      </section>
+                <SettingsSection
+                  title="Theme"
+                  info="Theme is stored only on this device; the server never sees it."
+                  infoDetails="Your theme choice is stored only on this device — the server never sees it. Dark is the default."
+                >
+                  <SettingRow title="Light / dark" control={<ThemeToggle />} />
+                </SettingsSection>
 
-      {/* subscription */}
-      <SubscriptionSection
-        badge={badge}
-        portalUrl={portalUrl}
-        redeemCode={redeemCode}
-        onCodeChange={setRedeemCode}
-        onRedeem={handleRedeem}
-        busy={busy}
-      />
+                <ThemeCustomizer vault={vault} isPremium={!!badge} onChange={session.refresh} />
 
-      {/* Supporter-badge visibility — only meaningful for a supporter. */}
-      {badge && (
-        <section className="card space-y-3">
-          <h2 className="text-xs uppercase tracking-wider text-muted">supporter badge</h2>
-          <label className="flex items-start gap-2">
-            <input
-              type="checkbox"
-              className="mt-0.5 accent-primary"
-              checked={showBadge}
-              onChange={(e) => handleToggleShowBadge(e.target.checked)}
-            />
-            <span className="text-xs">
-              Show my crown to other members
-              <span className="mt-1 block text-[11px] text-muted">
-                Off by default. When on, a supporter crown appears on your messages for others. It is
-                a personal flourish, not proof of payment — anyone's client can display one — and it
-                is never shown in incognito channels. Paid status is a detail about you, so sharing
-                it is your choice.
-              </span>
-            </span>
-          </label>
-        </section>
-      )}
+                <SettingsSection title="Messages">
+                  <SettingRow
+                    title="Text size"
+                    info="How large message text is drawn. Scales further on desktop."
+                    infoDetails="Sets the size of message text throughout your chats. Each preset renders a little larger on a desktop screen than on a phone, so the same choice stays comfortable on both. This is a local display preference and changes nothing about what you send."
+                  >
+                    <div className="pt-1">
+                      <SegmentedControl
+                        value={textSize}
+                        options={TEXT_SIZE_OPTIONS}
+                        onChange={handleSetTextSize}
+                      />
+                    </div>
+                  </SettingRow>
 
-      {/* export */}
-      <section className="card space-y-3">
-        <h2 className="text-xs uppercase tracking-wider text-muted">export keys</h2>
-        <p className="text-[11px] text-muted">
-          Writes your private keys and every channel key to an encrypted file, so you can move this
-          identity to another device. The server cannot do this for you — it has never held these
-          keys.
-        </p>
-        <label className="block space-y-1">
-          <span className="text-xs text-muted">passphrase for the file (min 12)</span>
-          <input
-            className="field"
-            type="password"
-            autoComplete="new-password"
-            value={exportPassphrase}
-            onChange={(e) => setExportPassphrase(e.target.value)}
-          />
-        </label>
-        <p className="rounded border border-warn/30 bg-warn/10 p-4 text-[11px] text-warn">
-          Use a different passphrase from your login password. This file leaves the device; if it
-          shares the account secret, one leaked file is a full account compromise.
-        </p>
-        <button onClick={handleExport} disabled={busy} className="btn-ghost w-full">
-          Export key file
-        </button>
-      </section>
+                  <SettingRow
+                    title="Profile pictures"
+                    description="Show avatars beside messages."
+                    info="Hide avatars to show names alone, a denser transcript."
+                    control={
+                      <Toggle
+                        checked={!hideImages}
+                        onChange={(next) => handleSetHideImages(!next)}
+                        label="Show profile pictures"
+                      />
+                    }
+                  />
 
-      {/* import */}
-      <section className="card space-y-3">
-        <h2 className="text-xs uppercase tracking-wider text-muted">import keys</h2>
-        <p className="text-[11px] text-muted">
-          Restore an identity exported from another device. Replaces this device's keys and merges
-          in the channel keys from the file.
-        </p>
+                  <SettingRow
+                    title="Single column"
+                    description="Discord-style — every message on the left."
+                    info="Lay every message on the left, yours included, each under its own name."
+                    infoDetails="By default your own messages sit on the right and everyone else's on the left. Single column lays them all on the left, each under its own name and picture, like Discord. Purely a local display choice."
+                    control={
+                      <Toggle
+                        checked={leftAligned}
+                        onChange={handleSetLeftAligned}
+                        label="Single column layout"
+                      />
+                    }
+                  />
+                </SettingsSection>
 
-        <input
-          ref={bundleInput}
-          type="file"
-          accept="application/json,.json"
-          className="hidden"
-          onChange={handleBundleFile}
-        />
-        <button onClick={() => bundleInput.current?.click()} className="btn-ghost w-full text-xs">
-          {importFile ? 'key file loaded ✓' : 'choose key file'}
-        </button>
+                {/* Supporter-badge visibility — a display choice, so it lives with
+                    the rest of them. Only a supporter has a crown to show. */}
+                {badge && (
+                  <SettingsSection title="Supporter badge">
+                    <SettingRow
+                      title="Show my crown to others"
+                      description="A supporter crown on your messages. Off by default."
+                      info="A personal flourish — not proof of payment, and never shown in incognito."
+                      infoDetails="When on, a supporter crown appears on your messages for others. It is a personal flourish, not proof of payment — anyone's client can display one — and it is never shown in incognito channels. Paid status is a detail about you, so sharing it is your choice."
+                      control={
+                        <Toggle
+                          checked={showBadge}
+                          onChange={handleToggleShowBadge}
+                          label="Show supporter crown"
+                        />
+                      }
+                    />
+                  </SettingsSection>
+                )}
 
-        <label className="block space-y-1">
-          <span className="text-xs text-muted">file passphrase</span>
-          <input
-            className="field"
-            type="password"
-            value={importPassphrase}
-            onChange={(e) => setImportPassphrase(e.target.value)}
-          />
-        </label>
+                <SettingsSection title="Links">
+                  <SettingRow
+                    title="Always preview links"
+                    description="Off by default. Prefix a link with ! to preview just that one."
+                    info="Turning this on asks the server to fetch every link you send."
+                    infoDetails="Building a preview asks the server to fetch that URL, so the relay learns which link you sent — the one thing it otherwise never sees. The preview itself is encrypted and sent with your message, so people reading it never load anything and their IP stays private. Links always work as plain clickable text with this off."
+                    control={
+                      <Toggle
+                        checked={alwaysPreview}
+                        onChange={handlePreviewToggle}
+                        label="Always preview links"
+                      />
+                    }
+                  />
+                </SettingsSection>
+              </div>
+            )}
 
-        <label className="block space-y-1">
-          <span className="text-xs text-muted">your account password (re-encrypts the vault here)</span>
-          <input
-            className="field"
-            type="password"
-            value={importPassword}
-            onChange={(e) => setImportPassword(e.target.value)}
-          />
-        </label>
+            {tab === 'sounds' && (
+              <div className="space-y-4">
+                <SettingsSection
+                  title="Sounds"
+                  info="Generated on this device and never sent anywhere."
+                  infoDetails="Every cue is synthesized in your browser — no audio is downloaded and nothing about it leaves the device. These settings are stored locally, like the rest of your display preferences."
+                >
+                  <SettingRow
+                    title="Enable sounds"
+                    description="Master switch for every cue below."
+                    control={
+                      <Toggle
+                        checked={sound.enabled}
+                        onChange={(v) => updateSound({ enabled: v })}
+                        label="Enable sounds"
+                      />
+                    }
+                  />
+                  <SettingBlock>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-foreground">Volume</span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={Math.round(sound.volume * 100)}
+                        disabled={!sound.enabled}
+                        onChange={(e) => updateSound({ volume: Number(e.target.value) / 100 })}
+                        className="flex-1 accent-primary disabled:opacity-50"
+                        aria-label="Sound volume"
+                      />
+                      <span className="w-9 text-right text-xs tabular-nums text-muted">
+                        {Math.round(sound.volume * 100)}%
+                      </span>
+                    </div>
+                  </SettingBlock>
+                </SettingsSection>
 
-        <button
-          onClick={handleImport}
-          disabled={busy || !importFile || !importPassphrase || !importPassword}
-          className="btn-ghost w-full"
-        >
-          Import
-        </button>
-      </section>
+                <SettingsSection
+                  title="When to play"
+                  description="Press ▶ to hear a cue, ⬆ to use your own file, and the switch to turn it on or off."
+                >
+                  <SoundRow
+                    title="Message from another chat"
+                    description="A new message in a channel you do not have open."
+                    event="message-in"
+                    checked={sound.messageReceived}
+                    disabled={!sound.enabled}
+                    onChange={(v) => updateSound({ messageReceived: v })}
+                    hasCustom={Boolean(customSounds['message-in'])}
+                    onPickCustom={() => pickCustomSound('message-in')}
+                    onClearCustom={() => clearCustomSound('message-in')}
+                  />
+                  <SoundRow
+                    title="Message in the open chat"
+                    description="Also chime for messages in the chat you are reading."
+                    event="message-in-active"
+                    checked={sound.messageInActiveChat}
+                    disabled={!sound.enabled}
+                    onChange={(v) => updateSound({ messageInActiveChat: v })}
+                    hasCustom={Boolean(customSounds['message-in-active'])}
+                    onPickCustom={() => pickCustomSound('message-in-active')}
+                    onClearCustom={() => clearCustomSound('message-in-active')}
+                  />
+                  <SoundRow
+                    title="Message sent"
+                    description="A soft blip when your own message goes out."
+                    event="message-sent"
+                    checked={sound.messageSent}
+                    disabled={!sound.enabled}
+                    onChange={(v) => updateSound({ messageSent: v })}
+                    hasCustom={Boolean(customSounds['message-sent'])}
+                    onPickCustom={() => pickCustomSound('message-sent')}
+                    onClearCustom={() => clearCustomSound('message-sent')}
+                  />
+                  <SoundRow
+                    title="Calls"
+                    description="Ring on incoming and outgoing calls. A custom file loops as the ringtone."
+                    event="call-incoming"
+                    checked={sound.calls}
+                    disabled={!sound.enabled}
+                    onChange={(v) => updateSound({ calls: v })}
+                    hasCustom={Boolean(customSounds['call-incoming'])}
+                    onPickCustom={() => pickCustomSound('call-incoming')}
+                    onClearCustom={() => clearCustomSound('call-incoming')}
+                  />
+                  <SoundRow
+                    title="Keyboard clicks"
+                    description="A faint tick on each keystroke while typing."
+                    event="typing"
+                    checked={sound.typing}
+                    disabled={!sound.enabled}
+                    onChange={(v) => updateSound({ typing: v })}
+                    hasCustom={Boolean(customSounds['typing'])}
+                    onPickCustom={() => pickCustomSound('typing')}
+                    onClearCustom={() => clearCustomSound('typing')}
+                  />
+                </SettingsSection>
 
-      {/* accounts */}
-      <section className="card space-y-2">
-        <h2 className="text-xs uppercase tracking-wider text-muted">identities on this device</h2>
-        {session.accounts.map((other) => (
-          <div
-            key={other.userId}
-            className={`flex items-center gap-2 rounded border p-4 ${
-              other.userId === account.userId ? 'border-primary/40 bg-primary/5' : 'border-border'
-            }`}
-          >
-            <Avatar name={other.username} size="sm" />
-            <span className="flex-1 truncate text-xs">{other.username}</span>
-            {other.userId === account.userId ? (
-              <span className="tag bg-primary/10 text-primary">active</span>
-            ) : (
-              <button
-                onClick={() => {
-                  session.selectAccount(other.userId);
-                  navigate('/channels');
-                }}
-                className="text-[11px] text-muted hover:text-primary"
+                <input
+                  ref={soundFileInput}
+                  type="file"
+                  accept="audio/*"
+                  className="hidden"
+                  onChange={handleCustomSoundFile}
+                />
+              </div>
+            )}
+
+            {tab === 'account' && (
+              <div className="space-y-4">
+                <SettingsSection title="Identity">
+                  <SettingBlock>
+                    <p className="text-xs text-muted">username</p>
+                    <p className="font-mono text-sm">{account.username}</p>
+                  </SettingBlock>
+                  <SettingBlock>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs text-muted">key fingerprint</p>
+                      <InfoTip
+                        title="Key fingerprint"
+                        tip="Read this to a contact to confirm no one swapped keys."
+                        details="Read this to a contact over another channel. If it matches what they see next to your name, no one swapped keys in between."
+                      />
+                    </div>
+                    <p className="font-mono text-sm tracking-wider text-primary">{fingerprint}</p>
+                  </SettingBlock>
+                </SettingsSection>
+
+                {session.token && <TwoFactorSection token={session.token} />}
+
+                <SettingsSection
+                  title="Email"
+                  info="Optional, encrypted, and only for password resets."
+                  infoDetails="Shown partially on purpose — the full address is encrypted and the server only decrypts it to send you mail. Nobody can read it back out, including you. It exists so you can reset a forgotten password; it cannot decrypt your channels, and an account without one works exactly the same otherwise."
+                >
+                  <SettingBlock>
+                    {email === null ? (
+                      <p className="text-xs text-muted">loading…</p>
+                    ) : email.mask ? (
+                      <div className="space-y-1 text-xs">
+                        <p className="text-muted">on file</p>
+                        <p className="flex items-center gap-2 font-mono">
+                          {email.mask}
+                          {email.verified ? (
+                            <span className="tag bg-ok/10 text-ok">verified</span>
+                          ) : (
+                            <span className="tag bg-warn/10 text-warn">unconfirmed</span>
+                          )}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted">No email on this account.</p>
+                    )}
+
+                    {email?.pendingMask && (
+                      <p className="rounded border border-info/30 bg-info/10 p-3 text-xs text-info">
+                        Waiting on confirmation for{' '}
+                        <span className="font-mono">{email.pendingMask}</span>. The link expires in
+                        24 hours.
+                      </p>
+                    )}
+                  </SettingBlock>
+
+                  <SettingBlock>
+                    <label className="block space-y-1">
+                      <span className="text-xs text-muted">
+                        {email?.mask ? 'change to' : 'add an address'}
+                      </span>
+                      <input
+                        className="field"
+                        type="email"
+                        autoComplete="email"
+                        value={emailInput}
+                        onChange={(e) => setEmailInput(e.target.value)}
+                      />
+                    </label>
+
+                    <label className="block space-y-1">
+                      <span className="flex items-center gap-1.5 text-xs text-muted">
+                        your account password
+                        <InfoTip
+                          title="Why your password?"
+                          tip="Anyone who could silently swap this address could hijack the account."
+                          details="Your password is required here because anyone who could silently swap this address could take the account by resetting it."
+                        />
+                      </span>
+                      <input
+                        className="field"
+                        type="password"
+                        autoComplete="current-password"
+                        value={emailPassword}
+                        onChange={(e) => setEmailPassword(e.target.value)}
+                      />
+                    </label>
+
+                    <button
+                      className="btn-ghost w-full text-xs"
+                      disabled={busy || !emailInput.trim() || !emailPassword}
+                      onClick={handleSetEmail}
+                    >
+                      {email?.mask ? 'change address' : 'add address'}
+                    </button>
+
+                    {email?.mask && (
+                      <button
+                        className="w-full text-xs text-error hover:underline"
+                        disabled={busy || !emailPassword}
+                        onClick={handleRemoveEmail}
+                      >
+                        remove my address
+                      </button>
+                    )}
+                  </SettingBlock>
+                </SettingsSection>
+              </div>
+            )}
+
+            {tab === 'billing' && (
+              <div className="space-y-4">
+                <SubscriptionSection
+                  badge={badge}
+                  portalUrl={portalUrl}
+                  redeemCode={redeemCode}
+                  onCodeChange={setRedeemCode}
+                  onRedeem={handleRedeem}
+                  busy={busy}
+                />
+              </div>
+            )}
+
+            {tab === 'keys' && (
+              <div className="space-y-4">
+                <SettingsSection
+                  title="Export keys"
+                  info="Save an encrypted copy of your keys to move to another device."
+                  infoDetails="Writes your private keys and every channel key to an encrypted file, so you can move this identity to another device. The server cannot do this for you — it has never held these keys."
+                >
+                  <SettingBlock>
+                    <label className="block space-y-1">
+                      <span className="flex items-center gap-1.5 text-xs text-muted">
+                        passphrase for the file (min 12)
+                        <InfoTip
+                          title="Use a fresh passphrase"
+                          tip="Different from your login password — this file leaves the device."
+                          details="Use a different passphrase from your login password. This file leaves the device; if it shares the account secret, one leaked file is a full account compromise."
+                        />
+                      </span>
+                      <input
+                        className="field"
+                        type="password"
+                        autoComplete="new-password"
+                        value={exportPassphrase}
+                        onChange={(e) => setExportPassphrase(e.target.value)}
+                      />
+                    </label>
+                    <button onClick={handleExport} disabled={busy} className="btn-ghost w-full">
+                      Export key file
+                    </button>
+                  </SettingBlock>
+                </SettingsSection>
+
+                <SettingsSection
+                  title="Import keys"
+                  info="Restore an identity exported from another device."
+                  infoDetails="Restore an identity exported from another device. Replaces this device's keys and merges in the channel keys from the file."
+                >
+                  <SettingBlock>
+                    <input
+                      ref={bundleInput}
+                      type="file"
+                      accept="application/json,.json"
+                      className="hidden"
+                      onChange={handleBundleFile}
+                    />
+                    <button
+                      onClick={() => bundleInput.current?.click()}
+                      className="btn-ghost w-full text-xs"
+                    >
+                      {importFile ? 'key file loaded ✓' : 'choose key file'}
+                    </button>
+
+                    <label className="block space-y-1">
+                      <span className="text-xs text-muted">file passphrase</span>
+                      <input
+                        className="field"
+                        type="password"
+                        value={importPassphrase}
+                        onChange={(e) => setImportPassphrase(e.target.value)}
+                      />
+                    </label>
+
+                    <label className="block space-y-1">
+                      <span className="flex items-center gap-1.5 text-xs text-muted">
+                        your account password
+                        <InfoTip
+                          title="Account password"
+                          tip="Re-encrypts the restored vault on this device."
+                          details="The file passphrase only opens the exported file; your account password re-encrypts the vault on this device, which is keyed from it."
+                        />
+                      </span>
+                      <input
+                        className="field"
+                        type="password"
+                        value={importPassword}
+                        onChange={(e) => setImportPassword(e.target.value)}
+                      />
+                    </label>
+
+                    <button
+                      onClick={handleImport}
+                      disabled={busy || !importFile || !importPassphrase || !importPassword}
+                      className="btn-ghost w-full"
+                    >
+                      Import
+                    </button>
+                  </SettingBlock>
+                </SettingsSection>
+
+                <SettingsSection
+                  title="Identities on this device"
+                  info="Each identity is a separate encrypted store."
+                  infoDetails="Each identity has a separate encrypted store keyed by its own password. Switching does not expose one to the other."
+                >
+                  <SettingBlock>
+                    {session.accounts.map((other) => (
+                      <div
+                        key={other.userId}
+                        className={`flex items-center gap-2 rounded border p-3 ${
+                          other.userId === account.userId
+                            ? 'border-primary/40 bg-primary/5'
+                            : 'border-border'
+                        }`}
+                      >
+                        <Avatar name={other.username} size="sm" />
+                        <span className="flex-1 truncate text-xs">{other.username}</span>
+                        {other.userId === account.userId ? (
+                          <span className="tag bg-primary/10 text-primary">active</span>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              session.selectAccount(other.userId);
+                              navigate('/channels');
+                            }}
+                            className="text-[11px] text-muted hover:text-primary"
+                          >
+                            switch
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </SettingBlock>
+                </SettingsSection>
+              </div>
+            )}
+
+            {tab === 'danger' && (
+              <SettingsSection
+                title="Danger zone"
+                danger
+                info="Logging out keeps your keys; erasing deletes them."
+                infoDetails="Log out keeps your private keys, channel keys, and decrypted messages on this device so you can unlock again. Erase removes them permanently — without an exported key file it cannot be undone, since the server does not hold your keys."
               >
-                switch
-              </button>
+                <SettingBlock>
+                  <button onClick={session.logout} className="btn-ghost w-full">
+                    Log out (keeps keys on this device)
+                  </button>
+                  <button onClick={handleForget} className="btn-danger w-full">
+                    Erase this identity from this device
+                  </button>
+                </SettingBlock>
+              </SettingsSection>
             )}
           </div>
-        ))}
-        <p className="text-[11px] text-muted">
-          Each identity has a separate encrypted store keyed by its own password. Switching does not
-          expose one to the other.
-        </p>
-      </section>
+        )}
+      </main>
+    </div>
+  );
+}
 
-      {/* danger */}
-      <section className="card space-y-3 border-error/30">
-        <h2 className="text-xs uppercase tracking-wider text-error">danger zone</h2>
-        <button onClick={session.logout} className="btn-ghost w-full">
-          Log out (keeps keys on this device)
-        </button>
-        <button onClick={handleForget} className="btn-danger w-full">
-          Erase this identity from this device
-        </button>
-      </section>
+/**
+ * One sound cue: a labelled row with a preview button and an on/off switch. The
+ * preview plays regardless of the toggle so you can hear a cue before enabling
+ * it; it is still silenced by the master switch being off only insofar as the
+ * whole tab greys out (the toggles disable, but the ▶ always previews).
+ */
+function SoundRow({
+  title,
+  description,
+  event,
+  checked,
+  disabled,
+  onChange,
+  hasCustom,
+  onPickCustom,
+  onClearCustom,
+}: {
+  title: string;
+  description: string;
+  event: SoundEvent;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (next: boolean) => void;
+  /** Whether a custom sound file is installed for this event. */
+  hasCustom: boolean;
+  onPickCustom: () => void;
+  onClearCustom: () => void;
+}) {
+  return (
+    <SettingRow
+      title={title}
+      description={description}
+      control={
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => previewSound(event)}
+            className="rounded p-1 text-muted transition-colors hover:text-primary"
+            title="Test sound"
+            aria-label={`Test the ${title} sound`}
+          >
+            <Play size={13} />
+          </button>
+          {hasCustom ? (
+            <button
+              type="button"
+              onClick={onClearCustom}
+              className="inline-flex items-center gap-1 rounded border border-primary/40 bg-primary/10
+                         px-1.5 py-0.5 text-[10px] text-primary transition-colors hover:text-error"
+              title="Remove custom sound (back to the built-in cue)"
+            >
+              custom
+              <X size={10} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onPickCustom}
+              className="rounded p-1 text-muted transition-colors hover:text-primary"
+              title="Use a custom sound file"
+              aria-label={`Choose a custom sound for ${title}`}
+            >
+              <Upload size={13} />
+            </button>
+          )}
+          <Toggle checked={checked} onChange={onChange} disabled={disabled} label={title} />
+        </div>
+      }
+    />
+  );
+}
+
+/**
+ * A miniature transcript that mirrors the chat-display choices live. It carries
+ * its own data-chat-size so the CSS size variables resolve exactly as they will
+ * in a real chat, and remounts on any change (via key) to replay the fade.
+ */
+function ChatPreview({
+  size,
+  hideImages,
+  leftAligned,
+  wallpaper,
+  supporter,
+}: {
+  size: ChatTextSize;
+  hideImages: boolean;
+  leftAligned: boolean;
+  /** Data URL of the chat wallpaper, if one is set. */
+  wallpaper?: string;
+  /** Show the supporter crown on your own message. */
+  supporter?: boolean;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <p className="px-1 text-xs font-medium text-muted">Preview</p>
+      <div
+        key={`${size}-${hideImages}-${leftAligned}-${Boolean(wallpaper)}-${Boolean(supporter)}`}
+        data-chat-size={size}
+        className="animate-fade-in space-y-2 rounded-lg border border-border bg-bg bg-cover bg-center p-3 motion-reduce:animate-none"
+        style={
+          wallpaper
+            ? {
+                backgroundImage: `linear-gradient(var(--wallpaper-scrim), var(--wallpaper-scrim)), url(${wallpaper})`,
+              }
+            : undefined
+        }
+      >
+        <PreviewRow name="Ada" text="hey — did the keys come through?" hideImages={hideImages} />
+        <PreviewRow
+          self
+          name="You"
+          text="yep, decrypted fine 🎉"
+          hideImages={hideImages}
+          leftAligned={leftAligned}
+          supporter={supporter}
+        />
+      </div>
+    </div>
+  );
+}
+
+function PreviewRow({
+  self,
+  name,
+  text,
+  hideImages,
+  leftAligned,
+  supporter,
+}: {
+  self?: boolean;
+  name: string;
+  text: string;
+  hideImages: boolean;
+  leftAligned?: boolean;
+  supporter?: boolean;
+}) {
+  const right = Boolean(self) && !leftAligned;
+  return (
+    <div className={`flex items-start gap-2 ${right ? 'flex-row-reverse' : ''}`}>
+      {!hideImages && (
+        <div
+          className="flex-none rounded-full border border-border bg-surface-raised"
+          style={{ width: 'var(--chat-avatar)', height: 'var(--chat-avatar)' }}
+        />
+      )}
+      <div className={`flex min-w-0 flex-col ${right ? 'items-end' : 'items-start'}`}>
+        <span
+          className={`flex items-center gap-1 ${right ? 'flex-row-reverse' : ''}`}
+          style={{ fontSize: 'var(--chat-name)' }}
+        >
+          <span className="font-semibold text-foreground/90">{name}</span>
+          {supporter && <Badge size="sm" />}
+        </span>
+        <div
+          className="mt-0.5 w-fit rounded-lg border px-2 py-1"
+          style={{
+            fontSize: 'var(--chat-body)',
+            background: right ? 'var(--bubble-self-bg)' : 'var(--bubble-other-bg)',
+            borderColor: right ? 'var(--bubble-self-border)' : 'var(--bubble-other-border)',
+          }}
+        >
+          {text}
+        </div>
+      </div>
     </div>
   );
 }

@@ -46,8 +46,8 @@
      thing, not a CTA. Referenced as bg-ok / text-ok. */
   --color-ok: #17c964;
 
-  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Consolas,
-    monospace;
+  --font-mono:
+    "gg sans", "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
 
   --animate-fade-in: fade-in 150ms ease-out;
 
@@ -89,9 +89,90 @@
  */
 :root {
   --wallpaper-scrim: rgba(7, 10, 8, 0.62);
+
+  /* Chat text scale (Settings › Chat). Mobile baseline here; the desktop block
+     below scales each preset up. `--chat-body` sizes message text, `--chat-name`
+     / `--chat-time` the header, `--chat-avatar` the picture box. Default is the
+     'normal' preset, so a transcript with no data-chat-size still resolves. */
+  --chat-body: 14px;
+  --chat-name: 12px;
+  --chat-time: 10px;
+  --chat-avatar: 24px;
+
+  /* Message-bubble fills and borders (Settings › custom theme). Defaults track
+     the base palette via color-mix; a custom theme overrides these as inline
+     --bubble-* vars on :root, which win. The bubble reads them directly, so a
+     supporter can recolour the self / other bubble background, border, and
+     opacity independently. */
+  --bubble-self-bg: color-mix(in srgb, var(--color-primary) 15%, transparent);
+  --bubble-self-border: color-mix(
+    in srgb,
+    var(--color-primary) 30%,
+    transparent
+  );
+  --bubble-other-bg: var(--color-surface-raised);
+  --bubble-other-border: var(--color-border);
 }
 
-:root[data-theme='light'] {
+[data-chat-size="tiny"] {
+  --chat-body: 11px;
+  --chat-name: 10px;
+  --chat-time: 9px;
+  --chat-avatar: 18px;
+}
+[data-chat-size="small"] {
+  --chat-body: 12.5px;
+  --chat-name: 11px;
+  --chat-time: 10px;
+  --chat-avatar: 21px;
+}
+[data-chat-size="normal"] {
+  --chat-body: 14px;
+  --chat-name: 12px;
+  --chat-time: 10px;
+  --chat-avatar: 24px;
+}
+[data-chat-size="large"] {
+  --chat-body: 16px;
+  --chat-name: 13px;
+  --chat-time: 11px;
+  --chat-avatar: 28px;
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --chat-body: 15px;
+    --chat-name: 14px;
+    --chat-time: 11px;
+    --chat-avatar: 36px;
+  }
+  [data-chat-size="tiny"] {
+    --chat-body: 12px;
+    --chat-name: 11px;
+    --chat-time: 10px;
+    --chat-avatar: 26px;
+  }
+  [data-chat-size="small"] {
+    --chat-body: 13.5px;
+    --chat-name: 12px;
+    --chat-time: 10px;
+    --chat-avatar: 31px;
+  }
+  [data-chat-size="normal"] {
+    --chat-body: 15px;
+    --chat-name: 14px;
+    --chat-time: 11px;
+    --chat-avatar: 36px;
+  }
+  [data-chat-size="large"] {
+    --chat-body: 18px;
+    --chat-name: 15px;
+    --chat-time: 12px;
+    --chat-avatar: 42px;
+  }
+}
+
+:root[data-theme="light"] {
   --wallpaper-scrim: rgba(238, 242, 239, 0.55);
 
   /* surfaces, back to front */

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { Copy, Pencil, LogOut, Ban, Image as ImageIcon, Trash2, Check, X } from 'lucide-react';
+import { useNavigate, Link, useParams } from 'react-router-dom';
+import { Copy, Pencil, LogOut, Ban, Image as ImageIcon, Trash2, Check, X, Settings as SettingsIcon, Lock, Plus } from 'lucide-react';
 import { api } from '../lib/api';
 import { generateChannelKey } from '../lib/crypto';
 import { fileToAsset, BinaryAsset } from '../lib/binary';
@@ -8,7 +8,8 @@ import { useSession } from '../lib/session';
 import { useRelayContext } from '../lib/relayContext';
 import { StoredChannel } from '../lib/vault';
 import { ContextMenu, useContextMenu, MenuItem } from '../components/ContextMenu';
-import { ChannelNameModal, MAX_CHANNEL_NAME } from '../components/ChannelNameModal';
+import { ChannelNameModal } from '../components/ChannelNameModal';
+import { NewChannelModal } from '../components/NewChannelModal';
 import { ChannelIcon } from '../components/ChannelIcon';
 import Avatar from '../components/Avatar';
 
@@ -25,6 +26,7 @@ function ChannelRow({
   peerName,
   peerAvatar,
   unread,
+  active,
   onOpen,
   onOpenMenu,
   onAccept,
@@ -34,6 +36,7 @@ function ChannelRow({
   peerName?: string;
   peerAvatar?: BinaryAsset;
   unread: number;
+  active?: boolean;
   onOpen: () => void;
   onOpenMenu: (x: number, y: number) => void;
   onAccept: () => void;
@@ -68,8 +71,12 @@ function ChannelRow({
   // (open / menu), and the accept/decline controls are their own buttons beside it.
   return (
     <div
-      className="flex w-full items-center gap-3 rounded-lg border border-border bg-surface p-3
-                 transition-colors hover:border-primary/50"
+      className={`flex w-full items-center gap-3 rounded-lg border p-3 transition-colors
+                 hover:border-primary/50 ${
+                   active
+                     ? 'border-primary/60 bg-primary/10'
+                     : 'border-border bg-surface'
+                 }`}
     >
       <button
         onPointerDownCapture={(e) => {
@@ -149,16 +156,18 @@ export default function Channels() {
   const { vault, token, account, lock } = useSession();
   const { connected, revision } = useRelayContext();
   const navigate = useNavigate();
+  // Which channel is open in the panel beside us (desktop two-pane), so its row
+  // reads as selected. Undefined on the bare /channels route.
+  const { channelId: activeChannelId } = useParams<{ channelId: string }>();
 
   const [channels, setChannels] = useState<StoredChannel[]>([]);
   const [unread, setUnread] = useState<Record<string, number>>({});
-  const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [premium, setPremium] = useState(false);
-  const [incognitoNew, setIncognitoNew] = useState(false);
-  const [newName, setNewName] = useState('');
+  // The create/join modal, opened from the "+" beside the channels header.
+  const [showNew, setShowNew] = useState(false);
   const [menu, setMenu] = useState<{ channel: StoredChannel; x: number; y: number } | null>(null);
   const [renaming, setRenaming] = useState<StoredChannel | null>(null);
   // The group whose picture the hidden file input is about to set.
@@ -279,12 +288,12 @@ export default function Channels() {
     // manual refresh.
   }, [vault, token, reload, revision]);
 
-  async function handleCreate() {
+  async function handleCreate(name: string, incognito: boolean) {
     if (!vault || !token) return;
     setError('');
     setBusy(true);
     try {
-      const res = await api.createChannel(token, incognitoNew);
+      const res = await api.createChannel(token, incognito);
 
       // The creator mints the channel key locally. The server issues the code
       // and nothing else -- it never sees this value.
@@ -296,12 +305,11 @@ export default function Channels() {
         key,
         hasKey: true,
         incognito: res.incognito,
-        label: newName.trim() || undefined,
+        label: name.trim() || undefined,
         joinedAt: new Date().toISOString(),
       });
-      setIncognitoNew(false);
-      setNewName('');
 
+      setShowNew(false);
       reload();
       navigate(`/chat/${res.channelId}`);
     } catch (err) {
@@ -311,7 +319,7 @@ export default function Channels() {
     }
   }
 
-  async function handleJoin() {
+  async function handleJoin(code: string) {
     if (!vault || !token) return;
     setError('');
     setNotice('');
@@ -321,6 +329,7 @@ export default function Channels() {
 
       const existing = vault.getChannel(res.channelId);
       if (existing?.hasKey) {
+        setShowNew(false);
         navigate(`/chat/${res.channelId}`);
         return;
       }
@@ -346,7 +355,7 @@ export default function Channels() {
         setNotice('Joined. Waiting for a member to send the channel key…');
       }
 
-      setCode('');
+      setShowNew(false);
       navigate(`/chat/${res.channelId}`);
     } catch (err) {
       setError((err as Error).message);
@@ -506,8 +515,56 @@ export default function Channels() {
   const profile = vault.profile;
 
   return (
-    <div className="min-h-screen mx-auto max-w-md space-y-4 p-4">
-      <header className="flex items-center gap-3">
+    <div className="flex h-full flex-col">
+      <div className="flex-1 space-y-3 overflow-y-auto p-3">
+        <div className="flex items-center justify-between px-1">
+          <p className="text-xs uppercase tracking-wider text-muted">channels</p>
+          <button
+            onClick={() => {
+              setError('');
+              setNotice('');
+              setShowNew(true);
+            }}
+            className="rounded p-1 text-muted transition-colors hover:bg-surface-raised hover:text-primary"
+            title="New channel"
+            aria-label="New channel"
+          >
+            <Plus size={18} />
+          </button>
+        </div>
+
+        {/* Feedback from row actions and joins. Create/join errors live in the
+            modal instead, so they are not doubled here while it is open. */}
+        {error && !showNew && (
+          <p className="rounded border border-error/30 bg-error/10 p-2 text-xs text-error">{error}</p>
+        )}
+        {notice && (
+          <p className="rounded border border-info/30 bg-info/10 p-2 text-xs text-info">{notice}</p>
+        )}
+
+        {channels.length === 0 && (
+          <p className="px-1 text-xs text-muted">No channels yet. Create one or join with a code.</p>
+        )}
+
+        {channels.map((channel) => (
+          <ChannelRow
+            key={channel.channelId}
+            channel={channel}
+            peerName={channel.peerId ? vault.getContact(channel.peerId)?.displayName : undefined}
+            peerAvatar={channel.peerId ? vault.getContact(channel.peerId)?.avatar : undefined}
+            unread={unread[channel.channelId] ?? 0}
+            active={channel.channelId === activeChannelId}
+            onOpen={() => navigate(`/chat/${channel.channelId}`)}
+            onOpenMenu={(x, y) => setMenu({ channel, x, y })}
+            onAccept={() => handleAcceptDm(channel)}
+            onDecline={() => handleDeclineDm(channel)}
+          />
+        ))}
+      </div>
+
+      {/* Discord-style account bar, pinned to the bottom of the column: identity,
+          connection dot, then settings and lock. */}
+      <div className="flex min-h-15 shrink-0 items-center gap-3 border-t border-border bg-surface px-3">
         <Avatar asset={profile.avatar} name={profile.displayName} size="md" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{profile.displayName}</p>
@@ -520,95 +577,37 @@ export default function Channels() {
             {connected ? 'relay connected' : 'reconnecting…'}
           </p>
         </div>
-        <Link to="/settings" className="btn-ghost px-3 py-1.5 text-xs">
-          settings
+        <Link
+          to="/settings"
+          className="rounded p-2 text-muted transition-colors hover:bg-surface-raised hover:text-primary"
+          title="Settings"
+          aria-label="Settings"
+        >
+          <SettingsIcon size={18} />
         </Link>
-        <button onClick={lock} className="btn-ghost px-3 py-1.5 text-xs" title="Lock vault">
-          lock
+        <button
+          onClick={lock}
+          className="rounded p-2 text-muted transition-colors hover:bg-surface-raised hover:text-error"
+          title="Lock vault"
+          aria-label="Lock vault"
+        >
+          <Lock size={18} />
         </button>
-      </header>
+      </div>
 
-      <section className="card space-y-3">
-        <input
-          className="field w-full"
-          placeholder="channel name (optional)"
-          maxLength={MAX_CHANNEL_NAME}
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && !busy && handleCreate()}
+      {showNew && (
+        <NewChannelModal
+          premium={premium}
+          busy={busy}
+          error={error}
+          onCreate={handleCreate}
+          onJoin={handleJoin}
+          onClose={() => {
+            setShowNew(false);
+            setError('');
+          }}
         />
-        <button onClick={handleCreate} disabled={busy} className="btn-primary w-full">
-          Create {incognitoNew ? 'incognito ' : ''}channel
-        </button>
-
-        {premium && (
-          <label className="flex items-start gap-2">
-            <input
-              type="checkbox"
-              className="mt-0.5 accent-primary"
-              checked={incognitoNew}
-              onChange={(e) => setIncognitoNew(e.target.checked)}
-            />
-            <span className="text-[11px]">
-              Incognito
-              <span className="mt-0.5 block text-muted">
-                Members appear as colours only — no names or avatars are shown or sent, and colours
-                are per-channel. This hides who's who in the interface; the server still routes by
-                membership, so it is not anonymity from a determined member.
-              </span>
-            </span>
-          </label>
-        )}
-
-        <div className="flex items-center gap-2">
-          <div className="h-px flex-1 bg-border" />
-          <span className="text-[10px] uppercase tracking-wider text-muted">or join</span>
-          <div className="h-px flex-1 bg-border" />
-        </div>
-
-        <div className="flex gap-2">
-          <input
-            className="field flex-1 font-mono uppercase tracking-widest"
-            placeholder="XXXXXXXX"
-            maxLength={8}
-            value={code}
-            onChange={(e) => setCode(e.target.value.toUpperCase())}
-            onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
-          />
-          <button onClick={handleJoin} disabled={busy || !code.trim()} className="btn-ghost">
-            Join
-          </button>
-        </div>
-
-        {error && (
-          <p className="rounded border border-error/30 bg-error/10 p-4 text-xs text-error">{error}</p>
-        )}
-        {notice && (
-          <p className="rounded border border-info/30 bg-info/10 p-4 text-xs text-info">{notice}</p>
-        )}
-      </section>
-
-      <section className="space-y-2">
-        <p className="text-xs uppercase tracking-wider text-muted">channels</p>
-
-        {channels.length === 0 && (
-          <p className="text-xs text-muted">No channels yet. Create one or join with a code.</p>
-        )}
-
-        {channels.map((channel) => (
-          <ChannelRow
-            key={channel.channelId}
-            channel={channel}
-            peerName={channel.peerId ? vault.getContact(channel.peerId)?.displayName : undefined}
-            peerAvatar={channel.peerId ? vault.getContact(channel.peerId)?.avatar : undefined}
-            unread={unread[channel.channelId] ?? 0}
-            onOpen={() => navigate(`/chat/${channel.channelId}`)}
-            onOpenMenu={(x, y) => setMenu({ channel, x, y })}
-            onAccept={() => handleAcceptDm(channel)}
-            onDecline={() => handleDeclineDm(channel)}
-          />
-        ))}
-      </section>
+      )}
 
       {menu && (
         <ContextMenu

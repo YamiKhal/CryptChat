@@ -12,6 +12,7 @@ import { api } from './api';
 import { useSession } from './session';
 import { useRelayContext } from './relayContext';
 import { suppressMic } from './noiseSuppression';
+import { startRingtone, stopRingtone } from './sounds';
 import type { CallSignal } from './crypto';
 
 /**
@@ -139,6 +140,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const teardown = useCallback(() => {
+    // Any ring (in or out) ends the moment the call does.
+    stopRingtone();
     if (pcRef.current) {
       pcRef.current.onicecandidate = null;
       pcRef.current.ontrack = null;
@@ -217,7 +220,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
       pc.onconnectionstatechange = () => {
         const s = pc.connectionState;
-        if (s === 'connected') setStatus('connected');
+        if (s === 'connected') {
+          stopRingtone();
+          setStatus('connected');
+        }
         else if (s === 'failed' || s === 'disconnected' || s === 'closed') {
           // A media-path failure ends the call; the peer gets a hangup below via
           // the normal teardown path when the user closes it, but a hard failure
@@ -299,6 +305,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       setPeerId(pid);
       setMedia(kind);
       setStatus('ringing-out');
+      startRingtone('call-outgoing');
 
       try {
         const { outgoingAudio, videoTrack } = await acquireLocal(kind === 'video');
@@ -335,6 +342,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     if (!call || !offer || !offer.sdp) return;
 
     setError(null);
+    stopRingtone(); // answering — the incoming ring stops now
     callIdRef.current = call.callId;
     channelIdRef.current = call.channelId;
     peerIdRef.current = call.peerId;
@@ -383,6 +391,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
   }, [incoming, acquireLocal, buildPeer, sendSignal, teardown]);
 
   const decline = useCallback(() => {
+    stopRingtone();
     if (incoming) {
       void sendSignal(incoming.channelId, { kind: 'decline', callId: incoming.callId });
     }
@@ -499,10 +508,12 @@ export function CallProvider({ children }: { children: ReactNode }) {
             callId: signal.callId,
           });
           setStatus('ringing-in');
+          startRingtone('call-incoming');
           break;
         }
         case 'answer': {
           if (signal.callId !== callIdRef.current || !pcRef.current || !signal.sdp) return;
+          stopRingtone(); // callee picked up — stop our outgoing ring
           setStatus('connecting');
           void pcRef.current
             .setRemoteDescription({ type: 'answer', sdp: signal.sdp })

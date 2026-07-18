@@ -1,5 +1,5 @@
 import { useRef, useEffect, useLayoutEffect, useState, KeyboardEvent } from 'react';
-import { Paperclip, Send, Smile, Lock, Timer, EyeOff } from 'lucide-react';
+import { Paperclip, Send, Smile, Lock, Timer, EyeOff, SlidersHorizontal } from 'lucide-react';
 import EmojiPicker from './EmojiPicker';
 import { Limits, countChars } from '../lib/limits';
 
@@ -62,6 +62,12 @@ export default function Composer({
 }: ComposerProps) {
   const textarea = useRef<HTMLTextAreaElement>(null);
   const [showEmoji, setShowEmoji] = useState(false);
+  const [showTools, setShowTools] = useState(false);
+
+  // The lock / spoiler / burn controls live together behind one button so the
+  // bar stays uncluttered. Only rendered when at least one is available.
+  const hasTools = canLock || canBurn || Boolean(onToggleSpoiler);
+  const toolsArmed = lockArmed || burnArmed || spoilerArmed;
 
   const used = countChars(value);
   const over = used > limits.maxChars;
@@ -169,6 +175,79 @@ export default function Composer({
           />
         </div>
 
+        {hasTools && (
+          <div className="relative flex-none">
+            {showTools && (
+              <>
+                {/* Click-away backdrop, below the popover. */}
+                <div className="fixed inset-0 z-40" onClick={() => setShowTools(false)} />
+                <div
+                  className="absolute bottom-full right-0 z-50 mb-2 w-52 space-y-1 rounded-lg
+                             border border-border bg-surface-raised p-1.5 shadow-xl animate-fade-in"
+                >
+                  {canLock && (
+                    <button
+                      onClick={() => {
+                        onToggleLock?.();
+                        setShowTools(false);
+                      }}
+                      className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs
+                                  transition-colors hover:bg-primary/10 ${
+                                    lockArmed ? 'text-primary' : 'text-foreground'
+                                  }`}
+                    >
+                      <Lock size={15} className="flex-none" />
+                      Password-protect
+                    </button>
+                  )}
+                  {onToggleSpoiler && (
+                    <button
+                      onClick={() => {
+                        onToggleSpoiler();
+                        setShowTools(false);
+                      }}
+                      className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs
+                                  transition-colors hover:bg-primary/10 ${
+                                    spoilerArmed ? 'text-primary' : 'text-foreground'
+                                  }`}
+                    >
+                      <EyeOff size={15} className="flex-none" />
+                      Mark as spoiler
+                    </button>
+                  )}
+                  {canBurn && (
+                    <button
+                      onClick={() => {
+                        onToggleBurn?.();
+                        setShowTools(false);
+                      }}
+                      className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs
+                                  transition-colors hover:bg-primary/10 ${
+                                    burnArmed ? 'text-primary' : 'text-foreground'
+                                  }`}
+                    >
+                      <Timer size={15} className="flex-none" />
+                      Disappearing message
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+            <button
+              onClick={() => setShowTools((s) => !s)}
+              disabled={disabled}
+              className={`btn-ghost w-full px-2.5 py-2 ${
+                toolsArmed ? 'border-primary/60 text-primary' : ''
+              }`}
+              title="Message tools"
+              aria-label="Message tools"
+              aria-pressed={toolsArmed}
+            >
+              <SlidersHorizontal size={16} />
+            </button>
+          </div>
+        )}
+
         <button
           onClick={() => setShowEmoji((s) => !s)}
           disabled={disabled}
@@ -178,51 +257,6 @@ export default function Composer({
         >
           <Smile size={16} />
         </button>
-
-        {canLock && (
-          <button
-            onClick={onToggleLock}
-            disabled={disabled}
-            className={`btn-ghost flex-none px-2.5 py-2 ${
-              lockArmed ? 'border-primary/60 text-primary' : ''
-            }`}
-            title={lockArmed ? 'This message will require a code' : 'Password-protect this message'}
-            aria-label="Password-protect this message"
-            aria-pressed={lockArmed}
-          >
-            <Lock size={16} />
-          </button>
-        )}
-
-        {onToggleSpoiler && (
-          <button
-            onClick={onToggleSpoiler}
-            disabled={disabled}
-            className={`btn-ghost flex-none px-2.5 py-2 ${
-              spoilerArmed ? 'border-primary/60 text-primary' : ''
-            }`}
-            title={spoilerArmed ? 'This message will be hidden until tapped' : 'Mark as a spoiler'}
-            aria-label="Mark message as a spoiler"
-            aria-pressed={spoilerArmed}
-          >
-            <EyeOff size={16} />
-          </button>
-        )}
-
-        {canBurn && (
-          <button
-            onClick={onToggleBurn}
-            disabled={disabled}
-            className={`btn-ghost flex-none px-2.5 py-2 ${
-              burnArmed ? 'border-primary/60 text-primary' : ''
-            }`}
-            title={burnArmed ? 'This message will disappear after reading' : 'Disappearing message'}
-            aria-label="Disappearing message"
-            aria-pressed={burnArmed}
-          >
-            <Timer size={16} />
-          </button>
-        )}
 
         <button
           onClick={onSend}

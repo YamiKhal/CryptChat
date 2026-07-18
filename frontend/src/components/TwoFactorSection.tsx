@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { startRegistration } from '@simplewebauthn/browser';
-import { ShieldCheck, Trash2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import { api, TwoFactorCredential } from '../lib/api';
+import { SettingsSection, SettingBlock } from './SettingsUI';
 
 /**
  * Two-factor (WebAuthn) management.
@@ -78,69 +79,68 @@ export default function TwoFactorSection({ token }: { token: string }) {
   }
 
   return (
-    <section className="card space-y-3">
-      <h2 className="flex items-center gap-1.5 text-xs uppercase tracking-wider text-muted">
-        <ShieldCheck size={13} aria-hidden="true" />
-        two-factor login
-      </h2>
-
-      {status && (
-        <p
-          className={`rounded border p-3 text-[11px] ${
-            status.kind === 'ok'
-              ? 'border-primary/30 bg-primary/10 text-primary'
-              : 'border-error/30 bg-error/10 text-error'
-          }`}
-        >
-          {status.text}
-        </p>
-      )}
-
-      {loaded && credentials.length > 0 && (
-        <ul className="space-y-1">
-          {credentials.map((cred) => (
-            <li
-              key={cred.id}
-              className="flex items-center gap-2 rounded border border-border bg-surface-raised px-3 py-2"
+    <SettingsSection
+      title="Two-factor login"
+      info="A passkey or security key asked for at login, on top of your password."
+      infoDetails="A passkey or security key asked for at login, on top of your password. It protects against a stolen password — but not against a leaked backup: your messages are encrypted under your password, which this does not replace. It is an extra lock on the door, not a stronger vault."
+    >
+      {(status || (loaded && credentials.length > 0)) && (
+        <SettingBlock>
+          {status && (
+            <p
+              className={`rounded border p-3 text-[11px] ${
+                status.kind === 'ok'
+                  ? 'border-primary/30 bg-primary/10 text-primary'
+                  : 'border-error/30 bg-error/10 text-error'
+              }`}
             >
-              <span className="flex-1 truncate text-xs">{cred.label}</span>
-              <span className="text-[10px] text-muted">
-                {new Date(cred.createdAt).toLocaleDateString()}
-              </span>
-              <button
-                onClick={() => remove(cred)}
-                disabled={busy}
-                className="text-muted hover:text-error"
-                title="Remove"
-                aria-label={`Remove ${cred.label}`}
-              >
-                <Trash2 size={13} />
-              </button>
-            </li>
-          ))}
-        </ul>
+              {status.text}
+            </p>
+          )}
+
+          {loaded && credentials.length > 0 && (
+            <ul className="space-y-1">
+              {credentials.map((cred) => (
+                <li
+                  key={cred.id}
+                  className="flex items-center gap-2 rounded border border-border bg-surface-raised px-3 py-2"
+                >
+                  <span className="flex-1 truncate text-xs">{cred.label}</span>
+                  <span className="text-[10px] text-muted">
+                    {new Date(cred.createdAt).toLocaleDateString()}
+                  </span>
+                  <button
+                    onClick={() => remove(cred)}
+                    disabled={busy}
+                    className="text-muted hover:text-error"
+                    title="Remove"
+                    aria-label={`Remove ${cred.label}`}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </SettingBlock>
       )}
 
-      <label className="block space-y-1">
-        <span className="text-xs text-muted">name for a new key (optional)</span>
-        <input
-          className="field"
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          placeholder="e.g. YubiKey, phone"
-          maxLength={64}
-        />
-      </label>
+      <SettingBlock>
+        <label className="block space-y-1">
+          <span className="text-xs text-muted">name for a new key (optional)</span>
+          <input
+            className="field"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="e.g. YubiKey, phone"
+            maxLength={64}
+          />
+        </label>
 
-      <button onClick={enroll} disabled={busy} className="btn-ghost w-full text-xs">
-        {credentials.length > 0 ? 'add another security key' : 'add a security key'}
-      </button>
-
-      <p className="text-[11px] text-muted">
-        A passkey or security key asked for at login, on top of your password. It protects against a
-        stolen password — but not against a leaked backup: your messages are encrypted under your
-        password, which this does not replace. It is an extra lock on the door, not a stronger vault.
-      </p>
-    </section>
+        <button onClick={enroll} disabled={busy} className="btn-ghost w-full text-xs">
+          {credentials.length > 0 ? 'add another security key' : 'add a security key'}
+        </button>
+      </SettingBlock>
+    </SettingsSection>
   );
 }

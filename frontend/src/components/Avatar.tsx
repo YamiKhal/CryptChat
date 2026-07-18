@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, CSSProperties } from 'react';
 import { BinaryAsset, unpackAsset, decodeImage } from '../lib/binary';
 
 /**
@@ -15,6 +15,9 @@ const SIZES = {
   sm: 'h-6 w-6 text-[10px]',
   md: 'h-8 w-8 text-xs',
   lg: 'h-20 w-20 text-2xl',
+  // Fills its parent -- the caller sizes the box (e.g. from a CSS variable) and
+  // the initials scale with it via em.
+  fluid: 'h-full w-full text-[0.42em]',
 } as const;
 
 interface AvatarProps {
@@ -22,6 +25,7 @@ interface AvatarProps {
   name: string;
   size?: keyof typeof SIZES;
   className?: string;
+  style?: CSSProperties;
   /**
    * Incognito mode: a solid colour swatch instead of an image or initials.
    * A hue in [0, 360). When set, `asset` and `name` are ignored for rendering,
@@ -37,7 +41,7 @@ function hueFor(name: string): number {
   return Math.abs(hash) % 360;
 }
 
-export default function Avatar({ asset, name, size = 'md', className = '', color }: AvatarProps) {
+export default function Avatar({ asset, name, size = 'md', className = '', style, color }: AvatarProps) {
   const [url, setUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -83,14 +87,16 @@ export default function Avatar({ asset, name, size = 'md', className = '', color
     return (
       <div
         className={`${base} border border-border`}
-        style={{ backgroundColor: `hsl(${color} 55% 45%)` }}
+        style={{ backgroundColor: `hsl(${color} 55% 45%)`, ...style }}
         aria-hidden
       />
     );
   }
 
   if (url) {
-    return <img src={url} alt="" className={`${base} object-cover border border-border`} />;
+    return (
+      <img src={url} alt="" className={`${base} object-cover border border-border`} style={style} />
+    );
   }
 
   return (
@@ -99,6 +105,7 @@ export default function Avatar({ asset, name, size = 'md', className = '', color
       style={{
         backgroundColor: `hsl(${hueFor(name)} 45% 18%)`,
         color: `hsl(${hueFor(name)} 80% 70%)`,
+        ...style,
       }}
       aria-hidden
     >

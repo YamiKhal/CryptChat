@@ -1,5 +1,7 @@
 import { Bytes, wipe, base64UrlToBytes, bytesToBase64Url, BinaryAsset } from './binary';
 import { applyReaction } from './limits';
+import type { SoundSettings, SoundEvent } from './sounds';
+import type { BubbleTheme } from './theme';
 import {
   Identity,
   Sealed,
@@ -145,6 +147,8 @@ export interface UserProfile {
 export interface CustomTheme {
   enabled: boolean;
   colors: Record<string, string>;
+  /** Optional per-message-bubble colour + opacity overrides. */
+  bubbles?: BubbleTheme;
 }
 
 export interface Preferences {
@@ -172,7 +176,42 @@ export interface Preferences {
    * legible whatever the image.
    */
   chatBackground?: BinaryAsset;
+
+  /**
+   * Lay every message out in a single left column (Discord-style), rather than
+   * the default of your own messages on the right and everyone else's on the
+   * left. Purely local presentation -- it changes nothing about what is sent.
+   */
+  messagesLeftAligned?: boolean;
+
+  /**
+   * Chat text scale. Drives CSS variables on the transcript, which resolve to
+   * different sizes on mobile and desktop. Absent = 'normal'. Local only.
+   */
+  chatTextSize?: 'tiny' | 'small' | 'normal' | 'large';
+
+  /**
+   * Hide profile pictures in the transcript, showing names alone. Local only,
+   * and does not affect what avatars are sent or received.
+   */
+  hideProfileImages?: boolean;
+
+  /**
+   * Per-device sound cues (a new message elsewhere, a ringing call, and the
+   * noisier opt-ins). Partial: any missing key falls back to
+   * DEFAULT_SOUND_SETTINGS in the sound engine. Local only, never sent.
+   */
+  sound?: Partial<SoundSettings>;
+
+  /**
+   * Per-event custom sound files, chosen from local disk. Each is a small audio
+   * asset (mime + base64) played in place of the synthesized cue. Local only,
+   * never sent -- purely a personal customization.
+   */
+  customSounds?: Partial<Record<SoundEvent, BinaryAsset>>;
 }
+
+export type ChatTextSize = NonNullable<Preferences['chatTextSize']>;
 
 export const DEFAULT_PREFERENCES: Preferences = {
   alwaysPreviewLinks: false,
@@ -434,15 +473,21 @@ export class Vault {
     await this.flush();
   }
 
-  /** Mark a channel read up to `at` (default now). No-op if the channel is gone. */
-  async markChannelRead(channelId: string, at: string = new Date().toISOString()): Promise<void> {
+  /**
+   * Mark a channel read up to `at` (default now). No-op if the channel is gone.
+   *
+   * Returns whether the marker actually advanced, so a caller can skip a
+   * re-render / revision bump when nothing changed.
+   */
+  async markChannelRead(channelId: string, at: string = new Date().toISOString()): Promise<boolean> {
     const channel = this.data.channels[channelId];
-    if (!channel) return;
+    if (!channel) return false;
     // Never move the marker backwards: reopening an old channel must not
     // resurrect unread counts.
-    if (channel.lastReadAt && channel.lastReadAt >= at) return;
+    if (channel.lastReadAt && channel.lastReadAt >= at) return false;
     channel.lastReadAt = at;
     await this.flush();
+    return true;
   }
 
   /**

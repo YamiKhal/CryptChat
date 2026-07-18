@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useReducer } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { CornerUpLeft, Smile, Copy, Download, Pencil, Trash2, Lock, LockKeyhole, Timer, ShieldCheck, MessageCircle, Phone, Video, Ban, LogOut, Image as ImageIcon, User } from 'lucide-react';
+import { CornerUpLeft, Smile, Copy, Download, Pencil, Trash2, Lock, LockKeyhole, Timer, ShieldCheck, MessageCircle, Phone, Video, Ban, LogOut, Image as ImageIcon, User, EyeOff } from 'lucide-react';
 import { incognitoHue, incognitoLabel } from '../lib/incognito';
 import TrustPanel from '../components/TrustPanel';
 import { useCall } from '../lib/callContext';
+import { setActiveChannel, playSound } from '../lib/sounds';
 
 /** Disappearing-message durations offered in the composer. */
 const BURN_OPTIONS = [
@@ -88,6 +89,8 @@ function MessageRow({
   avatarColor,
   nameOverride,
   senderTrusted,
+  leftAligned,
+  hideAvatars,
 }: {
   message: StoredMessage;
   isSelf: boolean;
@@ -105,6 +108,8 @@ function MessageRow({
   avatarColor?: number;
   nameOverride?: string;
   senderTrusted?: boolean;
+  leftAligned?: boolean;
+  hideAvatars?: boolean;
 }) {
   const { handlers, position, close } = useContextMenu();
 
@@ -135,6 +140,8 @@ function MessageRow({
       avatarColor={avatarColor}
       nameOverride={nameOverride}
       senderTrusted={senderTrusted}
+      leftAligned={leftAligned}
+      hideAvatars={hideAvatars}
     />
   );
 }
@@ -230,6 +237,7 @@ export default function Chat() {
     broadcastProfile,
     connected,
     revision,
+    bumpRevision,
     typingIn,
     lastPresence,
     isVerified,
@@ -251,7 +259,9 @@ export default function Chat() {
   const [lockArmed, setLockArmed] = useState(false);
   const [lockCode, setLockCode] = useState('');
   const [lockHint, setLockHint] = useState('');
+  const [showLockModal, setShowLockModal] = useState(false);
   const [burnTtl, setBurnTtl] = useState<number | null>(null);
+  const [showBurnModal, setShowBurnModal] = useState(false);
   const [spoilerArmed, setSpoilerArmed] = useState(false);
   // The contact whose safety number is open, from a message's context menu.
   const [verifyingContact, setVerifyingContact] = useState<Contact | null>(null);
@@ -289,6 +299,13 @@ export default function Chat() {
   useEffect(() => {
     setDmBlocked(Boolean(channel?.blocked));
   }, [channelId, channel?.blocked]);
+
+  // Tell the sound engine which channel is on screen, so a message that lands
+  // here uses the soft in-chat cue rather than the louder "elsewhere" alert.
+  useEffect(() => {
+    setActiveChannel(channelId ?? null);
+    return () => setActiveChannel(null);
+  }, [channelId]);
 
   // Tier limits come from the server, never hardcoded here: it is the only
   // authority, and a client that believes the wrong cap produces uploads that
@@ -344,8 +361,13 @@ export default function Chat() {
   // genuinely newer material.
   useEffect(() => {
     if (!vault || !channelId) return;
-    vault.markChannelRead(channelId).catch(() => {});
-  }, [vault, channelId, messages.length]);
+    // Bump the shared revision when the marker actually advances, so the channel
+    // list recomputes its unread badge now rather than waiting for the next
+    // unrelated relay event (which left the badge stuck at 1-2).
+    vault.markChannelRead(channelId).then((advanced) => {
+      if (advanced) bumpRevision();
+    }).catch(() => {});
+  }, [vault, channelId, messages.length, bumpRevision]);
 
   // Burn-after-read sweep. While the channel is open, start the clock on any
   // burn message on screen and remove ones whose time is up. Running only while
@@ -391,6 +413,9 @@ export default function Chat() {
   const lastTypingSent = useRef(0);
   const handleType = useCallback(
     (value: string) => {
+      // Optional keystroke click (off by default). Only on insertion, so a
+      // backspace-and-retype does not double-tick.
+      if (value.length > text.length) playSound('typing');
       setText(value);
       if (!channelId) return;
       if (value.trim()) {
@@ -405,7 +430,7 @@ export default function Chat() {
         sendTyping(channelId, true);
       }
     },
-    [channelId, sendTyping]
+    [channelId, sendTyping, text.length]
   );
 
   /**
@@ -536,6 +561,7 @@ export default function Chat() {
       });
 
       if (message) setMessages((current) => [...current, message]);
+      playSound('message-sent');
       setText('');
       setPending([]);
       setReplyTo(null);
@@ -840,12 +866,15 @@ export default function Chat() {
   const messageIds = useMemo(() => new Set(messages.map((m) => m.id)), [messages]);
 
   // Premium chat wallpaper, decoded from the vault to a data URL. Rendered
-  // behind opaque message bubbles, so it never costs legibility.
+  // behind opaque message bubbles, so it never costs legibility. A video
+  // (mp4/webm) is looped and scaled behind the transcript; an image or GIF is a
+  // CSS background so an animated GIF keeps its frames.
   const chatBackground = useMemo(() => {
     const asset = vault?.preferences.chatBackground;
     if (!asset) return undefined;
     try {
-      return bytesToDataUrl(base64UrlToBytes(asset.data), asset.mime);
+      const url = bytesToDataUrl(base64UrlToBytes(asset.data), asset.mime);
+      return { url, isVideo: asset.mime.startsWith('video/') };
     } catch {
       return undefined;
     }
@@ -1004,7 +1033,7 @@ export default function Chat() {
 
   if (!channel) {
     return (
-      <div className="min-h-screen grid place-items-center p-4 text-center">
+      <div className="grid h-full place-items-center p-4 text-center">
         <div className="card max-w-sm space-y-3">
           <p className="text-sm">This channel is not on this device.</p>
           <Link to="/channels" className="btn-ghost">
@@ -1016,9 +1045,13 @@ export default function Chat() {
   }
 
   return (
-    <div className="mx-auto flex h-screen max-w-md flex-col">
-      <header className="flex items-center gap-3 border-b border-border bg-surface px-4 py-3">
-        <Link to="/channels" className="text-muted transition-colors hover:text-primary">
+    <div className="flex h-full min-h-0 flex-col">
+      <header className="flex h-14.25 shrink-0 items-center gap-3 border-b border-border bg-surface px-4">
+        <Link
+          to="/channels"
+          className="text-muted transition-colors hover:text-primary lg:hidden"
+          aria-label="Back to channels"
+        >
           ←
         </Link>
         {/* Clicking (or right-click / long-press) the icon or name opens the
@@ -1107,17 +1140,41 @@ export default function Chat() {
         </div>
       )}
 
-      <div
-        className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-1 bg-cover bg-center bg-fixed"
-        style={
-          chatBackground
-            ? {
-                backgroundImage: `linear-gradient(var(--wallpaper-scrim), var(--wallpaper-scrim)), url(${chatBackground})`,
-              }
-            : undefined
-        }
-      >
-        {loading && <p className="text-center text-xs text-muted">decrypting…</p>}
+      <div className="relative flex-1 min-h-0">
+        {/* Video wallpaper: looped, scaled to fill, behind a scrim so the
+            transcript stays legible. Image / GIF stays a CSS background on the
+            scroll layer below. */}
+        {chatBackground?.isVideo && (
+          <>
+            <video
+              className="absolute inset-0 h-full w-full object-cover"
+              src={chatBackground.url}
+              autoPlay
+              loop
+              muted
+              playsInline
+              aria-hidden="true"
+            />
+            <div
+              className="absolute inset-0"
+              style={{ background: 'var(--wallpaper-scrim)' }}
+              aria-hidden="true"
+            />
+          </>
+        )}
+
+        <div
+          data-chat-size={vault.preferences.chatTextSize ?? 'normal'}
+          className="absolute inset-0 overflow-y-auto overflow-x-hidden p-4 space-y-1 bg-cover bg-center"
+          style={
+            chatBackground && !chatBackground.isVideo
+              ? {
+                  backgroundImage: `linear-gradient(var(--wallpaper-scrim), var(--wallpaper-scrim)), url(${chatBackground.url})`,
+                }
+              : undefined
+          }
+        >
+          {loading && <p className="text-center text-xs text-muted">decrypting…</p>}
 
         {!loading && messages.length === 0 && channel.hasKey && (
           <p className="text-center text-xs text-muted">No messages yet.</p>
@@ -1180,12 +1237,15 @@ export default function Chat() {
                 }
                 nameOverride={channel.incognito ? nameFor(message.senderId) : undefined}
                 senderTrusted={!channel.incognito && isVerified(message.senderId)}
+                leftAligned={vault.preferences.messagesLeftAligned}
+                hideAvatars={vault.preferences.hideProfileImages}
               />
             );
           });
         })()}
 
-        <div ref={bottomRef} />
+          <div ref={bottomRef} />
+        </div>
       </div>
 
       {error && <p className="border-t border-error/30 bg-error/10 px-4 py-2 text-xs text-error">{error}</p>}
@@ -1244,77 +1304,66 @@ export default function Chat() {
         );
       })()}
 
-      {lockArmed && (
-        <div className="space-y-1.5 border-t border-primary/30 bg-primary/5 px-4 py-2">
-          <div className="flex items-center gap-2">
-            <Lock size={12} className="text-primary" aria-hidden="true" />
-            <span className="text-[11px] text-primary">This message will need a code to read</span>
-            <button
-              onClick={() => {
-                setLockArmed(false);
-                setLockCode('');
-                setLockHint('');
-              }}
-              className="ml-auto text-[11px] text-muted hover:text-error"
-            >
-              cancel
-            </button>
-          </div>
-          <input
-            className="field text-xs"
-            placeholder="code recipients must enter"
-            value={lockCode}
-            onChange={(e) => setLockCode(e.target.value)}
-            autoComplete="off"
-          />
-          <input
-            className="field text-xs"
-            placeholder="hint (optional, shown before unlocking)"
-            value={lockHint}
-            onChange={(e) => setLockHint(e.target.value)}
-            maxLength={140}
-          />
-          <p className="text-[10px] text-muted">
-            Share the code another way. It never reaches our servers and cannot be recovered —
-            without it, the message stays locked. This guards against a glance over the shoulder, not
-            against someone who already has the message.
-          </p>
-        </div>
-      )}
-
-      {burnTtl != null && (
-        <div className="space-y-1.5 border-t border-primary/30 bg-primary/5 px-4 py-2">
-          <div className="flex items-center gap-2">
-            <Timer size={12} className="text-primary" aria-hidden="true" />
-            <span className="text-[11px] text-primary">
-              Disappears {BURN_OPTIONS.find((o) => o.ttl === burnTtl)?.label ?? ''} after it's read
-            </span>
-            <button
-              onClick={() => setBurnTtl(null)}
-              className="ml-auto text-[11px] text-muted hover:text-error"
-            >
-              cancel
-            </button>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {BURN_OPTIONS.map((o) => (
+      {/* Compact indicators for armed modifiers. Each opens its config again
+          (lock / burn) and carries an ✕ to turn it off. The full configuration
+          lives in the modals below. */}
+      {(lockArmed || burnTtl != null || spoilerArmed) && (
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-primary/30 bg-primary/5 px-4 py-1.5">
+          {lockArmed && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
               <button
-                key={o.ttl}
-                onClick={() => setBurnTtl(o.ttl)}
-                className={`rounded px-2 py-0.5 text-[11px] ${
-                  burnTtl === o.ttl
-                    ? 'bg-primary text-primary-foreground'
-                    : 'border border-border text-muted hover:text-foreground'
-                }`}
+                onClick={() => setShowLockModal(true)}
+                className="inline-flex items-center gap-1"
+                title="Edit lock"
               >
-                {o.label}
+                <Lock size={11} aria-hidden="true" />
+                {lockCode.trim() ? 'Locked' : 'Lock — set a code'}
               </button>
-            ))}
-          </div>
-          <p className="text-[10px] text-muted">
-            Removed from both sides after the timer, on cooperating clients. It cannot stop a
-            screenshot or a photo of the screen.
-          </p>
+              <button
+                onClick={() => {
+                  setLockArmed(false);
+                  setLockCode('');
+                  setLockHint('');
+                }}
+                className="text-muted hover:text-error"
+                aria-label="Turn off lock"
+              >
+                ×
+              </button>
+            </span>
+          )}
+          {burnTtl != null && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
+              <button
+                onClick={() => setShowBurnModal(true)}
+                className="inline-flex items-center gap-1"
+                title="Edit timer"
+              >
+                <Timer size={11} aria-hidden="true" />
+                Disappears {BURN_OPTIONS.find((o) => o.ttl === burnTtl)?.label ?? ''}
+              </button>
+              <button
+                onClick={() => setBurnTtl(null)}
+                className="text-muted hover:text-error"
+                aria-label="Turn off disappearing"
+              >
+                ×
+              </button>
+            </span>
+          )}
+          {spoilerArmed && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
+              <EyeOff size={11} aria-hidden="true" />
+              Spoiler
+              <button
+                onClick={() => setSpoilerArmed(false)}
+                className="text-muted hover:text-error"
+                aria-label="Turn off spoiler"
+              >
+                ×
+              </button>
+            </span>
+          )}
         </div>
       )}
 
@@ -1366,10 +1415,13 @@ export default function Chat() {
         placeholder={editingId ? 'edit message…' : channel.hasKey ? 'message' : 'waiting for key…'}
         canLock={Boolean(limits.premium) && !editingId}
         lockArmed={lockArmed}
-        onToggleLock={() => setLockArmed((a) => !a)}
+        // Opening the modal must not arm anything: the lock only takes effect
+        // when the user confirms inside it. Clicking the tool by mistake leaves
+        // the message unlocked.
+        onToggleLock={() => setShowLockModal(true)}
         canBurn={Boolean(limits.premium)}
         burnArmed={burnTtl != null}
-        onToggleBurn={() => setBurnTtl((t) => (t == null ? 30 : null))}
+        onToggleBurn={() => setShowBurnModal(true)}
         spoilerArmed={spoilerArmed}
         onToggleSpoiler={editingId ? undefined : () => setSpoilerArmed((s) => !s)}
       />
@@ -1381,6 +1433,43 @@ export default function Chat() {
           isVerified={isVerified}
           onClose={() => setVerifyingContact(null)}
           onSetVerified={setVerified}
+        />
+      )}
+
+      {showLockModal && (
+        <LockComposeModal
+          initialCode={lockCode}
+          initialHint={lockHint}
+          armed={lockArmed}
+          onConfirm={(code, hint) => {
+            setLockArmed(true);
+            setLockCode(code);
+            setLockHint(hint);
+            setShowLockModal(false);
+          }}
+          onDisable={() => {
+            setLockArmed(false);
+            setLockCode('');
+            setLockHint('');
+            setShowLockModal(false);
+          }}
+          onClose={() => setShowLockModal(false)}
+        />
+      )}
+
+      {showBurnModal && (
+        <BurnComposeModal
+          initialTtl={burnTtl}
+          armed={burnTtl != null}
+          onConfirm={(ttl) => {
+            setBurnTtl(ttl);
+            setShowBurnModal(false);
+          }}
+          onDisable={() => {
+            setBurnTtl(null);
+            setShowBurnModal(false);
+          }}
+          onClose={() => setShowBurnModal(false)}
         />
       )}
 
@@ -1442,6 +1531,156 @@ export default function Chat() {
           onClose={() => setReactingTo(null)}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * Configure the password lock for the next message.
+ *
+ * Nothing is armed until "Lock message" is pressed: the code and hint are draft
+ * state held here, seeded from any existing armed lock so the chip can reopen and
+ * edit it. Backdrop click or "Cancel" discards the draft and leaves the message
+ * as it was -- opening this by mistake never locks anything. "Turn off lock"
+ * (shown only when a lock is already armed) clears it. The code never leaves the
+ * device -- it is what recipients type to decrypt this one message.
+ */
+function LockComposeModal({
+  initialCode,
+  initialHint,
+  armed,
+  onConfirm,
+  onDisable,
+  onClose,
+}: {
+  initialCode: string;
+  initialHint: string;
+  /** Whether a lock is already armed (so the modal was opened to edit it). */
+  armed: boolean;
+  onConfirm: (code: string, hint: string) => void;
+  onDisable: () => void;
+  onClose: () => void;
+}) {
+  const [code, setCode] = useState(initialCode);
+  const [hint, setHint] = useState(initialHint);
+
+  function confirm() {
+    if (!code.trim()) return;
+    onConfirm(code.trim(), hint.trim());
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-xs space-y-3 rounded-lg border border-border bg-surface p-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <p className="flex items-center gap-1.5 text-sm font-medium">
+          <Lock size={14} className="text-primary" aria-hidden="true" />
+          Password-protect message
+        </p>
+        <input
+          className="field text-sm"
+          placeholder="code recipients must enter"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && confirm()}
+          autoComplete="off"
+          autoFocus
+        />
+        <input
+          className="field text-sm"
+          placeholder="hint (optional, shown before unlocking)"
+          value={hint}
+          onChange={(e) => setHint(e.target.value)}
+          maxLength={140}
+          autoComplete="off"
+        />
+        <p className="text-[11px] text-muted">
+          Share the code another way. It never reaches our servers and cannot be recovered — without
+          it, the message stays locked. This guards against a glance over the shoulder, not against
+          someone who already has the message.
+        </p>
+        <div className="flex gap-2">
+          <button onClick={armed ? onDisable : onClose} className="btn-ghost flex-1 text-xs">
+            {armed ? 'Turn off lock' : 'Cancel'}
+          </button>
+          <button onClick={confirm} disabled={!code.trim()} className="btn-primary flex-1 text-xs">
+            Lock message
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Configure the disappearing-message timer for the next message.
+ *
+ * Like the lock modal, the pick is a draft: choosing a duration highlights it but
+ * does not arm the timer until "Set timer" is pressed. Backdrop / "Cancel"
+ * discards, so an accidental open leaves the message untouched.
+ */
+function BurnComposeModal({
+  initialTtl,
+  armed,
+  onConfirm,
+  onDisable,
+  onClose,
+}: {
+  initialTtl: number | null;
+  /** Whether a timer is already armed (so the modal was opened to edit it). */
+  armed: boolean;
+  onConfirm: (ttl: number) => void;
+  onDisable: () => void;
+  onClose: () => void;
+}) {
+  const [ttl, setTtl] = useState<number>(initialTtl ?? 30);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-xs space-y-3 rounded-lg border border-border bg-surface p-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <p className="flex items-center gap-1.5 text-sm font-medium">
+          <Timer size={14} className="text-primary" aria-hidden="true" />
+          Disappearing message
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          {BURN_OPTIONS.map((o) => (
+            <button
+              key={o.ttl}
+              onClick={() => setTtl(o.ttl)}
+              className={`rounded px-3 py-1 text-xs ${
+                ttl === o.ttl
+                  ? 'bg-primary text-primary-foreground'
+                  : 'border border-border text-muted hover:text-foreground'
+              }`}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-[11px] text-muted">
+          Removed from both sides after the timer, on cooperating clients. It cannot stop a
+          screenshot or a photo of the screen.
+        </p>
+        <div className="flex gap-2">
+          <button onClick={armed ? onDisable : onClose} className="btn-ghost flex-1 text-xs">
+            {armed ? 'Turn off' : 'Cancel'}
+          </button>
+          <button onClick={() => onConfirm(ttl)} className="btn-primary flex-1 text-xs">
+            Set timer
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

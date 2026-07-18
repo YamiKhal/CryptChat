@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { LinkPreview } from '../lib/crypto';
 import { unpackAsset, decodeImage } from '../lib/binary';
 import { isSafeUrl } from '../lib/links';
+import MediaViewer from './MediaViewer';
 
 /**
  * A link preview, rendered entirely from the encrypted envelope.
@@ -51,14 +52,11 @@ export default function LinkPreviewCard({ preview }: { preview: LinkPreview }) {
   if (preview.kind === 'image') {
     if (!imageUrl) return null;
     return (
-      <a
-        href={preview.url}
-        target="_blank"
-        rel="noopener noreferrer nofollow"
-        className="mt-1 block overflow-hidden rounded border border-border"
-      >
-        <img src={imageUrl} alt="" className="max-h-80 w-auto max-w-full object-contain" />
-      </a>
+      <div className="mt-1 overflow-hidden rounded border border-border">
+        <MediaViewer src={imageUrl}>
+          <img src={imageUrl} alt="" className="max-h-80 w-auto max-w-full object-contain" />
+        </MediaViewer>
+      </div>
     );
   }
 

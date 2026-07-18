@@ -9,6 +9,7 @@ import {
   TransferProgress,
 } from '../lib/blob';
 import { useSession } from '../lib/session';
+import MediaViewer from './MediaViewer';
 
 /**
  * One encrypted attachment.
@@ -128,15 +129,28 @@ export default function AttachmentCard({ attachment }: { attachment: Attachment 
     return (
       <div ref={ref} className="mt-1">
         <div className="relative overflow-hidden rounded border border-border bg-bg/40">
-          {/* Poster until the original lands, then the real thing (GIFs animate). */}
-          <img
-            src={fullUrl ?? thumbUrl ?? undefined}
-            alt={attachment.name}
-            loading="lazy"
-            className={`max-h-80 w-auto max-w-full object-contain transition-[filter] duration-200 ${
-              fullUrl ? '' : 'blur-[1px]'
-            }`}
-          />
+          {/* Poster until the original lands, then the real thing (GIFs animate).
+              Only the fully-decoded original opens in the viewer; the blurred
+              poster is not worth a full-size look. */}
+          {(() => {
+            const img = (
+              <img
+                src={fullUrl ?? thumbUrl ?? undefined}
+                alt={attachment.name}
+                loading="lazy"
+                className={`max-h-80 w-auto max-w-full object-contain transition-[filter] duration-200 ${
+                  fullUrl ? '' : 'blur-[1px]'
+                }`}
+              />
+            );
+            return fullUrl ? (
+              <MediaViewer src={fullUrl} alt={attachment.name}>
+                {img}
+              </MediaViewer>
+            ) : (
+              img
+            );
+          })()}
 
           {!fullUrl && progress && (
             <div className="absolute inset-x-0 bottom-0 h-0.5 bg-border">

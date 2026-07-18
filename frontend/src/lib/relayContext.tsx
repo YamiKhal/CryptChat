@@ -3,6 +3,7 @@ import { useRelay } from './useRelay';
 import { useSession } from './session';
 import { StoredMessage } from './vault';
 import type { CallSignal } from './crypto';
+import { configureSounds, configureCustomSounds, playIncomingMessage } from './sounds';
 
 /** A decrypted, verified call-control frame for a DM, handed to the call layer. */
 export interface IncomingSignal {
@@ -36,6 +37,12 @@ export interface PresenceEvent {
 type RelayValue = ReturnType<typeof useRelay> & {
   /** Bumped whenever vault-backed state changes, so screens can re-read. */
   revision: number;
+  /**
+   * Force a revision bump after a local vault write that other screens must
+   * re-read -- notably marking a channel read, which the channel list only
+   * reflects when the revision changes.
+   */
+  bumpRevision: () => void;
   lastMessage: StoredMessage | null;
   keyChangeWarnings: string[];
   /** senderIds currently shown as typing in a channel. Ephemeral. */
@@ -67,6 +74,20 @@ export function RelayProvider({ children }: { children: ReactNode }) {
 
   const bump = useCallback(() => setRevision((n) => n + 1), []);
 
+  // Keep the sound engine's settings in step with this device's preferences, so
+  // a cue plays (or stays silent) per the audio tab without threading settings
+  // through every call site.
+  useEffect(() => {
+    configureSounds(vault?.preferences.sound);
+  }, [vault, revision]);
+
+  // Custom sound files rarely change and are heavier to decode, so install them
+  // once per vault (unlock / account switch) rather than on every revision.
+  // Settings reinstalls them directly when the user picks or clears one.
+  useEffect(() => {
+    configureCustomSounds(vault?.preferences.customSounds);
+  }, [vault]);
+
   // Lets onMessage clear a typing indicator without depending on dropTyping,
   // which is declared below it. Assigned once dropTyping exists.
   const dropTypingRef = useRef<((channelId: string, senderId: string) => void) | null>(null);
@@ -77,9 +98,12 @@ export function RelayProvider({ children }: { children: ReactNode }) {
       // A message from someone is proof they stopped typing -- clear their
       // indicator now rather than waiting for the TTL or a separate stop frame.
       dropTypingRef.current?.(message.channelId, message.senderId);
+      // Only ring for other people's messages; the sound engine decides between
+      // the "open chat" and "elsewhere" cue and honours the mute settings.
+      if (message.senderId !== account?.userId) playIncomingMessage(message.channelId);
       bump();
     },
-    [bump]
+    [bump, account?.userId]
   );
 
   // Ephemeral, session-scoped verification. Not the vault: verification is a
@@ -209,6 +233,7 @@ export function RelayProvider({ children }: { children: ReactNode }) {
       value={{
         ...relay,
         revision,
+        bumpRevision: bump,
         lastMessage,
         keyChangeWarnings,
         typingIn,

@@ -18,7 +18,10 @@ export default function CustomThemeApplier() {
 
   useEffect(() => {
     const custom = vault?.preferences.customTheme;
-    applyCustomThemeVars(custom?.enabled ? custom.colors : null);
+    applyCustomThemeVars(
+      custom?.enabled ? custom.colors : null,
+      custom?.enabled ? custom.bubbles : null
+    );
   }, [vault]);
 
   return null;

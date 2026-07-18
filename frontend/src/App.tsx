@@ -1,8 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { ReactNode } from 'react';
 import Auth from './pages/Auth';
-import Channels from './pages/Channels';
-import Chat from './pages/Chat';
+import AppShell from './components/AppShell';
 import Settings from './pages/Settings';
 import Recover from './pages/Recover';
 import VerifyEmail from './pages/VerifyEmail';
@@ -70,11 +69,14 @@ export default function App() {
       <Route path="/subscribe" element={<Subscribe />} />
       <Route path="/subscribe/done" element={<Subscribe />} />
 
+      {/* Both routes render the same two-pane shell so navigating between the
+          channel list and a chat never remounts the panes; the shell reads the
+          optional :channelId to decide what the right side shows. */}
       <Route
         path="/channels"
         element={
           <RequireUnlocked>
-            <Channels />
+            <AppShell />
           </RequireUnlocked>
         }
       />
@@ -82,7 +84,7 @@ export default function App() {
         path="/chat/:channelId"
         element={
           <RequireUnlocked>
-            <Chat />
+            <AppShell />
           </RequireUnlocked>
         }
       />

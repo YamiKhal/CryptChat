@@ -6,6 +6,7 @@ import { segmentize } from "../lib/links";
 import { InlineNode, toBlocks } from "../lib/format";
 import Avatar from "./Avatar";
 import AttachmentCard from "./AttachmentCard";
+import MediaViewer from "./MediaViewer";
 import LinkPreviewCard from "./LinkPreviewCard";
 import ReactionBar from "./ReactionBar";
 import Badge from "./Badge";
@@ -153,6 +154,10 @@ interface MessageBubbleProps {
   nameOverride?: string;
   /** Sender's key was verified out of band -- show a trust badge. */
   senderTrusted?: boolean;
+  /** Discord-style: lay every message on the left, even your own. */
+  leftAligned?: boolean;
+  /** Hide the profile picture column, showing names alone. */
+  hideAvatars?: boolean;
 }
 
 /**
@@ -197,11 +202,13 @@ function Attachment({ asset }: { asset: BinaryAsset }) {
   if (!url) return null;
 
   return (
-    <img
-      src={url}
-      alt=""
-      className="mt-1 w-full max-w-full max-h-64 rounded border border-border object-contain"
-    />
+    <MediaViewer src={url}>
+      <img
+        src={url}
+        alt=""
+        className="mt-1 w-full max-w-full max-h-64 rounded border border-border object-contain"
+      />
+    </MediaViewer>
   );
 }
 
@@ -222,7 +229,12 @@ export default function MessageBubble({
   avatarColor,
   nameOverride,
   senderTrusted,
+  leftAligned,
+  hideAvatars,
 }: MessageBubbleProps) {
+  // Whether this bubble sits on the right. Only your own messages do, and only
+  // when not in the single-column (Discord-style) layout.
+  const rightAligned = isSelf && !leftAligned;
   const shownName = nameOverride ?? message.displayName;
   const time = new Date(message.createdAt).toLocaleTimeString([], {
     hour: "2-digit",
@@ -250,19 +262,25 @@ export default function MessageBubble({
     min-w-0
     gap-2
     scroll-mt-4
-    ${isSelf ? "flex-row-reverse" : "flex-row"}
+    lg:gap-2.5
+    ${rightAligned ? "flex-row-reverse" : "flex-row"}
     ${grouped ? "mt-0.5" : "mt-3"}`}
     >
-      <div className="w-6 flex-none">
-        {!grouped && (
-          <Avatar
-            asset={avatarColor !== undefined ? undefined : avatar}
-            name={shownName}
-            size="sm"
-            color={avatarColor}
-          />
-        )}
-      </div>
+      {!hideAvatars && (
+        <div
+          className="flex-none"
+          style={{ width: 'var(--chat-avatar)', height: 'var(--chat-avatar)' }}
+        >
+          {!grouped && (
+            <Avatar
+              asset={avatarColor !== undefined ? undefined : avatar}
+              name={shownName}
+              size="fluid"
+              color={avatarColor}
+            />
+          )}
+        </div>
+      )}
 
       <div
         className={`
@@ -270,16 +288,19 @@ export default function MessageBubble({
     min-w-0
     max-w-[78%]
     flex-col
-    ${isSelf ? "items-end" : "items-start"}
+    ${rightAligned ? "items-end" : "items-start"}
   `}
       >
         {!grouped && (
           <div
-            className={`flex items-center gap-1.5 px-1 pb-0.5 ${isSelf ? "flex-row-reverse" : ""}`}
+            className={`flex items-center gap-1.5 px-1 pb-0.5 ${rightAligned ? "flex-row-reverse" : ""}`}
           >
             {/* The display name comes from inside the signed envelope, not from
                 the server -- the server has never seen it. */}
-            <span className="text-[11px] font-medium text-foreground/80">
+            <span
+              className="font-semibold text-foreground/90"
+              style={{ fontSize: 'var(--chat-name)' }}
+            >
               {shownName}
             </span>
             {senderTrusted && (
@@ -288,7 +309,9 @@ export default function MessageBubble({
               </span>
             )}
             {supporter && <Badge size="sm" />}
-            <span className="text-[10px] text-muted">{time}</span>
+            <span className="text-muted" style={{ fontSize: 'var(--chat-time)' }}>
+              {time}
+            </span>
 
             {/* An unverified signature means the claimed author cannot be
                 confirmed. Silently rendering the name would be the whole
@@ -313,21 +336,28 @@ export default function MessageBubble({
         )}
 
         <div
+          style={{
+            fontSize: "var(--chat-body)",
+            // Bubble fill + border come from CSS vars so a custom theme can
+            // recolour self / other bubbles (and their opacity) independently.
+            background: isSelf ? "var(--bubble-self-bg)" : "var(--bubble-other-bg)",
+            borderColor: isSelf ? "var(--bubble-self-border)" : "var(--bubble-other-border)",
+          }}
           className={`
     animate-fade-in
+    motion-reduce:animate-none
     w-fit
     max-w-full
     min-w-0
     overflow-hidden
     relative
     rounded-lg
+    border
+    text-foreground
     px-2
     py-1
-    text-sm ${
-      isSelf
-        ? "bg-primary/15 text-foreground border border-primary/30"
-        : "bg-surface-raised text-foreground border border-border"
-    } ${message.pending ? "opacity-60" : ""} ${
+    lg:px-3
+    lg:py-1.5 ${message.pending ? "opacity-60" : ""} ${
       highlighted ? "ring-2 ring-primary/70 transition-shadow" : ""
     }`}
         >
