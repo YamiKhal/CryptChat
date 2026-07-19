@@ -36,8 +36,8 @@ export default function ReactionBar({ reactions, selfId, nameFor, onToggle }: Re
               leading-none transition-colors
               ${
                 mine
-                  ? 'border-primary/50 bg-primary/15 text-primary'
-                  : 'border-border bg-surface-raised text-muted hover:border-primary/30'
+                  ? 'border-primary bg-primary-soft text-primary'
+                  : 'border-border bg-surface-raised text-muted hover:border-primary-line'
               }`}
           >
             <span className="text-xs leading-none">{emoji}</span>

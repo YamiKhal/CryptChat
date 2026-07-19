@@ -158,7 +158,7 @@ export default function EmojiPicker({ onPick, onClose, anchor }: EmojiPickerProp
               key={g.name}
               onClick={() => setGroup(i)}
               className={`whitespace-nowrap rounded px-2 py-1 text-[10px] transition-colors
-                ${i === group ? 'bg-primary/15 text-primary' : 'text-muted hover:text-foreground'}`}
+                ${i === group ? 'bg-primary-soft text-primary' : 'text-muted hover:text-foreground'}`}
             >
               {g.name}
             </button>
@@ -171,7 +171,7 @@ export default function EmojiPicker({ onPick, onClose, anchor }: EmojiPickerProp
           <button
             key={emoji}
             onClick={() => onPick(emoji)}
-            className="rounded p-1 text-lg leading-none transition-colors hover:bg-primary/15"
+            className="rounded p-1 text-lg leading-none transition-colors hover:bg-primary-soft"
             title={KEYWORDS[emoji] ?? ''}
           >
             {emoji}

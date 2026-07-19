@@ -25,7 +25,7 @@ export default function CallOverlay() {
       <div className="fixed inset-x-0 top-4 z-[60] flex justify-center px-4">
         <div className="w-full max-w-sm space-y-3 rounded-lg border border-border bg-surface p-4 shadow-xl animate-fade-in">
           <div className="flex items-center gap-3">
-            <span className="grid h-10 w-10 place-items-center rounded-full bg-primary/10 text-primary">
+            <span className="grid h-10 w-10 place-items-center rounded-full bg-primary-soft text-primary">
               {inc.media === 'video' ? <Video size={18} /> : <Phone size={18} />}
             </span>
             <div className="min-w-0 flex-1">
@@ -68,14 +68,14 @@ export default function CallOverlay() {
         : 'connected';
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-black/90 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[60] flex flex-col bg-black">
       <div className="flex items-center gap-3 px-4 py-3 text-white">
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{nameFor(call.peerId)}</p>
-          <p className="text-[11px] text-white/60">{statusLabel}</p>
+          <p className="text-[11px] text-zinc-400">{statusLabel}</p>
         </div>
         {!call.relayAvailable && call.status !== 'connected' && (
-          <span className="rounded bg-white/10 px-2 py-0.5 text-[10px] text-white/60">
+          <span className="rounded bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-300">
             no relay — may not connect
           </span>
         )}
@@ -105,14 +105,14 @@ export default function CallOverlay() {
             {call.remoteHasVideo && iSendVideo && (
               <VideoTile
                 stream={call.localStream}
-                className="absolute bottom-4 right-4 h-32 w-24 rounded-lg border border-white/20 object-cover shadow-lg"
+                className="absolute bottom-4 right-4 h-32 w-24 rounded-lg border border-zinc-700 object-cover shadow-lg"
                 muted
               />
             )}
           </>
         ) : (
           <div className="grid h-full place-items-center">
-            <div className="grid h-24 w-24 place-items-center rounded-full bg-white/10 text-white">
+            <div className="grid h-24 w-24 place-items-center rounded-full bg-zinc-800 text-white">
               <Phone size={32} />
             </div>
           </div>
@@ -171,7 +171,7 @@ function ControlButton({
       aria-label={label}
       aria-pressed={active}
       className={`grid h-12 w-12 place-items-center rounded-full transition-colors ${
-        active ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/20'
+        active ? 'bg-white text-black' : 'bg-zinc-800 text-white hover:bg-zinc-700'
       }`}
     >
       {children}
@@ -222,7 +222,7 @@ function ErrorToast({ message, onClose }: { message: string; onClose: () => void
   }, [onClose]);
   return (
     <div className="fixed inset-x-0 top-4 z-[60] flex justify-center px-4">
-      <div className="rounded-lg border border-error/40 bg-surface px-4 py-2 text-xs text-error shadow-lg">
+      <div className="rounded-lg border border-error-line bg-surface px-4 py-2 text-xs text-error shadow-lg">
         {message}
       </div>
     </div>

@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useRef, useMemo, useReducer } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, useReducer, type ReactNode } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { CornerUpLeft, Smile, Copy, Download, Pencil, Trash2, Lock, LockKeyhole, Timer, ShieldCheck, MessageCircle, Phone, Video, Ban, LogOut, Image as ImageIcon, User, EyeOff } from 'lucide-react';
+import { CornerUpLeft, Smile, Copy, Download, Pencil, Trash2, Lock, LockKeyhole, Timer, ShieldCheck, MessageCircle, Phone, Video, Ban, LogOut, Image as ImageIcon, User, EyeOff, LogOutIcon } from 'lucide-react';
 import { incognitoHue, incognitoLabel } from '../lib/incognito';
 import TrustPanel from '../components/TrustPanel';
 import { useCall } from '../lib/callContext';
@@ -66,6 +66,34 @@ async function downloadAttachment(attachment: Attachment, token: string): Promis
 const MAX_INLINE_PREVIEW_BYTES = 150 * 1024;
 
 /**
+ * Two consecutive messages from the same author group into one block (one header)
+ * only if they land within this window. A longer pause re-shows the name + time,
+ * so a day of back-and-forth is not one nameless wall of bubbles.
+ */
+const GROUP_GAP_MS = 2 * 60 * 1000;
+
+/** Local calendar-day key, so day dividers and grouping break at local midnight. */
+function dayKey(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+/** Divider label: "Today" / "Yesterday" / "19 July" / "19 July 2025" (year when not this year). */
+function dayLabel(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diffDays = Math.round((startOfDay(now) - startOfDay(d)) / 86_400_000);
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+  return d.toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'long',
+    year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric',
+  });
+}
+
+/**
  * One message plus its context-menu wiring.
  *
  * Split out because `useContextMenu` is a hook and cannot be called inside the
@@ -91,10 +119,12 @@ function MessageRow({
   senderTrusted,
   leftAligned,
   hideAvatars,
+  showTail,
 }: {
   message: StoredMessage;
   isSelf: boolean;
   grouped: boolean;
+  showTail: boolean;
   avatar?: BinaryAsset;
   keyChanged: boolean;
   supporter: boolean;
@@ -142,6 +172,7 @@ function MessageRow({
       senderTrusted={senderTrusted}
       leftAligned={leftAligned}
       hideAvatars={hideAvatars}
+      showTail={showTail}
     />
   );
 }
@@ -182,7 +213,7 @@ function UnlockModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black p-4"
       onClick={onClose}
     >
       <div
@@ -1084,9 +1115,9 @@ export default function Chat() {
                 className={`inline-block h-1.5 w-1.5 rounded-full ${connected ? 'bg-primary' : 'bg-warn'}`}
               />
               {connected ? 'encrypted' : 'reconnecting…'}
-              {isDm && <span className="tag bg-primary/10 text-primary">direct</span>}
+              {isDm && <span className="tag bg-primary-soft text-primary">direct</span>}
               {channel.incognito && (
-                <span className="tag bg-secondary/10 text-secondary">incognito</span>
+                <span className="tag bg-secondary-soft text-secondary">incognito</span>
               )}
             </p>
           </div>
@@ -1096,43 +1127,34 @@ export default function Chat() {
           <>
             <button
               onClick={() => startCall('audio')}
-              className="text-muted transition-colors hover:text-primary"
+              className="text-muted transition-colors hover:text-primary cursor-pointer p-2"
               title="Voice call"
               aria-label="Voice call"
             >
-              <Phone size={18} />
+              <Phone size={20} />
             </button>
             <button
               onClick={() => startCall('video')}
-              className="text-muted transition-colors hover:text-primary"
+              className="text-muted transition-colors hover:text-primary cursor-pointer p-2"
               title={limits.premium ? 'Video call' : 'Video calling is a supporter feature'}
               aria-label="Video call"
             >
-              <Video size={18} />
+              <Video size={20} />
             </button>
           </>
         )}
 
-        {isDm && (
-          <button
-            onClick={handleToggleBlock}
-            className={`transition-colors ${dmBlocked ? 'text-error' : 'text-muted hover:text-error'}`}
-            title={dmBlocked ? 'Unblock' : 'Block'}
-            aria-label={dmBlocked ? 'Unblock' : 'Block'}
-          >
-            <Ban size={17} />
-          </button>
-        )}
-
-        <button onClick={handleLeave} className="btn-ghost px-2 py-1 text-[11px]">
-          leave
+        <button onClick={handleLeave} className="text-muted transition-colors hover:text-primary cursor-pointer p-2"
+              title={"Leave"}
+              aria-label="Leave channel">
+          <LogOutIcon size={20} />
         </button>
       </header>
 
       {!channel.hasKey && (
-        <div className="border-b border-warn/30 bg-warn/10 px-4 py-3 text-xs text-warn">
+        <div className="border-b border-warn-line bg-warn-soft px-4 py-3 text-xs text-warn">
           <p className="font-medium">Waiting for the channel key</p>
-          <p className="mt-1 text-warn/80">
+          <p className="mt-1 text-warn">
             Nobody has sent it yet. A member who is online will pass it to you automatically — the
             server cannot, because it has never held it. Messages sent meanwhile stay queued and
             unreadable until the key arrives.
@@ -1191,27 +1213,68 @@ export default function Chat() {
           ].sort((a, b) => a.at.localeCompare(b.at));
 
           let prevSenderId: string | null = null;
+          let prevAt: string | null = null;
+          let prevDay: string | null = null;
 
-          return items.map((item) => {
+          return items.flatMap((item, i) => {
+            const nodes: ReactNode[] = [];
+
+            // Day divider at every local-midnight boundary. A new day also resets
+            // grouping, so the first message of a day always shows its header.
+            const day = dayKey(item.at);
+            if (day !== prevDay) {
+              prevDay = day;
+              prevSenderId = null;
+              prevAt = null;
+              nodes.push(
+                <div key={`day-${day}`} className="my-3 flex items-center gap-3 px-2">
+                  <span className="h-px flex-1 bg-border" />
+                  <span className="rounded-full bg-surface-raised px-3 py-1 text-[11px] font-medium text-muted">
+                    {dayLabel(item.at)}
+                  </span>
+                  <span className="h-px flex-1 bg-border" />
+                </div>,
+              );
+            }
+
             if (item.type === 'presence') {
               prevSenderId = null;
-              return (
+              prevAt = null;
+              nodes.push(
                 <div key={`p-${item.id}`} className="my-2 flex justify-center">
                   <span className="rounded-full bg-surface-raised px-3 py-1 text-[11px] text-muted">
                     {item.text}
                   </span>
-                </div>
+                </div>,
               );
+              return nodes;
             }
 
             const message = item.message;
             const isSelf = message.senderId === account.userId;
             const contact = contacts[message.senderId];
-            const grouped = prevSenderId === message.senderId;
+            // Group with the previous bubble only for the same author AND within
+            // the grouping window; a >=2min pause re-shows the name and time.
+            const gap = prevAt
+              ? new Date(message.createdAt).getTime() - new Date(prevAt).getTime()
+              : Infinity;
+            const grouped = prevSenderId === message.senderId && gap < GROUP_GAP_MS;
             prevSenderId = message.senderId;
+            prevAt = message.createdAt;
 
-            return (
+            // Tail only on the last bubble of a run: show it unless the NEXT item
+            // is another message from the same author, same day, within the window.
+            const next = items[i + 1];
+            const nextGroups =
+              next?.type === 'msg' &&
+              next.message.senderId === message.senderId &&
+              dayKey(next.at) === dayKey(item.at) &&
+              new Date(next.message.createdAt).getTime() - new Date(message.createdAt).getTime() <
+                GROUP_GAP_MS;
+
+            nodes.push(
               <MessageRow
+                showTail={!nextGroups}
                 key={message.id}
                 message={message}
                 isSelf={isSelf}
@@ -1239,8 +1302,9 @@ export default function Chat() {
                 senderTrusted={!channel.incognito && isVerified(message.senderId)}
                 leftAligned={vault.preferences.messagesLeftAligned}
                 hideAvatars={vault.preferences.hideProfileImages}
-              />
+              />,
             );
+            return nodes;
           });
         })()}
 
@@ -1248,7 +1312,7 @@ export default function Chat() {
         </div>
       </div>
 
-      {error && <p className="border-t border-error/30 bg-error/10 px-4 py-2 text-xs text-error">{error}</p>}
+      {error && <p className="border-t border-error-line bg-error-soft px-4 py-2 text-xs text-error">{error}</p>}
 
       {upload && (
         <div className="border-t border-border px-4 py-2">
@@ -1270,8 +1334,8 @@ export default function Chat() {
           {pending.map((attachment) => (
             <span
               key={attachment.blobId}
-              className="inline-flex items-center gap-1.5 rounded border border-primary/30
-                         bg-primary/10 px-2 py-1"
+              className="inline-flex items-center gap-1.5 rounded border border-primary-line
+                         bg-primary-soft px-2 py-1"
             >
               <span className="max-w-40 truncate text-primary">{attachment.name}</span>
               <span className="text-muted">{formatBytes(attachment.size)}</span>
@@ -1308,9 +1372,9 @@ export default function Chat() {
           (lock / burn) and carries an ✕ to turn it off. The full configuration
           lives in the modals below. */}
       {(lockArmed || burnTtl != null || spoilerArmed) && (
-        <div className="flex flex-wrap items-center gap-1.5 border-t border-primary/30 bg-primary/5 px-4 py-1.5">
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-primary-line bg-primary-soft px-4 py-1.5">
           {lockArmed && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
+            <span className="inline-flex items-center gap-1 rounded-full border border-primary-line bg-primary-soft px-2 py-0.5 text-[11px] text-primary">
               <button
                 onClick={() => setShowLockModal(true)}
                 className="inline-flex items-center gap-1"
@@ -1333,7 +1397,7 @@ export default function Chat() {
             </span>
           )}
           {burnTtl != null && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
+            <span className="inline-flex items-center gap-1 rounded-full border border-primary-line bg-primary-soft px-2 py-0.5 text-[11px] text-primary">
               <button
                 onClick={() => setShowBurnModal(true)}
                 className="inline-flex items-center gap-1"
@@ -1352,7 +1416,7 @@ export default function Chat() {
             </span>
           )}
           {spoilerArmed && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
+            <span className="inline-flex items-center gap-1 rounded-full border border-primary-line bg-primary-soft px-2 py-0.5 text-[11px] text-primary">
               <EyeOff size={11} aria-hidden="true" />
               Spoiler
               <button
@@ -1368,7 +1432,7 @@ export default function Chat() {
       )}
 
       {editingId && (
-        <div className="flex items-center justify-between border-t border-primary/30 bg-primary/5 px-4 py-1.5 text-[11px]">
+        <div className="flex items-center justify-between border-t border-primary-line bg-primary-soft px-4 py-1.5 text-[11px]">
           <span className="text-primary">Editing message</span>
           <button
             onClick={() => {
@@ -1394,7 +1458,7 @@ export default function Chat() {
       />
 
       {dmBlocked && (
-        <div className="flex items-center justify-between border-t border-error/30 bg-error/10 px-4 py-2 text-[11px] text-error">
+        <div className="flex items-center justify-between border-t border-error-line bg-error-soft px-4 py-2 text-[11px] text-error">
           <span>You blocked this person. Their messages won't reach you.</span>
           <button onClick={handleToggleBlock} className="underline hover:no-underline">
             unblock
@@ -1571,7 +1635,7 @@ function LockComposeModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black p-4"
       onClick={onClose}
     >
       <div
@@ -1642,7 +1706,7 @@ function BurnComposeModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black p-4"
       onClick={onClose}
     >
       <div

@@ -39,11 +39,11 @@ export function ReplyQuote({ reply, onJump, missing }: ReplyRefCardProps) {
       onClick={onJump}
       disabled={missing}
       title={missing ? 'The original is not on this device' : 'Jump to message'}
-      className={`mb-1 flex w-full items-center gap-1.5 rounded border-l-2 border-primary/50
-                  bg-primary/5 px-2 py-1 text-left text-[11px] transition-colors
-                  ${missing ? 'cursor-default opacity-60' : 'hover:bg-primary/10'}`}
+      className={`mb-1 flex w-full items-center gap-1.5 rounded border-l-2 border-primary
+                  bg-primary-soft px-2 py-1 text-left text-[11px] transition-colors
+                  ${missing ? 'cursor-default' : 'hover:border-primary-strong'}`}
     >
-      <span className="flex-none font-medium text-primary/90">{reply.displayName}</span>
+      <span className="flex-none font-medium text-primary">{reply.displayName}</span>
       <KindIcon kind={reply.kind} />
       <span className="truncate text-muted">{label(reply)}</span>
     </button>
@@ -57,7 +57,7 @@ export function ReplyComposing({ reply, onCancel }: { reply: ReplyRef; onCancel:
       <CornerUpLeft size={12} className="flex-none text-primary" aria-hidden="true" />
       <div className="flex min-w-0 flex-1 items-center gap-1.5 text-[11px]">
         <span className="flex-none text-muted">replying to</span>
-        <span className="flex-none font-medium text-primary/90">{reply.displayName}</span>
+        <span className="flex-none font-medium text-primary">{reply.displayName}</span>
         <KindIcon kind={reply.kind} />
         <span className="truncate text-muted">{label(reply)}</span>
       </div>

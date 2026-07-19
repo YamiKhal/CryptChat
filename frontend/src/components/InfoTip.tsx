@@ -61,7 +61,7 @@ export function InfoTip({
         aria-label={title ? `More about ${title}` : 'More information'}
         className="inline-grid h-4 w-4 place-items-center rounded-full border border-border
                    text-[10px] font-semibold leading-none text-muted transition-colors
-                   hover:border-primary/60 hover:text-primary focus-visible:text-primary
+                   hover:border-primary hover:text-primary focus-visible:text-primary
                    motion-reduce:transition-none"
       >
         ?
@@ -83,7 +83,7 @@ export function InfoTip({
 
       {open && (
         <span
-          className="fixed inset-0 z-70 flex items-center justify-center bg-black/50 p-4 text-left
+          className="fixed inset-0 z-70 flex items-center justify-center bg-black p-4 text-left
                      font-normal normal-case tracking-normal"
           onClick={() => setOpen(false)}
         >

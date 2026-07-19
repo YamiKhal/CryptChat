@@ -208,7 +208,7 @@ export default function ThemeCustomizer({ vault, isPremium, onChange }: Props) {
       <SettingsSection title="Custom theme">
         <SettingBlock>
           <p className="flex items-center gap-1.5 text-xs text-warn">
-            <Crown size={13} className="fill-warn/25" aria-hidden="true" />
+            <Crown size={13} className="fill-warn-soft" aria-hidden="true" />
             Custom colours and chat wallpaper are a supporter perk.
           </p>
           <Link to="/subscribe" className="btn-ghost w-full text-xs">
@@ -260,30 +260,22 @@ export default function ThemeCustomizer({ vault, isPremium, onChange }: Props) {
               <BubbleControl
                 label="Your bubble fill"
                 color={bubbles.selfBg ?? seedColor(colors, 'primary')}
-                opacity={bubbles.selfBgOpacity ?? 0.15}
                 onColor={(v) => setBubble({ selfBg: v })}
-                onOpacity={(v) => setBubble({ selfBgOpacity: v })}
               />
               <BubbleControl
                 label="Your bubble border"
                 color={bubbles.selfBorder ?? seedColor(colors, 'primary')}
-                opacity={bubbles.selfBorderOpacity ?? 0.3}
                 onColor={(v) => setBubble({ selfBorder: v })}
-                onOpacity={(v) => setBubble({ selfBorderOpacity: v })}
               />
               <BubbleControl
                 label="Others' bubble fill"
                 color={bubbles.otherBg ?? seedColor(colors, 'surface-raised')}
-                opacity={bubbles.otherBgOpacity ?? 1}
                 onColor={(v) => setBubble({ otherBg: v })}
-                onOpacity={(v) => setBubble({ otherBgOpacity: v })}
               />
               <BubbleControl
                 label="Others' bubble border"
                 color={bubbles.otherBorder ?? seedColor(colors, 'border')}
-                opacity={bubbles.otherBorderOpacity ?? 1}
                 onColor={(v) => setBubble({ otherBorder: v })}
-                onOpacity={(v) => setBubble({ otherBorderOpacity: v })}
               />
             </div>
           </div>
@@ -365,47 +357,27 @@ export default function ThemeCustomizer({ vault, isPremium, onChange }: Props) {
   );
 }
 
-/** A colour swatch plus an opacity slider, for one bubble surface. */
+/** A solid colour swatch for one bubble surface. Bubbles are always opaque so a
+ *  video wallpaper can never show through them, so there is no opacity control. */
 function BubbleControl({
   label,
   color,
-  opacity,
   onColor,
-  onOpacity,
 }: {
   label: string;
   color: string;
-  opacity: number;
   onColor: (value: string) => void;
-  onOpacity: (value: number) => void;
 }) {
   return (
-    <div className="space-y-1.5 rounded border border-border bg-surface-raised p-2">
-      <div className="flex items-center justify-between gap-2">
-        <span className="truncate text-[11px]">{label}</span>
-        <input
-          type="color"
-          className="h-6 w-6 shrink-0 cursor-pointer rounded border-0 bg-transparent p-0"
-          value={/^#[0-9a-fA-F]{6}$/.test(color) ? color : '#000000'}
-          onChange={(e) => onColor(e.target.value)}
-          aria-label={`${label} colour`}
-        />
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] text-muted">opacity</span>
-        <input
-          type="range"
-          min={0}
-          max={100}
-          value={Math.round(opacity * 100)}
-          onChange={(e) => onOpacity(Number(e.target.value) / 100)}
-          className="flex-1 accent-primary"
-          aria-label={`${label} opacity`}
-        />
-        <span className="w-8 text-right text-[10px] tabular-nums text-muted">
-          {Math.round(opacity * 100)}%
-        </span>
-      </div>
+    <div className="flex items-center justify-between gap-2 rounded border border-border bg-surface-raised p-2">
+      <span className="truncate text-[11px]">{label}</span>
+      <input
+        type="color"
+        className="h-6 w-6 shrink-0 cursor-pointer rounded border-0 bg-transparent p-0"
+        value={/^#[0-9a-fA-F]{6}$/.test(color) ? color : '#000000'}
+        onChange={(e) => onColor(e.target.value)}
+        aria-label={`${label} colour`}
+      />
     </div>
   );
 }

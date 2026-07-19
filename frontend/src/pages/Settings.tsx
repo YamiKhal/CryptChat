@@ -555,9 +555,9 @@ export default function Settings() {
   }
 
   const statusStyles = {
-    ok: 'border-primary/30 bg-primary/10 text-primary',
-    error: 'border-error/30 bg-error/10 text-error',
-    info: 'border-info/30 bg-info/10 text-info',
+    ok: 'border-primary-line bg-primary-soft text-primary',
+    error: 'border-error-line bg-error-soft text-error',
+    info: 'border-info-line bg-info-soft text-info',
   } as const;
 
   const activeTab = TABS.find((t) => t.id === tab);
@@ -597,9 +597,9 @@ export default function Settings() {
               onClick={() => setTab(t.id)}
               className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                 tab === t.id
-                  ? 'bg-primary/10 text-primary'
+                  ? 'bg-primary-soft text-primary'
                   : t.id === 'danger'
-                    ? 'text-error hover:bg-error/10'
+                    ? 'text-error hover:bg-error-soft'
                     : 'text-foreground hover:bg-surface-raised'
               }`}
             >
@@ -1000,9 +1000,9 @@ export default function Settings() {
                         <p className="flex items-center gap-2 font-mono">
                           {email.mask}
                           {email.verified ? (
-                            <span className="tag bg-ok/10 text-ok">verified</span>
+                            <span className="tag bg-ok-soft text-ok">verified</span>
                           ) : (
-                            <span className="tag bg-warn/10 text-warn">unconfirmed</span>
+                            <span className="tag bg-warn-soft text-warn">unconfirmed</span>
                           )}
                         </p>
                       </div>
@@ -1011,7 +1011,7 @@ export default function Settings() {
                     )}
 
                     {email?.pendingMask && (
-                      <p className="rounded border border-info/30 bg-info/10 p-3 text-xs text-info">
+                      <p className="rounded border border-info-line bg-info-soft p-3 text-xs text-info">
                         Waiting on confirmation for{' '}
                         <span className="font-mono">{email.pendingMask}</span>. The link expires in
                         24 hours.
@@ -1185,14 +1185,14 @@ export default function Settings() {
                         key={other.userId}
                         className={`flex items-center gap-2 rounded border p-3 ${
                           other.userId === account.userId
-                            ? 'border-primary/40 bg-primary/5'
+                            ? 'border-primary-line bg-primary-soft'
                             : 'border-border'
                         }`}
                       >
                         <Avatar name={other.username} size="sm" />
                         <span className="flex-1 truncate text-xs">{other.username}</span>
                         {other.userId === account.userId ? (
-                          <span className="tag bg-primary/10 text-primary">active</span>
+                          <span className="tag bg-primary-soft text-primary">active</span>
                         ) : (
                           <button
                             onClick={() => {
@@ -1282,7 +1282,7 @@ function SoundRow({
             <button
               type="button"
               onClick={onClearCustom}
-              className="inline-flex items-center gap-1 rounded border border-primary/40 bg-primary/10
+              className="inline-flex items-center gap-1 rounded border border-primary-line bg-primary-soft
                          px-1.5 py-0.5 text-[10px] text-primary transition-colors hover:text-error"
               title="Remove custom sound (back to the built-in cue)"
             >
@@ -1385,7 +1385,7 @@ function PreviewRow({
           className={`flex items-center gap-1 ${right ? 'flex-row-reverse' : ''}`}
           style={{ fontSize: 'var(--chat-name)' }}
         >
-          <span className="font-semibold text-foreground/90">{name}</span>
+          <span className="font-semibold text-foreground">{name}</span>
           {supporter && <Badge size="sm" />}
         </span>
         <div

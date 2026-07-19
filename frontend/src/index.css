@@ -1,50 +1,91 @@
 @import "tailwindcss";
 
 /**
- * Theme tokens (Tailwind v4, CSS-first).
+ * THEME TOKENS  (Tailwind v4, CSS-first — no tailwind.config.js)
+ * ============================================================================
  *
- * Every custom colour, font, and animation lives here -- v4 generates the
- * matching utilities straight from these variables, so there is no
- * tailwind.config.js. `--color-primary` yields bg-primary / text-primary /
- * border-primary, `--font-mono` yields font-mono, `--animate-fade-in` yields
- * animate-fade-in.
+ * How this file is organised, top to bottom:
  *
- * Values are plain hex. v4 applies opacity modifiers (bg-primary/10) with
- * color-mix(), so the old "space-separated RGB channels" trick that v3 needed
- * for <alpha-value> is obsolete -- and actively harmful now, since a bare
- * `0 255 133` is not a colour any CSS property accepts.
+ *   1. @theme            The DARK palette + fonts + animation. This is the
+ *                        default and lives on :root. Every token here becomes a
+ *                        utility: `--color-primary` -> bg-primary / text-primary
+ *                        / border-primary, `--color-primary-soft` -> bg-primary-soft,
+ *                        and so on.
+ *   2. :root extras      Runtime-only vars that are not colour utilities:
+ *                        wallpaper scrim, chat text scale, message-bubble fills.
+ *   3. [data-theme=light] The LIGHT palette. Same token names, different values.
+ *                        An inline script in index.html stamps this before first
+ *                        paint, so every var(--color-*) flips with no rebuild.
+ *   4. @layer base       Element defaults (body, focus, scrollbars, inputs).
+ *   5. @layer components The .btn / .field / .card / .tag primitives.
  *
- * Dark base, terminal green primary. Nothing in a component should hardcode a
- * colour; if a value is missing, add a token here.
+ * TWO HARD RULES so this never gets "out of control" again:
+ *
+ *   A. SOLID COLOURS ONLY. No component uses an opacity modifier (bg-primary/10)
+ *      for a fill or border. Instead every accent ships THREE solid tokens:
+ *
+ *         --color-primary          the vivid colour — text, icons, strong borders
+ *         --color-primary-soft     a solid tinted PANEL fill  (accent mixed into bg)
+ *         --color-primary-line     a solid tinted BORDER       (accent mixed into bg)
+ *
+ *      `-soft` and `-line` are built with color-mix against the OPAQUE --color-bg,
+ *      so the result is itself fully opaque — a real solid colour, never a wash.
+ *      Because they reference the base token by var(), they update for free when
+ *      the theme flips light/dark AND when a premium user sets a custom accent.
+ *
+ *   B. FOREGROUND IS EXPLICIT. Each fill declares the text colour that belongs on
+ *      it. Dark theme: the accent is bright, so text ON an accent fill is dark
+ *      (--color-primary-foreground). Light theme: the accent is dark, so text on
+ *      it is white. Body text is --color-foreground on surfaces, --color-muted for
+ *      secondary text. Never guess — read the token.
+ *
+ * If a colour you need is missing, add a token here. Do not hardcode a hex or
+ * reach for an opacity modifier in a component.
  */
 @theme {
-  /* surfaces, back to front */
-  --color-bg: #070a08;
-  --color-surface: #0f1410;
-  --color-surface-raised: #171f19;
-  --color-border: #222e25;
+  /* ---- surfaces, back to front -------------------------------------- */
+  --color-bg: #0c1210; /* app background (darkest)   */
+  --color-surface: #121a16; /* panels, cards, headers     */
+  --color-surface-raised: #19221d; /* inputs, others' bubbles    */
+  --color-border: #29342d; /* hairlines between surfaces  */
 
-  /* text */
-  --color-foreground: #d6f5db;
-  --color-muted: #74907c;
+  /* ---- text --------------------------------------------------------- */
+  --color-foreground: #e4ece6; /* primary text (near-white)  */
+  --color-muted: #93a89b; /* secondary / subtle text    */
 
-  /* terminal green */
-  --color-primary: #00ff85;
-  --color-primary-strong: #00d16c;
-  /* Text on a primary fill. Near-black, because green this bright fails
-     contrast against white by a wide margin. */
-  --color-primary-foreground: #04120a;
+  /* ---- primary accent: terminal green ------------------------------- *
+   * Bright on a dark app, so it doubles as readable green TEXT and as a
+   * button fill whose own text is dark (--color-primary-foreground). */
+  --color-primary: #34c07a;
+  --color-primary-strong: #45cf88; /* hover / active            */
+  --color-primary-foreground: #06140c; /* text ON a primary fill    */
 
-  --color-secondary: #00d1ff;
-  --color-secondary-foreground: #031218;
+  --color-primary-soft: color-mix(in srgb, var(--color-primary) 15%, var(--color-bg));
+  --color-primary-line: color-mix(in srgb, var(--color-primary) 42%, var(--color-bg));
 
-  /* status */
-  --color-error: #ff5656;
-  --color-warn: #ffb829;
-  --color-info: #60aaff;
-  /* success -- distinct from primary so a "verified" tag reads as its own
-     thing, not a CTA. Referenced as bg-ok / text-ok. */
-  --color-ok: #17c964;
+  /* ---- secondary accent: cyan --------------------------------------- */
+  --color-secondary: #45c3d6;
+  --color-secondary-foreground: #04161b;
+  --color-secondary-soft: color-mix(in srgb, var(--color-secondary) 15%, var(--color-bg));
+  --color-secondary-line: color-mix(in srgb, var(--color-secondary) 42%, var(--color-bg));
+
+  /* ---- status: error / warn / info ---------------------------------- */
+  --color-error: #f16d6b;
+  --color-error-soft: color-mix(in srgb, var(--color-error) 15%, var(--color-bg));
+  --color-error-line: color-mix(in srgb, var(--color-error) 42%, var(--color-bg));
+
+  --color-warn: #e2b566;
+  --color-warn-soft: color-mix(in srgb, var(--color-warn) 15%, var(--color-bg));
+  --color-warn-line: color-mix(in srgb, var(--color-warn) 42%, var(--color-bg));
+
+  --color-info: #7cb0ef;
+  --color-info-soft: color-mix(in srgb, var(--color-info) 15%, var(--color-bg));
+  --color-info-line: color-mix(in srgb, var(--color-info) 42%, var(--color-bg));
+
+  /* ---- success (green family, kept distinct from primary) ----------- */
+  --color-ok: #4dc98a;
+  --color-ok-soft: color-mix(in srgb, var(--color-ok) 15%, var(--color-bg));
+  --color-ok-line: color-mix(in srgb, var(--color-ok) 42%, var(--color-bg));
 
   --font-mono:
     "gg sans", "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
@@ -64,54 +105,33 @@
 }
 
 /**
- * Light theme.
- *
- * The @theme block above is the dark default and lives on :root. This rule is
- * unlayered and more specific (:root[data-theme='light'] beats :root), so when
- * an inline script in index.html stamps data-theme="light" before first paint,
- * every `var(--color-*)` the utilities compiled to flips at runtime -- no
- * rebuild, no second stylesheet. Switching back to dark just removes the match
- * and the :root defaults take over again.
- *
- * The terminal-green identity is kept, but the primary green is darkened: the
- * dark theme's #00ff85 is unreadable as text on a light surface and washed out
- * as a fill. This darker green passes contrast both as text on the page and as
- * a button fill with white text. If you touch these, keep text-primary legible
- * on --color-bg AND --color-primary-foreground legible on --color-primary.
- */
-/**
- * Wallpaper scrim (premium chat background, ROADMAP #2).
- *
- * A semi-opaque wash laid over the wallpaper image, behind message content, so
- * even a translucent self-bubble (bg-primary/15) stays legible over a busy
- * photo. Base-scoped rather than palette-scoped: it tracks light/dark, not the
- * user's custom colours, so it always dims toward the readable direction.
+ * Runtime-only vars (not colour utilities).
  */
 :root {
+  /* Wallpaper scrim: a wash laid over the user's wallpaper image, behind message
+     content, so bubbles stay legible over a busy photo. This is the ONE place
+     translucency is intentional — it is dimming a photo, not tinting the UI. It
+     tracks light/dark, not the custom palette, so it always dims the readable way. */
   --wallpaper-scrim: rgba(7, 10, 8, 0.62);
 
-  /* Chat text scale (Settings › Chat). Mobile baseline here; the desktop block
-     below scales each preset up. `--chat-body` sizes message text, `--chat-name`
-     / `--chat-time` the header, `--chat-avatar` the picture box. Default is the
+  /* Message-bubble fills + borders. SOLID by default (Rule A): your own bubble
+     is a solid green-tinted panel, others' is the raised surface. Both are built
+     with color-mix against opaque surfaces, so they stay opaque and follow the
+     accent — including a premium custom accent. A custom theme overrides these as
+     inline --bubble-* vars, which win. The bubble reads them directly. */
+  --bubble-self-bg: color-mix(in srgb, var(--color-primary) 20%, var(--color-surface));
+  --bubble-self-border: color-mix(in srgb, var(--color-primary) 45%, var(--color-surface));
+  --bubble-other-bg: var(--color-surface-raised);
+  --bubble-other-border: var(--color-border);
+
+  /* Chat text scale (Settings > Chat). Mobile baseline; the desktop block below
+     scales each preset up. `--chat-body` sizes message text, `--chat-name` /
+     `--chat-time` the header, `--chat-avatar` the picture box. Default is the
      'normal' preset, so a transcript with no data-chat-size still resolves. */
   --chat-body: 14px;
   --chat-name: 12px;
   --chat-time: 10px;
   --chat-avatar: 24px;
-
-  /* Message-bubble fills and borders (Settings › custom theme). Defaults track
-     the base palette via color-mix; a custom theme overrides these as inline
-     --bubble-* vars on :root, which win. The bubble reads them directly, so a
-     supporter can recolour the self / other bubble background, border, and
-     opacity independently. */
-  --bubble-self-bg: color-mix(in srgb, var(--color-primary) 15%, transparent);
-  --bubble-self-border: color-mix(
-    in srgb,
-    var(--color-primary) 30%,
-    transparent
-  );
-  --bubble-other-bg: var(--color-surface-raised);
-  --bubble-other-border: var(--color-border);
 }
 
 [data-chat-size="tiny"] {
@@ -172,32 +192,45 @@
   }
 }
 
+/**
+ * LIGHT THEME.
+ *
+ * Same token names as the dark @theme block, different values. This rule is
+ * unlayered and more specific (:root[data-theme='light'] beats :root), so once
+ * the pre-paint script stamps data-theme="light", every var(--color-*) flips.
+ *
+ * The green identity is kept but INVERTED in role: on a light surface the accent
+ * is a dark green, so green TEXT is legible on the page and a green button fill
+ * takes WHITE text (--color-primary-foreground). The -soft / -line tints and the
+ * bubble vars derive from these by var(), so they flip automatically — only the
+ * base tokens are restated here.
+ */
 :root[data-theme="light"] {
   --wallpaper-scrim: rgba(238, 242, 239, 0.55);
 
   /* surfaces, back to front */
   --color-bg: #eef2ef;
   --color-surface: #ffffff;
-  --color-surface-raised: #f4f7f5;
-  --color-border: #d3ddd6;
+  --color-surface-raised: #f3f7f4;
+  --color-border: #d2ddd5;
 
   /* text */
-  --color-foreground: #0d1a12;
-  --color-muted: #5a6f62;
+  --color-foreground: #0e1a13;
+  --color-muted: #566b5e;
 
-  /* terminal green, darkened for a light surface */
-  --color-primary: #007a3a;
-  --color-primary-strong: #006330;
+  /* primary: dark green on light — green text reads, buttons take white text */
+  --color-primary: #0e7a3c;
+  --color-primary-strong: #0a6431;
   --color-primary-foreground: #ffffff;
 
   --color-secondary: #0784a8;
   --color-secondary-foreground: #ffffff;
 
-  /* status */
+  /* status, darkened for contrast on a light surface */
   --color-error: #cc2b2b;
-  --color-warn: #9a6400;
-  --color-info: #2160c4;
-  --color-ok: #007a3a;
+  --color-warn: #8a5b00;
+  --color-info: #1f5fc2;
+  --color-ok: #0e7a3c;
 }
 
 @layer base {
@@ -211,14 +244,15 @@
     @apply bg-bg text-foreground font-mono antialiased;
   }
 
+  /* Solid selection — a tinted panel colour, not a translucent wash. */
   ::selection {
-    @apply bg-primary/30 text-foreground;
+    @apply bg-primary-line text-foreground;
   }
 
   /* Focus must stay visible: this app asks people to retype channel codes and
-     passphrases, and keyboard users need to see where they are. */
+     passphrases, and keyboard users need to see where they are. Solid accent. */
   :focus-visible {
-    outline: 2px solid --alpha(var(--color-primary) / 70%);
+    outline: 2px solid var(--color-primary);
     outline-offset: 2px;
   }
 
@@ -236,7 +270,7 @@
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-primary/40;
+    @apply bg-primary-line;
   }
 
   input,
@@ -262,17 +296,17 @@
   }
 
   .btn-ghost {
-    @apply border border-border bg-surface-raised text-foreground hover:border-primary/50
+    @apply border border-border bg-surface-raised text-foreground hover:border-primary
            hover:text-primary;
   }
 
   .btn-danger {
-    @apply border border-error/40 bg-error/10 text-error hover:bg-error/20;
+    @apply border border-error-line bg-error-soft text-error hover:border-error;
   }
 
   .field {
     @apply w-full rounded border border-border bg-surface-raised px-3 py-2 text-sm outline-none
-           transition-colors focus:border-primary/60;
+           transition-colors focus:border-primary;
   }
 
   .card {

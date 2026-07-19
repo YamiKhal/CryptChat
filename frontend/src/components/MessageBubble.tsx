@@ -3,6 +3,7 @@ import { LockKeyhole, Timer, ShieldCheck, EyeOff } from "lucide-react";
 import { StoredMessage } from "../lib/vault";
 import { BinaryAsset, unpackAsset, decodeImage } from "../lib/binary";
 import { segmentize } from "../lib/links";
+import { looksRenderable } from "../lib/blob";
 import { InlineNode, toBlocks } from "../lib/format";
 import Avatar from "./Avatar";
 import AttachmentCard from "./AttachmentCard";
@@ -28,8 +29,8 @@ function renderText(text: string): ReactNode {
         href={segment.url}
         target="_blank"
         rel="noopener noreferrer nofollow"
-        className="text-primary underline decoration-primary/40 underline-offset-2
-                   hover:decoration-primary"
+        className="text-primary underline decoration-primary underline-offset-2
+                   hover:decoration-primary-strong"
         onClick={(e) => e.stopPropagation()}
       >
         {segment.value}
@@ -54,7 +55,7 @@ function InlineSpoiler({ children }: { children: ReactNode }) {
   const [revealed, setRevealed] = useState(false);
 
   if (revealed) {
-    return <span className="rounded-sm bg-foreground/10 px-0.5">{children}</span>;
+    return <span className="rounded-sm bg-surface-raised px-0.5">{children}</span>;
   }
 
   return (
@@ -71,8 +72,8 @@ function InlineSpoiler({ children }: { children: ReactNode }) {
           setRevealed(true);
         }
       }}
-      className="cursor-pointer select-none rounded-sm bg-foreground/70
-                 align-baseline text-transparent blur-[3px] transition"
+      className="cursor-pointer select-none rounded-sm bg-foreground
+                 align-baseline text-transparent transition"
       title="Spoiler — click to reveal"
     >
       {children}
@@ -158,6 +159,8 @@ interface MessageBubbleProps {
   leftAligned?: boolean;
   /** Hide the profile picture column, showing names alone. */
   hideAvatars?: boolean;
+  /** Show the speech-bubble tail. Only the last message in a grouped run gets one. */
+  showTail?: boolean;
 }
 
 /**
@@ -179,8 +182,10 @@ function LockedBody({ hint }: { hint?: string }) {
   );
 }
 
-/** Decodes an attached image back to an object URL for the life of the bubble. */
-function Attachment({ asset }: { asset: BinaryAsset }) {
+/** Decodes an attached image back to an object URL for the life of the bubble.
+ *  `bare` drops the in-bubble framing (margin + border) for an image-only
+ *  message, which is rendered as a plain rounded photo with no bubble chrome. */
+function Attachment({ asset, bare }: { asset: BinaryAsset; bare?: boolean }) {
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -206,7 +211,11 @@ function Attachment({ asset }: { asset: BinaryAsset }) {
       <img
         src={url}
         alt=""
-        className="mt-1 w-full max-w-full max-h-64 rounded border border-border object-contain"
+        className={
+          bare
+            ? "w-full max-w-full max-h-80 rounded-2xl object-contain"
+            : "mt-1 w-full max-w-full max-h-64 rounded border border-border object-contain"
+        }
       />
     </MediaViewer>
   );
@@ -231,6 +240,7 @@ export default function MessageBubble({
   senderTrusted,
   leftAligned,
   hideAvatars,
+  showTail,
 }: MessageBubbleProps) {
   // Whether this bubble sits on the right. Only your own messages do, and only
   // when not in the single-column (Discord-style) layout.
@@ -251,6 +261,29 @@ export default function MessageBubble({
     !spoilerRevealed &&
     !message.deleted &&
     !message.locked;
+
+  // A message that is nothing but an image gets no bubble chrome -- no fill,
+  // border, padding, or tail. Just the rounded photo. Anything extra (a caption,
+  // a reply, a second file, a link preview, a lock/burn marker, a spoiler) keeps
+  // the bubble, since that content needs the frame.
+  //
+  // An image arrives one of two ways: a small inline `asset` embedded in the
+  // envelope, or a single renderable `attachment` fetched as an encrypted blob.
+  const soleImageAttachment =
+    message.attachments?.length === 1 && looksRenderable(message.attachments[0])
+      ? message.attachments[0]
+      : null;
+  const imageOnly =
+    !message.deleted &&
+    !message.locked &&
+    !message.body &&
+    !message.preview &&
+    !message.replyTo &&
+    !message.protected &&
+    !message.burnTtl &&
+    !coverSpoiler &&
+    ((Boolean(message.asset) && !message.attachments?.length) ||
+      (!message.asset && Boolean(soleImageAttachment)));
 
   return (
     <div
@@ -298,7 +331,7 @@ export default function MessageBubble({
             {/* The display name comes from inside the signed envelope, not from
                 the server -- the server has never seen it. */}
             <span
-              className="font-semibold text-foreground/90"
+              className="font-semibold text-foreground"
               style={{ fontSize: 'var(--chat-name)' }}
             >
               {shownName}
@@ -318,7 +351,7 @@ export default function MessageBubble({
                 spoofing attack, so it is called out. */}
             {!message.verified && (
               <span
-                className="tag bg-warn/10 text-warn"
+                className="tag bg-warn-soft text-warn"
                 title="Signature could not be verified"
               >
                 unverified
@@ -326,7 +359,7 @@ export default function MessageBubble({
             )}
             {keyChanged && (
               <span
-                className="tag bg-error/10 text-error"
+                className="tag bg-error-soft text-error"
                 title="This contact's signing key changed"
               >
                 key changed
@@ -335,13 +368,32 @@ export default function MessageBubble({
           </div>
         )}
 
+        {imageOnly ? (
+          // Image-only: no bubble, no border, no tail. A plain rounded photo.
+          <div className="w-fit max-w-full">
+            {message.asset ? (
+              <Attachment asset={message.asset} bare />
+            ) : (
+              <AttachmentCard attachment={soleImageAttachment!} bare />
+            )}
+          </div>
+        ) : (
+        // Wrapper carries the tail. `isolate` keeps the tail's negative z-index
+        // local, so it tucks behind the bubble (which hides its inner half) but
+        // never slips behind the page.
+        <div className="relative isolate w-fit max-w-full">
         <div
           style={{
             fontSize: "var(--chat-body)",
             // Bubble fill + border come from CSS vars so a custom theme can
-            // recolour self / other bubbles (and their opacity) independently.
+            // recolour self / other bubbles independently.
             background: isSelf ? "var(--bubble-self-bg)" : "var(--bubble-other-bg)",
             borderColor: isSelf ? "var(--bubble-self-border)" : "var(--bubble-other-border)",
+            // Square off the corner the tail grows from (only when there is a
+            // tail), so it continues the bubble's straight edges instead of
+            // clashing with a rounded corner.
+            borderBottomRightRadius: showTail && rightAligned ? 0 : undefined,
+            borderBottomLeftRadius: showTail && !rightAligned ? 0 : undefined,
           }}
           className={`
     animate-fade-in
@@ -357,8 +409,8 @@ export default function MessageBubble({
     px-2
     py-1
     lg:px-3
-    lg:py-1.5 ${message.pending ? "opacity-60" : ""} ${
-      highlighted ? "ring-2 ring-primary/70 transition-shadow" : ""
+    lg:py-1.5 ${
+      highlighted ? "ring-2 ring-primary transition-shadow" : ""
     }`}
         >
           <div
@@ -446,8 +498,8 @@ export default function MessageBubble({
                 setSpoilerRevealed(true);
               }}
               className="absolute inset-0 flex items-center justify-center gap-1.5
-                         bg-surface-raised/60 text-[11px] font-medium text-muted
-                         backdrop-blur-md transition hover:text-foreground"
+                         bg-surface-raised text-[11px] font-medium text-muted
+                         transition hover:text-foreground"
               title="Spoiler — click to reveal"
             >
               <EyeOff size={13} aria-hidden="true" />
@@ -455,6 +507,37 @@ export default function MessageBubble({
             </button>
           )}
         </div>
+
+          {/* Speech-bubble tail. An SVG hook with the bubble's own fill AND border,
+              tucked behind the bubble (-z-10) at the squared bottom corner: the
+              bubble covers the inner half, only the outward flick shows, and its
+              stroke lines up with the bubble border so it reads as one shape.
+              SVG (not a CSS mask) because the wallpaper behind can be a video --
+              the tail must be a self-contained shape, transparent outside it. */}
+          {showTail && (
+            <svg
+              aria-hidden="true"
+              width="9"
+              height="10"
+              viewBox="0 0 9 10"
+              className="pointer-events-none absolute -z-10 -bottom-0.5"
+              style={rightAligned ? { right: "-5.5px" } : { left: "-5.5px" }}
+            >
+              <path
+                d={
+                  rightAligned
+                    ? "M0 0 C0.5 5.5 2.5 9 8.5 9.6 C5 7.5 3.5 4.5 3.5 0 Z"
+                    : "M9 0 C8.5 5.5 6.5 9 0.5 9.6 C4 7.5 5.5 4.5 5.5 0 Z"
+                }
+                fill={isSelf ? "var(--bubble-self-bg)" : "var(--bubble-other-bg)"}
+                stroke={isSelf ? "var(--bubble-self-border)" : "var(--bubble-other-border)"}
+                strokeWidth="1"
+                vectorEffect="non-scaling-stroke"
+              />
+            </svg>
+          )}
+        </div>
+        )}
 
         {message.reactions && (
           <ReactionBar

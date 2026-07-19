@@ -65,7 +65,7 @@ export default function TrustPanel({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black p-4 sm:items-center"
       onClick={onClose}
     >
       <div
@@ -107,20 +107,20 @@ export default function TrustPanel({
                   {c.displayName || 'unknown'}
                 </span>
                 {c.keyChangedAt ? (
-                  <span className="tag inline-flex items-center gap-1 bg-error/10 text-error">
+                  <span className="tag inline-flex items-center gap-1 bg-error-soft text-error">
                     <ShieldAlert size={11} /> key changed
                   </span>
                 ) : verified ? (
-                  <span className="tag inline-flex items-center gap-1 bg-ok/10 text-ok">
+                  <span className="tag inline-flex items-center gap-1 bg-ok-soft text-ok">
                     <ShieldCheck size={11} /> verified
                   </span>
                 ) : (
-                  <span className="tag bg-warn/10 text-warn">unverified</span>
+                  <span className="tag bg-warn-soft text-warn">unverified</span>
                 )}
               </div>
 
               {c.keyChangedAt && (
-                <p className="rounded border border-error/30 bg-error/10 p-2 text-[11px] text-error">
+                <p className="rounded border border-error-line bg-error-soft p-2 text-[11px] text-error">
                   This contact's signing key changed. That happens on a reinstall or new device — but
                   it is also exactly what a relay attack looks like. Verify a fresh safety number
                   before trusting it again.

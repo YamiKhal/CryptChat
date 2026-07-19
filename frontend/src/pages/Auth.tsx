@@ -119,7 +119,7 @@ export default function Auth() {
               Your recovery code
             </h2>
 
-            <p className="rounded border border-warn/30 bg-warn/10 p-4 text-xs text-warn">
+            <p className="rounded border border-warn-line bg-warn-soft p-4 text-xs text-warn">
               Write these 24 words down and keep them somewhere safe. This is the{' '}
               <strong>only</strong> way back into your account if you forget your password or lose
               this device. We cannot show them again and we cannot reset them — the server never
@@ -177,7 +177,7 @@ export default function Auth() {
               </div>
             </div>
 
-            <p className="rounded border border-info/30 bg-info/10 p-4 text-xs text-info">
+            <p className="rounded border border-info-line bg-info-soft p-4 text-xs text-info">
               Your password is correct, but this device has none of your keys — the server never had
               them to give back. Import the key file you exported from your other device.
             </p>
@@ -219,7 +219,7 @@ export default function Auth() {
             </label>
 
             {error && (
-              <p className="rounded border border-error/30 bg-error/10 p-4 text-xs text-error">
+              <p className="rounded border border-error-line bg-error-soft p-4 text-xs text-error">
                 {error}
               </p>
             )}
@@ -296,7 +296,7 @@ export default function Auth() {
 
               <label className="block space-y-1">
                 <span className="text-xs text-muted">
-                  email <span className="text-muted/70">— optional</span>
+                  email <span className="text-muted">— optional</span>
                 </span>
                 <input
                   className="field"
@@ -308,13 +308,13 @@ export default function Auth() {
                 />
               </label>
 
-              <p className="rounded border border-info/30 bg-info/10 p-4 text-xs text-info">
+              <p className="rounded border border-info-line bg-info-soft p-4 text-xs text-info">
                 An email lets you reset a forgotten password. It is encrypted, never shown to
                 anyone, and never displayed in full — not even to you. You can add or remove it
                 later in Settings. Skipping it costs you nothing except password reset.
               </p>
 
-              <p className="rounded border border-warn/30 bg-warn/10 p-4 text-xs text-warn">
+              <p className="rounded border border-warn-line bg-warn-soft p-4 text-xs text-warn">
                 This password also encrypts your keys on this device. Minimum 12 characters. After
                 you register we will show you a 24-word recovery code — that code, not your email,
                 is what restores your channels.
@@ -333,7 +333,7 @@ export default function Auth() {
           </label>
 
           {error && (
-            <p className="rounded border border-error/30 bg-error/10 p-4 text-xs text-error">
+            <p className="rounded border border-error-line bg-error-soft p-4 text-xs text-error">
               {error}
             </p>
           )}
@@ -388,7 +388,7 @@ export default function Auth() {
                   setMode('login');
                 }}
                 className="flex w-full items-center gap-3 rounded border border-border p-4 text-left
-                           transition-colors hover:border-primary/50"
+                           transition-colors hover:border-primary"
               >
                 <Avatar name={account.username} size="sm" />
                 <span className="flex-1 truncate text-sm">{account.username}</span>

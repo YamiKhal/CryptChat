@@ -30,7 +30,7 @@ export default function Badge({ since, size = 'sm', withLabel = false }: BadgePr
       aria-label={title}
     >
       {/* fill + stroke: at 12px an outline-only crown reads as noise. */}
-      <Crown size={px} strokeWidth={2} className="fill-warn/25" aria-hidden="true" />
+      <Crown size={px} strokeWidth={2} className="fill-warn-soft" aria-hidden="true" />
       {withLabel && <span className="text-[11px] font-medium">supporter</span>}
     </span>
   );

@@ -94,7 +94,7 @@ export default function AppShell() {
           ) : (
             <div className="grid h-full place-items-center p-6 text-center">
               <div className="space-y-3 text-muted">
-                <MessagesSquare size={48} className="mx-auto opacity-60" aria-hidden />
+                <MessagesSquare size={48} className="mx-auto" aria-hidden />
                 <p className="text-sm">No channel selected</p>
                 <p className="text-xs">Pick a channel on the left to start reading.</p>
               </div>

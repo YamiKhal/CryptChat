@@ -52,7 +52,7 @@ export default function SubscriptionSection({
             </p>
 
             {badge.creditMonths ? (
-              <p className="rounded border border-info/30 bg-info/10 p-3 text-[11px] text-info">
+              <p className="rounded border border-info-line bg-info-soft p-3 text-[11px] text-info">
                 <span className="font-medium">
                   {badge.creditMonths} gifted {badge.creditMonths === 1 ? 'month' : 'months'} in
                   reserve.
@@ -83,7 +83,7 @@ export default function SubscriptionSection({
                 </p>
               </>
             ) : (
-              <p className="rounded border border-warn/30 bg-warn/10 p-3 text-[11px] text-warn">
+              <p className="rounded border border-warn-line bg-warn-soft p-3 text-[11px] text-warn">
                 Cancellation is not configured on this deployment. Contact support to cancel.
               </p>
             )}
@@ -94,7 +94,7 @@ export default function SubscriptionSection({
 
             <Link to="/subscribe" className="btn-primary block w-full text-center text-xs">
               <span className="inline-flex items-center gap-1.5">
-                <Crown size={13} className="fill-warn/25" aria-hidden="true" />
+                <Crown size={13} className="fill-warn-soft" aria-hidden="true" />
                 Become a supporter
               </span>
             </Link>

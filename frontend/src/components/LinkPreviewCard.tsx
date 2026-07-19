@@ -67,15 +67,15 @@ export default function LinkPreviewCard({ preview }: { preview: LinkPreview }) {
       // noreferrer also strips the Referer header, so the destination does not
       // learn which app sent the visitor. noopener stops window.opener access.
       rel="noopener noreferrer nofollow"
-      className="mt-1 block overflow-hidden rounded border border-border bg-bg/40 transition-colors
-                 hover:border-primary/50"
+      className="mt-1 block overflow-hidden rounded border border-border bg-surface transition-colors
+                 hover:border-primary"
     >
       {imageUrl && (
         <div className="relative">
           <img src={imageUrl} alt="" className="max-h-48 w-full object-cover" />
           {preview.kind === 'youtube' && (
             <div className="absolute inset-0 grid place-items-center">
-              <span className="grid h-10 w-10 place-items-center rounded-full bg-bg/80 text-primary">
+              <span className="grid h-10 w-10 place-items-center rounded-full bg-surface text-primary">
                 ▶
               </span>
             </div>

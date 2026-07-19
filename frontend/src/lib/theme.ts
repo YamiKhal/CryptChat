@@ -162,24 +162,15 @@ export function isHexColor(v: string): boolean {
   return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v);
 }
 
-/** Build an `rgba(...)` string from a hex colour and a 0..1 alpha. Null on bad hex. */
-function hexToRgba(hex: string, opacity: number): string | null {
-  const rgb = toRgb(hex);
-  if (!rgb) return null;
-  const a = Math.max(0, Math.min(1, Number.isFinite(opacity) ? opacity : 1));
-  return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${a})`;
-}
-
-/** The four bubble vars, paired with their colour/opacity source fields. */
+/** The four bubble vars, paired with their colour source field. */
 const BUBBLE_VARS: {
   var: string;
   color: keyof BubbleTheme;
-  opacity: keyof BubbleTheme;
 }[] = [
-  { var: '--bubble-self-bg', color: 'selfBg', opacity: 'selfBgOpacity' },
-  { var: '--bubble-self-border', color: 'selfBorder', opacity: 'selfBorderOpacity' },
-  { var: '--bubble-other-bg', color: 'otherBg', opacity: 'otherBgOpacity' },
-  { var: '--bubble-other-border', color: 'otherBorder', opacity: 'otherBorderOpacity' },
+  { var: '--bubble-self-bg', color: 'selfBg' },
+  { var: '--bubble-self-border', color: 'selfBorder' },
+  { var: '--bubble-other-bg', color: 'otherBg' },
+  { var: '--bubble-other-border', color: 'otherBorder' },
 ];
 
 /**
@@ -232,12 +223,12 @@ export function applyCustomThemeVars(
     );
   }
 
-  // Per-bubble colour + opacity. Cleared unless a valid colour is present.
+  // Per-bubble colour. SOLID only — a bubble sits over the wallpaper (which can
+  // be a video), so any translucency would let it bleed through. Opacity fields
+  // that may exist on older saved themes are ignored; the colour is applied flat.
   for (const b of BUBBLE_VARS) {
     const color = bubbles?.[b.color] as string | undefined;
-    const opacity = bubbles?.[b.opacity] as number | undefined;
-    const rgba = color && isHexColor(color) ? hexToRgba(color, opacity ?? 1) : null;
-    if (rgba) root.style.setProperty(b.var, rgba);
+    if (color && isHexColor(color)) root.style.setProperty(b.var, color);
     else root.style.removeProperty(b.var);
   }
 }

@@ -42,7 +42,7 @@ export function SettingsSection({
       </div>
       <div
         className={`divide-y divide-border overflow-hidden rounded-lg border bg-surface ${
-          danger ? 'border-error/40' : 'border-border'
+          danger ? 'border-error-line' : 'border-border'
         }`}
       >
         {children}

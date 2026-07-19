@@ -171,7 +171,7 @@ export default function Composer({
             // single long token (a URL) from forcing horizontal overflow.
             className={`field max-h-[140px] w-full resize-none overflow-y-hidden py-2
                         leading-snug wrap-break-word
-                        ${over ? 'border-error/60 focus:border-error' : ''}`}
+                        ${over ? 'border-error focus:border-error' : ''}`}
           />
         </div>
 
@@ -192,7 +192,7 @@ export default function Composer({
                         setShowTools(false);
                       }}
                       className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs
-                                  transition-colors hover:bg-primary/10 ${
+                                  transition-colors hover:bg-primary-soft ${
                                     lockArmed ? 'text-primary' : 'text-foreground'
                                   }`}
                     >
@@ -207,7 +207,7 @@ export default function Composer({
                         setShowTools(false);
                       }}
                       className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs
-                                  transition-colors hover:bg-primary/10 ${
+                                  transition-colors hover:bg-primary-soft ${
                                     spoilerArmed ? 'text-primary' : 'text-foreground'
                                   }`}
                     >
@@ -222,7 +222,7 @@ export default function Composer({
                         setShowTools(false);
                       }}
                       className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs
-                                  transition-colors hover:bg-primary/10 ${
+                                  transition-colors hover:bg-primary-soft ${
                                     burnArmed ? 'text-primary' : 'text-foreground'
                                   }`}
                     >
@@ -237,7 +237,7 @@ export default function Composer({
               onClick={() => setShowTools((s) => !s)}
               disabled={disabled}
               className={`btn-ghost w-full px-2.5 py-2 ${
-                toolsArmed ? 'border-primary/60 text-primary' : ''
+                toolsArmed ? 'border-primary text-primary' : ''
               }`}
               title="Message tools"
               aria-label="Message tools"

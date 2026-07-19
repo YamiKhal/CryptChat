@@ -38,7 +38,7 @@ function renderBio(bio: string): ReactNode {
         href={url}
         target="_blank"
         rel="noopener noreferrer nofollow"
-        className="text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
+        className="text-primary underline decoration-primary underline-offset-2 hover:decoration-primary-strong"
       >
         {label}
       </a>,
@@ -87,7 +87,7 @@ export function UserProfileModal({
 }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black p-4"
       onClick={onClose}
     >
       <div
@@ -106,7 +106,7 @@ export function UserProfileModal({
           <p className="text-base font-semibold text-foreground">{profile.displayName}</p>
 
           {profile.bio ? (
-            <p className="whitespace-pre-wrap wrap-break-word text-sm text-foreground/90">
+            <p className="whitespace-pre-wrap wrap-break-word text-sm text-foreground">
               {renderBio(profile.bio)}
             </p>
           ) : (

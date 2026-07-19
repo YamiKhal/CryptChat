@@ -52,7 +52,7 @@ export default function MediaViewer({
       {open &&
         createPortal(
           <div
-            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4 sm:p-8
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black p-4 sm:p-8
                        animate-fade-in motion-reduce:animate-none"
             onClick={() => setOpen(false)}
             role="dialog"
@@ -69,7 +69,7 @@ export default function MediaViewer({
               type="button"
               onClick={() => setOpen(false)}
               className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full
-                         bg-white/10 text-white transition-colors hover:bg-white/20"
+                         bg-zinc-800 text-white transition-colors hover:bg-zinc-700"
               aria-label="Close"
             >
               <X size={18} />

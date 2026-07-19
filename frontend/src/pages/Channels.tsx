@@ -1,17 +1,34 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate, Link, useParams } from 'react-router-dom';
-import { Copy, Pencil, LogOut, Ban, Image as ImageIcon, Trash2, Check, X, Settings as SettingsIcon, Lock, Plus } from 'lucide-react';
-import { api } from '../lib/api';
-import { generateChannelKey } from '../lib/crypto';
-import { fileToAsset, BinaryAsset } from '../lib/binary';
-import { useSession } from '../lib/session';
-import { useRelayContext } from '../lib/relayContext';
-import { StoredChannel } from '../lib/vault';
-import { ContextMenu, useContextMenu, MenuItem } from '../components/ContextMenu';
-import { ChannelNameModal } from '../components/ChannelNameModal';
-import { NewChannelModal } from '../components/NewChannelModal';
-import { ChannelIcon } from '../components/ChannelIcon';
-import Avatar from '../components/Avatar';
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate, Link, useParams } from "react-router-dom";
+import {
+  Copy,
+  Pencil,
+  LogOut,
+  Ban,
+  Image as ImageIcon,
+  Trash2,
+  Check,
+  X,
+  Settings as SettingsIcon,
+  Lock,
+  Plus,
+  Key,
+} from "lucide-react";
+import { api } from "../lib/api";
+import { generateChannelKey } from "../lib/crypto";
+import { fileToAsset, BinaryAsset } from "../lib/binary";
+import { useSession } from "../lib/session";
+import { useRelayContext } from "../lib/relayContext";
+import { StoredChannel } from "../lib/vault";
+import {
+  ContextMenu,
+  useContextMenu,
+  MenuItem,
+} from "../components/ContextMenu";
+import { ChannelNameModal } from "../components/ChannelNameModal";
+import { NewChannelModal } from "../components/NewChannelModal";
+import { ChannelIcon } from "../components/ChannelIcon";
+import Avatar from "../components/Avatar";
 
 /**
  * One channel row plus its context-menu wiring.
@@ -48,21 +65,21 @@ function ChannelRow({
   // click on the button -- which would navigate into the chat as the menu opens.
   // Swallow exactly that trailing click. Only for touch: a mouse right-click
   // fires no click, so leaving the flag set would wrongly eat a later real one.
-  const pointerType = useRef('mouse');
+  const pointerType = useRef("mouse");
   const swallowClick = useRef(false);
 
   useEffect(() => {
     if (position) {
-      if (pointerType.current !== 'mouse') swallowClick.current = true;
+      if (pointerType.current !== "mouse") swallowClick.current = true;
       onOpenMenu(position.x, position.y);
       close();
     }
   }, [position, onOpenMenu, close]);
 
-  const isDm = channel.type === 'dm';
+  const isDm = channel.type === "dm";
   // The code is never a title -- it is an identifier, not a name. An unnamed
   // channel is just "Group"; a DM is the peer. The code lives in the menu.
-  const title = isDm ? peerName || 'direct message' : channel.label || 'Group';
+  const title = isDm ? peerName || "direct message" : channel.label || "Group";
   // A pending DM invitation: the row does not open (there is no key and nothing
   // to read yet), it offers accept / decline instead.
   const request = Boolean(channel.request);
@@ -71,11 +88,11 @@ function ChannelRow({
   // (open / menu), and the accept/decline controls are their own buttons beside it.
   return (
     <div
-      className={`flex w-full items-center gap-3 rounded-lg border p-3 transition-colors
-                 hover:border-primary/50 ${
+      className={`flex w-full cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors
+                 hover:border-primary ${
                    active
-                     ? 'border-primary/60 bg-primary/10'
-                     : 'border-border bg-surface'
+                     ? "border-primary bg-primary-soft"
+                     : "border-border bg-surface"
                  }`}
     >
       <button
@@ -91,21 +108,34 @@ function ChannelRow({
           onOpen();
         }}
         {...handlers}
-        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        className="flex cursor-pointer min-w-0 flex-1 items-center gap-3 text-left"
       >
-        <ChannelIcon channel={channel} peerName={peerName} peerAvatar={peerAvatar} size="md" />
+        <div className="relative">
+          <ChannelIcon
+            channel={channel}
+            peerName={peerName}
+            peerAvatar={peerAvatar}
+            size="md"
+          />
+          {unread > 0 && (
+            <span
+              className="absolute -bottom-1 left-4 inline-flex min-w-5 flex-none items-center justify-center rounded-full
+                         bg-error px-0.5 py-0.5 text-[8px] font-semibold text-white"
+              aria-label={`${unread} unread`}
+            >
+              {unread > 99 ? "99+" : unread}
+            </span>
+          )}
+        </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-foreground">{title}</p>
+          <p className="truncate text-sm font-medium text-foreground">
+            {title}
+          </p>
           {request ? (
             <p className="text-[11px] text-primary">wants to message you</p>
           ) : (
             <p className="flex items-center gap-1.5 text-[11px] text-muted">
               joined {new Date(channel.joinedAt).toLocaleDateString()}
-              {isDm && <span className="tag bg-primary/10 text-primary">direct</span>}
-              {channel.blocked && <span className="tag bg-error/10 text-error">blocked</span>}
-              {channel.incognito && (
-                <span className="tag bg-secondary/10 text-secondary">incognito</span>
-              )}
             </p>
           )}
         </div>
@@ -117,7 +147,7 @@ function ChannelRow({
             onClick={onAccept}
             title="Accept"
             aria-label="Accept message request"
-            className="rounded-full p-1.5 text-ok transition-colors hover:bg-ok/10"
+            className="rounded-full p-1.5 text-ok transition-colors hover:bg-ok-soft"
           >
             <Check size={17} />
           </button>
@@ -125,26 +155,28 @@ function ChannelRow({
             onClick={onDecline}
             title="Decline"
             aria-label="Decline message request"
-            className="rounded-full p-1.5 text-error transition-colors hover:bg-error/10"
+            className="rounded-full p-1.5 text-error transition-colors hover:bg-error-soft"
           >
             <X size={17} />
           </button>
         </div>
       ) : (
         <>
-          {unread > 0 && (
-            <span
-              className="inline-flex min-w-5 flex-none items-center justify-center rounded-full
-                         bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground"
-              aria-label={`${unread} unread`}
-            >
-              {unread > 99 ? '99+' : unread}
+          {isDm && (
+            <span className="tag bg-primary-soft text-primary">direct</span>
+          )}
+          {channel.blocked && (
+            <span className="tag bg-error-soft text-error">blocked</span>
+          )}
+          {channel.incognito && (
+            <span className="tag bg-secondary-soft text-secondary">
+              incognito
             </span>
           )}
-          {channel.hasKey ? (
-            <span className="tag flex-none bg-primary/10 text-primary">keyed</span>
-          ) : (
-            <span className="tag flex-none animate-pulse bg-warn/10 text-warn">no key</span>
+          {channel.hasKey ?? (
+            <span className="tag flex-none animate-pulse bg-warn-soft text-warn">
+              <Key size={14} />
+            </span>
           )}
         </>
       )}
@@ -162,13 +194,17 @@ export default function Channels() {
 
   const [channels, setChannels] = useState<StoredChannel[]>([]);
   const [unread, setUnread] = useState<Record<string, number>>({});
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [premium, setPremium] = useState(false);
   // The create/join modal, opened from the "+" beside the channels header.
   const [showNew, setShowNew] = useState(false);
-  const [menu, setMenu] = useState<{ channel: StoredChannel; x: number; y: number } | null>(null);
+  const [menu, setMenu] = useState<{
+    channel: StoredChannel;
+    x: number;
+    y: number;
+  } | null>(null);
   const [renaming, setRenaming] = useState<StoredChannel | null>(null);
   // The group whose picture the hidden file input is about to set.
   const iconTarget = useRef<StoredChannel | null>(null);
@@ -232,7 +268,7 @@ export default function Channels() {
         let changed = false;
 
         for (const summary of remote) {
-          const dmType = summary.type === 'dm' ? 'dm' : undefined;
+          const dmType = summary.type === "dm" ? "dm" : undefined;
           const local = vault.getChannel(summary.channelId);
           if (!local) {
             // This is also how the *peer* of a DM learns the channel is a DM:
@@ -241,7 +277,7 @@ export default function Channels() {
             await vault.saveChannel({
               channelId: summary.channelId,
               code: summary.code,
-              key: '',
+              key: "",
               hasKey: false,
               incognito: summary.incognito,
               type: dmType,
@@ -290,7 +326,7 @@ export default function Channels() {
 
   async function handleCreate(name: string, incognito: boolean) {
     if (!vault || !token) return;
-    setError('');
+    setError("");
     setBusy(true);
     try {
       const res = await api.createChannel(token, incognito);
@@ -321,8 +357,8 @@ export default function Channels() {
 
   async function handleJoin(code: string) {
     if (!vault || !token) return;
-    setError('');
-    setNotice('');
+    setError("");
+    setNotice("");
     setBusy(true);
     try {
       const res = await api.joinChannel(token, code.trim());
@@ -341,7 +377,7 @@ export default function Channels() {
       await vault.saveChannel({
         channelId: res.channelId,
         code: res.code,
-        key: '',
+        key: "",
         hasKey: false,
         incognito: res.incognito,
         joinedAt: new Date().toISOString(),
@@ -350,9 +386,9 @@ export default function Channels() {
       reload();
 
       if (res.members.length === 0) {
-        setNotice('Joined. You are the only member — no key to receive yet.');
+        setNotice("Joined. You are the only member — no key to receive yet.");
       } else {
-        setNotice('Joined. Waiting for a member to send the channel key…');
+        setNotice("Joined. Waiting for a member to send the channel key…");
       }
 
       setShowNew(false);
@@ -367,13 +403,13 @@ export default function Channels() {
   async function copyCode(code: string) {
     try {
       await navigator.clipboard.writeText(code);
-      setNotice('Channel code copied.');
+      setNotice("Channel code copied.");
     } catch {
       // Clipboard blocked (insecure context, denied permission): surface the
       // code so it can still be copied by hand rather than failing silently.
       setNotice(`Channel code: ${code}`);
     }
-    setError('');
+    setError("");
   }
 
   async function handleRename(channel: StoredChannel, name: string) {
@@ -390,7 +426,7 @@ export default function Channels() {
   async function handleIconFile(file: File | undefined) {
     const channel = iconTarget.current;
     iconTarget.current = null;
-    if (iconInput.current) iconInput.current.value = '';
+    if (iconInput.current) iconInput.current.value = "";
     if (!file || !vault || !channel) return;
     try {
       // Square, downscaled, re-encoded to WebP -- the re-encode strips EXIF, same
@@ -399,7 +435,7 @@ export default function Channels() {
       const icon = await fileToAsset(file, {
         maxDimension: 256,
         square: true,
-        mime: 'image/webp',
+        mime: "image/webp",
         quality: 0.85,
       });
       await vault.saveChannel({ ...channel, icon });
@@ -417,7 +453,7 @@ export default function Channels() {
 
   async function handleAcceptDm(channel: StoredChannel) {
     if (!vault || !token) return;
-    setError('');
+    setError("");
     try {
       await api.acceptDm(token, channel.channelId);
       // Drop the request flag locally; the withheld key and messages now flow
@@ -431,7 +467,12 @@ export default function Channels() {
 
   async function handleDeclineDm(channel: StoredChannel) {
     if (!vault || !token) return;
-    if (!confirm('Decline this message request? It is removed and they are not told.')) return;
+    if (
+      !confirm(
+        "Decline this message request? It is removed and they are not told.",
+      )
+    )
+      return;
     // Declining is leaving the pending DM: the server drops the membership, the
     // queued messages, and the parked key.
     await api.leaveChannel(token, channel.channelId).catch(() => {});
@@ -442,9 +483,9 @@ export default function Channels() {
   async function handleLeave(channel: StoredChannel) {
     if (!vault || !token) return;
     const message =
-      channel.type === 'dm'
-        ? 'Leave this direct message? It is removed from this device; the other person keeps their copy.'
-        : 'Leave this channel? Its key and local messages are deleted from this device.';
+      channel.type === "dm"
+        ? "Leave this direct message? It is removed from this device; the other person keeps their copy."
+        : "Leave this channel? Its key and local messages are deleted from this device.";
     if (!confirm(message)) return;
     await api.leaveChannel(token, channel.channelId).catch(() => {});
     await vault.removeChannel(channel.channelId);
@@ -467,42 +508,42 @@ export default function Channels() {
   function menuItems(channel: StoredChannel): MenuItem[] {
     const items: MenuItem[] = [
       {
-        label: 'Copy channel code',
+        label: "Copy channel code",
         icon: <Copy size={14} />,
         onSelect: () => copyCode(channel.code),
       },
       {
-        label: channel.label ? 'Rename' : 'Set a name',
+        label: channel.label ? "Rename" : "Set a name",
         icon: <Pencil size={14} />,
         onSelect: () => setRenaming(channel),
       },
     ];
     // A group's picture is settable; a DM's icon always tracks the peer's own
     // avatar, so there is nothing to set here.
-    if (channel.type !== 'dm') {
+    if (channel.type !== "dm") {
       items.push({
-        label: channel.icon ? 'Change picture' : 'Set a picture',
+        label: channel.icon ? "Change picture" : "Set a picture",
         icon: <ImageIcon size={14} />,
         onSelect: () => pickIcon(channel),
       });
       if (channel.icon) {
         items.push({
-          label: 'Remove picture',
+          label: "Remove picture",
           icon: <Trash2 size={14} />,
           onSelect: () => handleRemoveIcon(channel),
         });
       }
     }
-    if (channel.type === 'dm') {
+    if (channel.type === "dm") {
       items.push({
-        label: channel.blocked ? 'Unblock' : 'Block',
+        label: channel.blocked ? "Unblock" : "Block",
         icon: <Ban size={14} />,
         danger: !channel.blocked,
         onSelect: () => handleToggleBlock(channel),
       });
     }
     items.push({
-      label: channel.type === 'dm' ? 'Leave conversation' : 'Leave channel',
+      label: channel.type === "dm" ? "Leave conversation" : "Leave channel",
       icon: <LogOut size={14} />,
       danger: true,
       onSelect: () => handleLeave(channel),
@@ -518,11 +559,13 @@ export default function Channels() {
     <div className="flex h-full flex-col">
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
         <div className="flex items-center justify-between px-1">
-          <p className="text-xs uppercase tracking-wider text-muted">channels</p>
+          <p className="text-xs uppercase tracking-wider text-muted">
+            channels
+          </p>
           <button
             onClick={() => {
-              setError('');
-              setNotice('');
+              setError("");
+              setNotice("");
               setShowNew(true);
             }}
             className="rounded p-1 text-muted transition-colors hover:bg-surface-raised hover:text-primary"
@@ -536,22 +579,36 @@ export default function Channels() {
         {/* Feedback from row actions and joins. Create/join errors live in the
             modal instead, so they are not doubled here while it is open. */}
         {error && !showNew && (
-          <p className="rounded border border-error/30 bg-error/10 p-2 text-xs text-error">{error}</p>
+          <p className="rounded border border-error-line bg-error-soft p-2 text-xs text-error">
+            {error}
+          </p>
         )}
         {notice && (
-          <p className="rounded border border-info/30 bg-info/10 p-2 text-xs text-info">{notice}</p>
+          <p className="rounded border border-info-line bg-info-soft p-2 text-xs text-info">
+            {notice}
+          </p>
         )}
 
         {channels.length === 0 && (
-          <p className="px-1 text-xs text-muted">No channels yet. Create one or join with a code.</p>
+          <p className="px-1 text-xs text-muted">
+            No channels yet. Create one or join with a code.
+          </p>
         )}
 
         {channels.map((channel) => (
           <ChannelRow
             key={channel.channelId}
             channel={channel}
-            peerName={channel.peerId ? vault.getContact(channel.peerId)?.displayName : undefined}
-            peerAvatar={channel.peerId ? vault.getContact(channel.peerId)?.avatar : undefined}
+            peerName={
+              channel.peerId
+                ? vault.getContact(channel.peerId)?.displayName
+                : undefined
+            }
+            peerAvatar={
+              channel.peerId
+                ? vault.getContact(channel.peerId)?.avatar
+                : undefined
+            }
             unread={unread[channel.channelId] ?? 0}
             active={channel.channelId === activeChannelId}
             onOpen={() => navigate(`/chat/${channel.channelId}`)}
@@ -571,10 +628,10 @@ export default function Channels() {
           <p className="flex items-center gap-1.5 text-[11px] text-muted">
             <span
               className={`inline-block h-1.5 w-1.5 rounded-full ${
-                connected ? 'bg-primary' : 'bg-warn'
+                connected ? "bg-primary" : "bg-warn"
               }`}
             />
-            {connected ? 'relay connected' : 'reconnecting…'}
+            {connected ? "relay connected" : "reconnecting…"}
           </p>
         </div>
         <Link
@@ -604,7 +661,7 @@ export default function Channels() {
           onJoin={handleJoin}
           onClose={() => {
             setShowNew(false);
-            setError('');
+            setError("");
           }}
         />
       )}

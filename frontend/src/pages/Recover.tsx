@@ -109,7 +109,7 @@ export default function Recover() {
   }
 
   const errorBox = error && (
-    <p className="rounded border border-error/30 bg-error/10 p-4 text-xs text-error">{error}</p>
+    <p className="rounded border border-error-line bg-error-soft p-4 text-xs text-error">{error}</p>
   );
 
   return (
@@ -137,7 +137,7 @@ export default function Recover() {
               />
             </label>
 
-            <p className="rounded border border-warn/30 bg-warn/10 p-4 text-xs text-warn">
+            <p className="rounded border border-warn-line bg-warn-soft p-4 text-xs text-warn">
               You will also need your 24-word recovery code. The email gets you back into the
               account; only the recovery code can decrypt your channels. Without it, the account
               comes back empty.
@@ -217,7 +217,7 @@ export default function Recover() {
               Your recovery code
             </h2>
 
-            <p className="rounded border border-info/30 bg-info/10 p-4 text-xs text-info">
+            <p className="rounded border border-info-line bg-info-soft p-4 text-xs text-info">
               Your password is reset. Enter the {RECOVERY_CODE_WORDS} words you saved when you
               registered to decrypt your channels. Your keys were never on our server — this code is
               the only thing that can unlock them.

@@ -24,7 +24,14 @@ import MediaViewer from './MediaViewer';
  * frame. The thumbnail is used as an instant poster while the real bytes
  * arrive.
  */
-export default function AttachmentCard({ attachment }: { attachment: Attachment }) {
+export default function AttachmentCard({
+  attachment,
+  bare,
+}: {
+  attachment: Attachment;
+  /** Image-only message: render the photo with no card frame, just rounded. */
+  bare?: boolean;
+}) {
   const { token } = useSession();
   const isImage = looksRenderable(attachment);
 
@@ -127,8 +134,12 @@ export default function AttachmentCard({ attachment }: { attachment: Attachment 
   /* ---------------- images: render, no download button ---------------- */
   if (isImage && !error) {
     return (
-      <div ref={ref} className="mt-1">
-        <div className="relative overflow-hidden rounded border border-border bg-bg/40">
+      <div ref={ref} className={bare ? undefined : 'mt-1'}>
+        <div
+          className={`relative overflow-hidden bg-surface ${
+            bare ? 'rounded-2xl' : 'rounded border border-border'
+          }`}
+        >
           {/* Poster until the original lands, then the real thing (GIFs animate).
               Only the fully-decoded original opens in the viewer; the blurred
               poster is not worth a full-size look. */}
@@ -161,7 +172,7 @@ export default function AttachmentCard({ attachment }: { attachment: Attachment 
           {!fullUrl && !autoLoad && !progress && (
             <button
               onClick={handleShowLarge}
-              className="absolute inset-0 grid place-items-center bg-bg/60 text-xs text-primary"
+              className="absolute inset-0 grid place-items-center bg-surface text-xs text-primary"
             >
               show image · {formatBytes(attachment.size)}
             </button>
@@ -173,7 +184,7 @@ export default function AttachmentCard({ attachment }: { attachment: Attachment 
 
   /* ---------------- everything else: download only ---------------- */
   return (
-    <div ref={ref} className="mt-1 overflow-hidden rounded border border-border bg-bg/40">
+    <div ref={ref} className="mt-1 overflow-hidden rounded border border-border bg-surface">
       {thumbUrl && !isImage && (
         <img src={thumbUrl} alt="" className="max-h-64 w-full object-cover" />
       )}

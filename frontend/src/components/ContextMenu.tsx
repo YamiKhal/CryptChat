@@ -107,8 +107,8 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
             onClose();
           }}
           className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors
-            ${item.disabled ? 'cursor-not-allowed text-muted/50' : 'hover:bg-primary/10'}
-            ${item.danger && !item.disabled ? 'text-error hover:bg-error/10' : ''}`}
+            ${item.disabled ? 'cursor-not-allowed text-muted' : 'hover:bg-primary-soft'}
+            ${item.danger && !item.disabled ? 'text-error hover:bg-error-soft' : ''}`}
         >
           {item.icon && <span className="flex-none">{item.icon}</span>}
           <span className="flex-1 truncate">{item.label}</span>

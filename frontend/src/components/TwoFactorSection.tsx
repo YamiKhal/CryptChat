@@ -90,8 +90,8 @@ export default function TwoFactorSection({ token }: { token: string }) {
             <p
               className={`rounded border p-3 text-[11px] ${
                 status.kind === 'ok'
-                  ? 'border-primary/30 bg-primary/10 text-primary'
-                  : 'border-error/30 bg-error/10 text-error'
+                  ? 'border-primary-line bg-primary-soft text-primary'
+                  : 'border-error-line bg-error-soft text-error'
               }`}
             >
               {status.text}
