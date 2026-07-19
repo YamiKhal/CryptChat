@@ -103,6 +103,28 @@ function contentSecurityPolicy(): Plugin {
 
 export default defineConfig({
   plugins: [react(), tailwindcss(), contentSecurityPolicy()],
+  build: {
+    // The sodium chunk is ~1MB (WebAssembly, base64-inlined). That is the floor
+    // for shipping Argon2id to the browser and cannot be split further, so raise
+    // the warning past it rather than see a false alarm on every build.
+    chunkSizeWarningLimit: 1100,
+    rollupOptions: {
+      output: {
+        // Split the two dependencies that dominate the bundle into their own
+        // chunks. libsodium is the big one (WebAssembly, base64-inlined) and it
+        // almost never changes, so isolating it lets the browser cache it across
+        // app deploys and download it in parallel with the app code. It cannot be
+        // lazy-loaded -- the auth screen needs Argon2id the moment someone logs
+        // in -- but it does not have to sit in the same chunk as everything else.
+        manualChunks(id) {
+          if (id.includes('libsodium')) return 'sodium';
+          if (/node_modules\/(react|react-dom|react-router|scheduler)\//.test(id)) {
+            return 'react-vendor';
+          }
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       // libsodium-wrappers-sumo@0.7.16 ships a broken ESM build: it imports

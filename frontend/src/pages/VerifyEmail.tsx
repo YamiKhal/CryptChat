@@ -47,17 +47,17 @@ export default function VerifyEmail() {
     <div className="min-h-screen grid place-items-center p-4">
       <div className="w-full max-w-sm space-y-4">
         <header className="text-center space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight text-primary">CryptChat</h1>
+          <h1 className="t-h1 font-bold tracking-tight text-primary">CryptChat</h1>
         </header>
 
         <div className="card space-y-4 text-center">
-          {state === 'working' && <p className="animate-pulse text-xs text-muted">confirming…</p>}
+          {state === 'working' && <p className="animate-pulse t-base text-muted">confirming…</p>}
 
           {state === 'ok' && (
             <>
-              <p className="text-sm">Address confirmed.</p>
-              <p className="font-mono text-xs text-muted">{mask}</p>
-              <p className="text-[11px] text-muted">
+              <p className="t-h4">Address confirmed.</p>
+              <p className="font-mono t-base text-muted">{mask}</p>
+              <p className="t-small text-muted">
                 You can now reset your password by mail if you forget it. You will still need your
                 recovery code to decrypt your channels.
               </p>
@@ -66,15 +66,15 @@ export default function VerifyEmail() {
 
           {state === 'error' && (
             <>
-              <p className="text-sm text-error">Could not confirm this address.</p>
-              <p className="text-xs text-muted">{message}</p>
-              <p className="text-[11px] text-muted">
+              <p className="t-h4 text-error">Could not confirm this address.</p>
+              <p className="t-base text-muted">{message}</p>
+              <p className="t-small text-muted">
                 Links expire after 24 hours and work once. Request a new one from Settings.
               </p>
             </>
           )}
 
-          <Link to="/" className="btn-ghost w-full text-center text-xs">
+          <Link to="/" className="btn-ghost w-full text-center t-base">
             continue
           </Link>
         </div>

@@ -16,16 +16,15 @@ export default function ThemeToggle({ className = '' }: { className?: string }) 
     <button
       type="button"
       onClick={() => toggleTheme()}
-      className={`btn-ghost px-3 py-1.5 text-xs ${className}`}
+      className={`px-3 py-1.5 t-base hover:text-primary cursor-pointer ${className}`}
       aria-label={`Switch to ${goingTo} theme`}
       title={`Switch to ${goingTo} theme`}
     >
       {theme === 'dark' ? (
-        <Sun size={14} aria-hidden="true" />
+        <Sun size={18} aria-hidden="true" />
       ) : (
-        <Moon size={14} aria-hidden="true" />
+        <Moon size={18} aria-hidden="true" />
       )}
-      <span>{goingTo}</span>
     </button>
   );
 }

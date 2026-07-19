@@ -172,7 +172,7 @@ export default function AttachmentCard({
           {!fullUrl && !autoLoad && !progress && (
             <button
               onClick={handleShowLarge}
-              className="absolute inset-0 grid place-items-center bg-surface text-xs text-primary"
+              className="absolute inset-0 grid place-items-center bg-surface t-base text-primary"
             >
               show image · {formatBytes(attachment.size)}
             </button>
@@ -193,10 +193,10 @@ export default function AttachmentCard({
         <div className="min-w-0 flex-1">
           {/* Sanitized at receive: a filename is peer-controlled and can carry
               bidi overrides that disguise an .exe as a .pdf. */}
-          <p className="truncate text-xs" title={attachment.name}>
+          <p className="truncate t-base" title={attachment.name}>
             {attachment.name}
           </p>
-          <p className="text-[10px] text-muted">
+          <p className="t-small text-muted">
             {formatBytes(attachment.size)}
             {progress && ` · ${progress.phase} ${pct}%`}
             {error && ` · ${error}`}
@@ -206,7 +206,7 @@ export default function AttachmentCard({
         <button
           onClick={handleDownload}
           disabled={Boolean(progress)}
-          className="btn-ghost px-2 py-1 text-[11px]"
+          className="btn-ghost px-2 py-1 t-small"
         >
           {progress ? `${pct}%` : 'download'}
         </button>

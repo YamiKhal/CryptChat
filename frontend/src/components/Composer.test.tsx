@@ -212,18 +212,24 @@ describe('Composer', () => {
       />
     );
 
-    const attach = screen.getByLabelText('Attach a file');
-    expect(attach).toBeDisabled();
-    // A greyed button with no reason is a dead end.
-    expect(attach).toHaveAttribute('title', expect.stringMatching(/confirm your email/i));
+    // One attach button per breakpoint (mobile / desktop), each display:none at
+    // the other -- so exactly one is ever in the a11y tree, but jsdom has no CSS
+    // and sees both. Assert every affordance rather than assuming a single one.
+    const attach = screen.getAllByLabelText('Attach a file');
+    for (const button of attach) {
+      expect(button).toBeDisabled();
+      // A greyed button with no reason is a dead end.
+      expect(button).toHaveAttribute('title', expect.stringMatching(/confirm your email/i));
+    }
   });
 
   it('advertises the tier file cap when uploads are allowed', () => {
     render(<Harness limits={{ ...free, maxFileBytes: 20 * 1024 * 1024 }} />);
-    expect(screen.getByLabelText('Attach a file')).toHaveAttribute(
-      'title',
-      expect.stringMatching(/20MB/)
-    );
+    // Both the mobile and desktop attach buttons advertise the cap (see note in
+    // the disabled-attach test on why there are two).
+    for (const button of screen.getAllByLabelText('Attach a file')) {
+      expect(button).toHaveAttribute('title', expect.stringMatching(/20MB/));
+    }
   });
 
   it('disables everything while the channel has no key', () => {

@@ -32,7 +32,7 @@ export default function ReactionBar({ reactions, selfId, nameFor, onToggle }: Re
             title={who}
             aria-label={`${emoji} from ${who}`}
             aria-pressed={mine}
-            className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[11px]
+            className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 t-small
               leading-none transition-colors
               ${
                 mine
@@ -40,7 +40,7 @@ export default function ReactionBar({ reactions, selfId, nameFor, onToggle }: Re
                   : 'border-border bg-surface-raised text-muted hover:border-primary-line'
               }`}
           >
-            <span className="text-xs leading-none">{emoji}</span>
+            <span className="t-base leading-none">{emoji}</span>
             <span className="tabular-nums">{senders.length}</span>
           </button>
         );

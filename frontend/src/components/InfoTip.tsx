@@ -60,7 +60,7 @@ export function InfoTip({
         onBlur={() => setHover(null)}
         aria-label={title ? `More about ${title}` : 'More information'}
         className="inline-grid h-4 w-4 place-items-center rounded-full border border-border
-                   text-[10px] font-semibold leading-none text-muted transition-colors
+                   t-small font-semibold leading-none text-muted transition-colors
                    hover:border-primary hover:text-primary focus-visible:text-primary
                    motion-reduce:transition-none"
       >
@@ -73,7 +73,7 @@ export function InfoTip({
           role="tooltip"
           style={{ left: hover.x, top: hover.y - 8, width: BUBBLE_WIDTH }}
           className="pointer-events-none fixed z-60 -translate-x-1/2 -translate-y-full rounded-md
-                     border border-border bg-surface-raised px-2 py-1.5 text-[11px] font-normal
+                     border border-border bg-surface-raised px-2 py-1.5 t-small font-normal
                      normal-case leading-snug tracking-normal text-foreground shadow-lg
                      animate-fade-in motion-reduce:animate-none"
         >
@@ -92,9 +92,9 @@ export function InfoTip({
                        animate-fade-in motion-reduce:animate-none"
             onClick={(e) => e.stopPropagation()}
           >
-            {title && <span className="block text-sm font-medium text-foreground">{title}</span>}
-            <span className="block text-xs leading-relaxed text-muted">{details ?? tip}</span>
-            <button onClick={() => setOpen(false)} className="btn-ghost w-full text-xs">
+            {title && <span className="block t-h4 font-medium text-foreground">{title}</span>}
+            <span className="block t-base leading-relaxed text-muted">{details ?? tip}</span>
+            <button onClick={() => setOpen(false)} className="btn-ghost w-full t-base">
               Got it
             </button>
           </span>

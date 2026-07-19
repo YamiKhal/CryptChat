@@ -29,17 +29,17 @@ export default function CallOverlay() {
               {inc.media === 'video' ? <Video size={18} /> : <Phone size={18} />}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{nameFor(inc.peerId)}</p>
-              <p className="text-[11px] text-muted">
+              <p className="truncate t-h4 font-medium">{nameFor(inc.peerId)}</p>
+              <p className="t-small text-muted">
                 incoming {inc.media === 'video' ? 'video' : 'voice'} call
               </p>
             </div>
           </div>
           <div className="flex gap-2">
-            <button onClick={call.decline} className="btn-ghost flex-1 text-xs text-error">
+            <button onClick={call.decline} className="btn-ghost flex-1 t-base text-error">
               decline
             </button>
-            <button onClick={() => void call.accept()} className="btn-primary flex-1 text-xs">
+            <button onClick={() => void call.accept()} className="btn-primary flex-1 t-base">
               accept
             </button>
           </div>
@@ -71,11 +71,11 @@ export default function CallOverlay() {
     <div className="fixed inset-0 z-[60] flex flex-col bg-black">
       <div className="flex items-center gap-3 px-4 py-3 text-white">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{nameFor(call.peerId)}</p>
-          <p className="text-[11px] text-zinc-400">{statusLabel}</p>
+          <p className="truncate t-h4 font-medium">{nameFor(call.peerId)}</p>
+          <p className="t-small text-zinc-400">{statusLabel}</p>
         </div>
         {!call.relayAvailable && call.status !== 'connected' && (
-          <span className="rounded bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-300">
+          <span className="rounded bg-zinc-800 px-2 py-0.5 t-small text-zinc-300">
             no relay — may not connect
           </span>
         )}
@@ -119,16 +119,16 @@ export default function CallOverlay() {
         )}
       </div>
 
-      {call.error && <p className="px-4 py-1 text-center text-[11px] text-error">{call.error}</p>}
+      {call.error && <p className="px-4 py-1 text-center t-small text-error">{call.error}</p>}
 
       <div className="flex items-center justify-center gap-3 px-4 py-6">
         <ControlButton active={call.muted} onClick={call.toggleMute} label="mute">
-          {call.muted ? <MicOff size={20} /> : <Mic size={20} />}
+          {call.muted ? <MicOff size={18} /> : <Mic size={18} />}
         </ControlButton>
 
         {call.media === 'video' && (
           <ControlButton active={call.cameraOff} onClick={call.toggleCamera} label="camera">
-            {call.cameraOff ? <VideoOff size={20} /> : <Video size={20} />}
+            {call.cameraOff ? <VideoOff size={18} /> : <Video size={18} />}
           </ControlButton>
         )}
 
@@ -138,7 +138,7 @@ export default function CallOverlay() {
             onClick={() => void call.toggleScreenShare()}
             label="share screen"
           >
-            <MonitorUp size={20} />
+            <MonitorUp size={18} />
           </ControlButton>
         )}
 
@@ -147,7 +147,7 @@ export default function CallOverlay() {
           className="grid h-14 w-14 place-items-center rounded-full bg-error text-white transition-transform hover:scale-105"
           aria-label="end call"
         >
-          <PhoneOff size={22} />
+          <PhoneOff size={18} />
         </button>
       </div>
     </div>
@@ -222,7 +222,7 @@ function ErrorToast({ message, onClose }: { message: string; onClose: () => void
   }, [onClose]);
   return (
     <div className="fixed inset-x-0 top-4 z-[60] flex justify-center px-4">
-      <div className="rounded-lg border border-error-line bg-surface px-4 py-2 text-xs text-error shadow-lg">
+      <div className="rounded-lg border border-error-line bg-surface px-4 py-2 t-base text-error shadow-lg">
         {message}
       </div>
     </div>

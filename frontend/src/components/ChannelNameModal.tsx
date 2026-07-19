@@ -37,7 +37,7 @@ export function ChannelNameModal({
         className="w-full max-w-xs space-y-3 rounded-lg border border-border bg-surface p-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <p className="text-xs text-muted">Name this channel</p>
+        <p className="t-base text-muted">Name this channel</p>
         <input
           className="field"
           value={name}
@@ -47,15 +47,15 @@ export function ChannelNameModal({
           placeholder="channel name"
           autoFocus
         />
-        <p className="text-[10px] text-muted">
+        <p className="t-small text-muted">
           Only you see this name — it stays on this device and never reaches the server. Leave it
           empty to use the default name.
         </p>
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="btn-ghost text-xs">
+          <button onClick={onClose} className="btn-ghost t-base">
             cancel
           </button>
-          <button onClick={submit} className="btn-primary text-xs">
+          <button onClick={submit} className="btn-primary t-base">
             save
           </button>
         </div>

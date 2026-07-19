@@ -174,10 +174,10 @@ router.post('/join', joinLimiter, requireAuth, async (req, res, next) => {
       code,
       isNewMember,
       incognito,
-      members: members.rows.map((m) => ({
-        userId: m.id,
-        pubkey: m.pubkey,
-        signPubkey: m.sign_pubkey,
+      members: members.rows.map((member) => ({
+        userId: member.id,
+        pubkey: member.pubkey,
+        signPubkey: member.sign_pubkey,
       })),
     });
   } catch (err) {
@@ -218,22 +218,22 @@ router.get('/list', apiLimiter, requireAuth, async (req, res, next) => {
       [req.userId]
     );
     res.json({
-      channels: result.rows.map((r) => ({
-        channelId: r.id,
+      channels: result.rows.map((row) => ({
+        channelId: row.id,
         // A DM's code is an unused artifact of the NOT NULL column; never surface
         // it, so the DM UI cannot present a "share this code" affordance.
-        code: r.type === 'dm' ? '' : r.code,
-        codeExpiresAt: r.code_expires_at,
-        createdAt: r.created_at,
-        joinedAt: r.joined_at,
-        incognito: r.incognito,
-        type: r.type,
-        memberCount: Number(r.member_count),
+        code: row.type === 'dm' ? '' : row.code,
+        codeExpiresAt: row.code_expires_at,
+        createdAt: row.created_at,
+        joinedAt: row.joined_at,
+        incognito: row.incognito,
+        type: row.type,
+        memberCount: Number(row.member_count),
         // Peer identity, block state, and a pending-invite flag are meaningful
         // only for a DM. `request` marks a DM this user has been invited to but
         // not yet accepted -- the client shows accept / decline instead of opening.
-        ...(r.type === 'dm'
-          ? { peerId: r.peer_id, blocked: r.blocked === true, request: r.status === 'pending' }
+        ...(row.type === 'dm'
+          ? { peerId: row.peer_id, blocked: row.blocked === true, request: row.status === 'pending' }
           : {}),
       })),
     });
@@ -262,11 +262,11 @@ router.get('/:channelId/members', apiLimiter, requireAuth, async (req, res, next
     );
 
     res.json({
-      members: members.rows.map((m) => ({
-        userId: m.id,
-        pubkey: m.pubkey,
-        signPubkey: m.sign_pubkey,
-        joinedAt: m.joined_at,
+      members: members.rows.map((member) => ({
+        userId: member.id,
+        pubkey: member.pubkey,
+        signPubkey: member.sign_pubkey,
+        joinedAt: member.joined_at,
       })),
     });
   } catch (err) {

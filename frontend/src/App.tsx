@@ -14,7 +14,7 @@ import CallOverlay from './components/CallOverlay';
 function Restoring() {
   return (
     <div className="min-h-screen grid place-items-center">
-      <p className="animate-pulse text-xs text-muted">unlocking…</p>
+      <p className="animate-pulse t-base text-muted">unlocking…</p>
     </div>
   );
 }

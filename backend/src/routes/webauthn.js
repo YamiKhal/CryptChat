@@ -100,11 +100,11 @@ router.get('/', apiLimiter, requireAuth, async (req, res, next) => {
 
     res.json({
       enabled: rows.length > 0,
-      credentials: rows.map((r) => ({
-        id: r.id,
-        label: r.label,
-        createdAt: r.created_at,
-        lastUsedAt: r.last_used_at,
+      credentials: rows.map((credential) => ({
+        id: credential.id,
+        label: credential.label,
+        createdAt: credential.created_at,
+        lastUsedAt: credential.last_used_at,
       })),
     });
   } catch (err) {

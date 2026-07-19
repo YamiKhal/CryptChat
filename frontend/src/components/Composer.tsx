@@ -69,6 +69,10 @@ export default function Composer({
   const hasTools = canLock || canBurn || Boolean(onToggleSpoiler);
   const toolsArmed = lockArmed || burnArmed || spoilerArmed;
 
+  const attachTitle = limits.canUpload
+    ? `Attach a file (max ${Math.floor(limits.maxFileBytes / 1024 / 1024)}MB)`
+    : (limits.uploadDenialReason ?? 'Uploads are unavailable');
+
   const used = countChars(value);
   const over = used > limits.maxChars;
   // Only surface the counter when it starts to matter. A permanent "0/1000"
@@ -132,7 +136,10 @@ export default function Composer({
   }
 
   return (
-    <div className="relative border-t border-border bg-surface p-3">
+    // min-h-16 matches the channel column's account bar so the two footers line
+    // up across the split. flex-col + justify-center keeps the single-line bar
+    // vertically centred in that height, then grows past it when needed.
+    <div className="relative flex min-h-16 flex-col justify-center border-t border-border bg-surface px-3 py-2">
       {showEmoji && (
         <EmojiPicker
           onPick={(emoji) => {
@@ -144,21 +151,41 @@ export default function Composer({
       )}
 
       <div className="flex items-end gap-2">
+        {/* Mobile: the attach control lives outside the bar as its own button so
+            the bar keeps room for the text on a narrow screen. */}
         <button
           onClick={onAttach}
           disabled={disabled || uploading || !limits.canUpload}
-          className="btn-ghost flex-none px-2.5 py-2"
-          title={
-            limits.canUpload
-              ? `Attach a file (max ${Math.floor(limits.maxFileBytes / 1024 / 1024)}MB)`
-              : (limits.uploadDenialReason ?? 'Uploads are unavailable')
-          }
+          className="icon-btn flex-none sm:hidden"
+          title={attachTitle}
           aria-label="Attach a file"
         >
-          <Paperclip size={16} />
+          <Paperclip size={18} />
         </button>
 
-        <div className="relative flex min-w-0 flex-1 flex-col">
+        {/* The Discord-style bar: one rounded, solid container holding every
+            in-line control. bg-surface-raised keeps it opaque -- video
+            wallpapers must never bleed through. focus-within lights the border
+            while typing; over-limit turns it red. */}
+        <div
+          className={`flex min-h-11 min-w-0 flex-1 items-center gap-0.5 rounded-2xl border bg-surface-raised px-1.5
+                      transition-colors ${
+                        over
+                          ? 'border-error'
+                          : 'border-border focus-within:border-primary'
+                      }`}
+        >
+          {/* Desktop: attach sits inside the bar, on the left. */}
+          <button
+            onClick={onAttach}
+            disabled={disabled || uploading || !limits.canUpload}
+            className="icon-btn hidden flex-none sm:flex"
+            title={attachTitle}
+            aria-label="Attach a file"
+          >
+            <Paperclip size={18} />
+          </button>
+
           <textarea
             ref={textarea}
             rows={1}
@@ -169,13 +196,12 @@ export default function Composer({
             placeholder={placeholder}
             // resize-none: the height is ours to manage. wrap-break-word stops a
             // single long token (a URL) from forcing horizontal overflow.
-            className={`field max-h-[140px] w-full resize-none overflow-y-hidden py-2
-                        leading-snug wrap-break-word
-                        ${over ? 'border-error focus:border-error' : ''}`}
+            // Transparent + borderless: the bar owns the frame, not the textarea.
+            className="max-h-[140px] min-w-0 flex-1 resize-none overflow-y-hidden bg-transparent px-1.5
+                       py-2.5 t-h4 leading-snug outline-none wrap-break-word placeholder:text-muted"
           />
-        </div>
 
-        {hasTools && (
+          {hasTools && (
           <div className="relative flex-none">
             {showTools && (
               <>
@@ -191,7 +217,7 @@ export default function Composer({
                         onToggleLock?.();
                         setShowTools(false);
                       }}
-                      className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs
+                      className={`flex w-full items-center gap-2 rounded px-2 py-1.5 t-base
                                   transition-colors hover:bg-primary-soft ${
                                     lockArmed ? 'text-primary' : 'text-foreground'
                                   }`}
@@ -206,7 +232,7 @@ export default function Composer({
                         onToggleSpoiler();
                         setShowTools(false);
                       }}
-                      className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs
+                      className={`flex w-full items-center gap-2 rounded px-2 py-1.5 t-base
                                   transition-colors hover:bg-primary-soft ${
                                     spoilerArmed ? 'text-primary' : 'text-foreground'
                                   }`}
@@ -221,7 +247,7 @@ export default function Composer({
                         onToggleBurn?.();
                         setShowTools(false);
                       }}
-                      className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs
+                      className={`flex w-full items-center gap-2 rounded px-2 py-1.5 t-base
                                   transition-colors hover:bg-primary-soft ${
                                     burnArmed ? 'text-primary' : 'text-foreground'
                                   }`}
@@ -236,42 +262,42 @@ export default function Composer({
             <button
               onClick={() => setShowTools((s) => !s)}
               disabled={disabled}
-              className={`btn-ghost w-full px-2.5 py-2 ${
-                toolsArmed ? 'border-primary text-primary' : ''
-              }`}
+              className={`icon-btn ${toolsArmed ? 'text-primary' : ''}`}
               title="Message tools"
               aria-label="Message tools"
               aria-pressed={toolsArmed}
             >
-              <SlidersHorizontal size={16} />
+              <SlidersHorizontal size={18} />
             </button>
           </div>
-        )}
+          )}
 
-        <button
-          onClick={() => setShowEmoji((s) => !s)}
-          disabled={disabled}
-          className="btn-ghost flex-none px-2.5 py-2"
-          title="Emoji"
-          aria-label="Insert emoji"
-        >
-          <Smile size={16} />
-        </button>
+          <button
+            onClick={() => setShowEmoji((s) => !s)}
+            disabled={disabled}
+            className="icon-btn flex-none"
+            title="Emoji"
+            aria-label="Insert emoji"
+          >
+            <Smile size={18} />
+          </button>
+        </div>
 
+        {/* Send stays separate from the bar, as requested. */}
         <button
           onClick={onSend}
           disabled={disabled || sending || !canSend || over}
-          className="btn-primary flex-none px-3 py-2"
+          className="btn-primary h-11 flex-none self-end px-3.5"
           title={over ? 'Message is too long' : 'Send'}
           aria-label="Send message"
         >
-          {sending ? '…' : <Send size={16} />}
+          {sending ? '…' : <Send size={18} />}
         </button>
       </div>
 
       {showCounter && (
         <p
-          className={`mt-1 text-right text-[10px] tabular-nums ${over ? 'text-error' : 'text-muted'}`}
+          className={`mt-1 text-right t-small tabular-nums ${over ? 'text-error' : 'text-muted'}`}
         >
           <span data-testid="char-count">
             {`${used.toLocaleString()} / ${limits.maxChars.toLocaleString()}`}

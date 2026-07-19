@@ -103,19 +103,19 @@ export function UserProfileModal({
             </div>
           </div>
 
-          <p className="text-base font-semibold text-foreground">{profile.displayName}</p>
+          <p className="t-h3 font-semibold text-foreground">{profile.displayName}</p>
 
           {profile.bio ? (
-            <p className="whitespace-pre-wrap wrap-break-word text-sm text-foreground">
+            <p className="whitespace-pre-wrap wrap-break-word t-h4 text-foreground">
               {renderBio(profile.bio)}
             </p>
           ) : (
-            <p className="text-xs italic text-muted">No bio.</p>
+            <p className="t-base italic text-muted">No bio.</p>
           )}
         </div>
 
         <div className="flex justify-end border-t border-border p-3">
-          <button onClick={onClose} className="btn-ghost text-xs">
+          <button onClick={onClose} className="btn-ghost t-base">
             close
           </button>
         </div>

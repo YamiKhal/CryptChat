@@ -107,19 +107,19 @@ export default function Auth() {
     <div className="min-h-screen grid place-items-center p-4">
       <div className="w-full max-w-sm space-y-4">
         <header className="text-center space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight text-primary">CryptChat</h1>
-          <p className="text-xs text-muted">
+          <h1 className="t-h1 font-bold tracking-tight text-primary">CryptChat</h1>
+          <p className="t-base text-muted">
             end-to-end encrypted &middot; the server never learns your name
           </p>
         </header>
 
         {recoveryPhrase ? (
           <div className="card space-y-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted">
+            <h2 className="t-h4 font-semibold uppercase tracking-wider text-muted">
               Your recovery code
             </h2>
 
-            <p className="rounded border border-warn-line bg-warn-soft p-4 text-xs text-warn">
+            <p className="rounded border border-warn-line bg-warn-soft p-4 t-base text-warn">
               Write these 24 words down and keep them somewhere safe. This is the{' '}
               <strong>only</strong> way back into your account if you forget your password or lose
               this device. We cannot show them again and we cannot reset them — the server never
@@ -128,7 +128,7 @@ export default function Auth() {
 
             <ol className="grid grid-cols-3 gap-x-3 gap-y-1 rounded border border-border bg-surface-raised p-4">
               {recoveryPhrase.split(' ').map((word, i) => (
-                <li key={i} className="flex gap-1.5 font-mono text-xs">
+                <li key={i} className="flex gap-1.5 font-mono t-base">
                   <span className="w-4 shrink-0 text-right text-muted">{i + 1}</span>
                   <span className="truncate">{word}</span>
                 </li>
@@ -137,13 +137,13 @@ export default function Auth() {
 
             <button
               type="button"
-              className="btn-ghost w-full text-xs"
+              className="btn-ghost w-full t-base"
               onClick={() => navigator.clipboard?.writeText(recoveryPhrase)}
             >
               copy to clipboard
             </button>
 
-            <label className="flex items-start gap-2 text-xs text-muted">
+            <label className="flex items-start gap-2 t-base text-muted">
               <input
                 type="checkbox"
                 checked={phraseAcknowledged}
@@ -172,12 +172,12 @@ export default function Auth() {
             <div className="flex items-center gap-3">
               <Avatar name={session.account!.username} size="md" />
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium">{session.account!.username}</p>
-                <p className="text-xs text-warn">no keys on this device</p>
+                <p className="truncate t-h4 font-medium">{session.account!.username}</p>
+                <p className="t-base text-warn">no keys on this device</p>
               </div>
             </div>
 
-            <p className="rounded border border-info-line bg-info-soft p-4 text-xs text-info">
+            <p className="rounded border border-info-line bg-info-soft p-4 t-base text-info">
               Your password is correct, but this device has none of your keys — the server never had
               them to give back. Import the key file you exported from your other device.
             </p>
@@ -192,13 +192,13 @@ export default function Auth() {
             <button
               type="button"
               onClick={() => bundleInput.current?.click()}
-              className="btn-ghost w-full text-xs"
+              className="btn-ghost w-full t-base"
             >
               {bundle ? 'key file loaded ✓' : 'choose key file'}
             </button>
 
             <label className="block space-y-1">
-              <span className="text-xs text-muted">key file passphrase</span>
+              <span className="t-base text-muted">key file passphrase</span>
               <input
                 className="field"
                 type="password"
@@ -208,7 +208,7 @@ export default function Auth() {
             </label>
 
             <label className="block space-y-1">
-              <span className="text-xs text-muted">your account password</span>
+              <span className="t-base text-muted">your account password</span>
               <input
                 className="field"
                 type="password"
@@ -219,7 +219,7 @@ export default function Auth() {
             </label>
 
             {error && (
-              <p className="rounded border border-error-line bg-error-soft p-4 text-xs text-error">
+              <p className="rounded border border-error-line bg-error-soft p-4 t-base text-error">
                 {error}
               </p>
             )}
@@ -230,7 +230,7 @@ export default function Auth() {
 
             <button
               type="button"
-              className="w-full text-xs text-muted hover:text-foreground"
+              className="w-full t-base text-muted hover:text-foreground"
               onClick={() => session.logout()}
             >
               use a different account
@@ -243,21 +243,21 @@ export default function Auth() {
               <div className="flex items-center gap-3">
                 <Avatar name={session.account!.username} size="md" />
                 <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{session.account!.username}</p>
-                  <p className="text-xs text-muted">vault locked</p>
+                  <p className="t-h4 font-medium truncate">{session.account!.username}</p>
+                  <p className="t-base text-muted">vault locked</p>
                 </div>
               </div>
-              <p className="text-xs text-muted">
+              <p className="t-base text-muted">
                 Your password decrypts this device's keys. It is never sent for this step.
               </p>
             </div>
           ) : (
             <>
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted">
+              <h2 className="t-h4 font-semibold uppercase tracking-wider text-muted">
                 {mode === 'login' ? 'Log in' : 'Create identity'}
               </h2>
               <label className="block space-y-1">
-                <span className="text-xs text-muted">username</span>
+                <span className="t-base text-muted">username</span>
                 <input
                   className="field"
                   autoComplete="username"
@@ -270,7 +270,7 @@ export default function Auth() {
           )}
 
           <label className="block space-y-1">
-            <span className="text-xs text-muted">password</span>
+            <span className="t-base text-muted">password</span>
             <input
               className="field"
               type="password"
@@ -284,7 +284,7 @@ export default function Auth() {
           {mode === 'register' && !locked && (
             <>
               <label className="block space-y-1">
-                <span className="text-xs text-muted">confirm password</span>
+                <span className="t-base text-muted">confirm password</span>
                 <input
                   className="field"
                   type="password"
@@ -295,7 +295,7 @@ export default function Auth() {
               </label>
 
               <label className="block space-y-1">
-                <span className="text-xs text-muted">
+                <span className="t-base text-muted">
                   email <span className="text-muted">— optional</span>
                 </span>
                 <input
@@ -308,13 +308,13 @@ export default function Auth() {
                 />
               </label>
 
-              <p className="rounded border border-info-line bg-info-soft p-4 text-xs text-info">
+              <p className="rounded border border-info-line bg-info-soft p-4 t-base text-info">
                 An email lets you reset a forgotten password. It is encrypted, never shown to
                 anyone, and never displayed in full — not even to you. You can add or remove it
                 later in Settings. Skipping it costs you nothing except password reset.
               </p>
 
-              <p className="rounded border border-warn-line bg-warn-soft p-4 text-xs text-warn">
+              <p className="rounded border border-warn-line bg-warn-soft p-4 t-base text-warn">
                 This password also encrypts your keys on this device. Minimum 12 characters. After
                 you register we will show you a 24-word recovery code — that code, not your email,
                 is what restores your channels.
@@ -322,7 +322,7 @@ export default function Auth() {
             </>
           )}
 
-          <label className="flex items-center gap-2 text-xs text-muted">
+          <label className="flex items-center gap-2 t-base text-muted">
             <input
               type="checkbox"
               checked={remember}
@@ -333,7 +333,7 @@ export default function Auth() {
           </label>
 
           {error && (
-            <p className="rounded border border-error-line bg-error-soft p-4 text-xs text-error">
+            <p className="rounded border border-error-line bg-error-soft p-4 t-base text-error">
               {error}
             </p>
           )}
@@ -345,7 +345,7 @@ export default function Auth() {
           {locked ? (
             <button
               type="button"
-              className="w-full text-xs text-muted hover:text-foreground"
+              className="w-full t-base text-muted hover:text-foreground"
               onClick={() => session.logout()}
             >
               use a different account
@@ -354,7 +354,7 @@ export default function Auth() {
             <>
               <button
                 type="button"
-                className="w-full text-xs text-muted hover:text-foreground"
+                className="w-full t-base text-muted hover:text-foreground"
                 onClick={() => {
                   setMode(mode === 'login' ? 'register' : 'login');
                   setError('');
@@ -366,7 +366,7 @@ export default function Auth() {
               {mode === 'login' && (
                 <Link
                   to="/recover"
-                  className="block w-full text-center text-xs text-muted hover:text-foreground"
+                  className="block w-full text-center t-base text-muted hover:text-foreground"
                 >
                   Forgot your password?
                 </Link>
@@ -378,7 +378,7 @@ export default function Auth() {
 
         {!locked && !needsImport && session.accounts.length > 0 && (
           <div className="card space-y-2">
-            <p className="text-xs uppercase tracking-wider text-muted">identities on this device</p>
+            <p className="t-base uppercase tracking-wider text-muted">identities on this device</p>
             {session.accounts.map((account) => (
               <button
                 key={account.userId}
@@ -391,11 +391,11 @@ export default function Auth() {
                            transition-colors hover:border-primary"
               >
                 <Avatar name={account.username} size="sm" />
-                <span className="flex-1 truncate text-sm">{account.username}</span>
+                <span className="flex-1 truncate t-h4">{account.username}</span>
                 <span className="tag bg-surface-raised text-muted">locked</span>
               </button>
             ))}
-            <p className="text-[11px] text-muted">
+            <p className="t-small text-muted">
               Each identity has its own encrypted store. They cannot read each other.
             </p>
           </div>

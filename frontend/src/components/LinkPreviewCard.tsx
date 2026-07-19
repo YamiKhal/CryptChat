@@ -84,14 +84,14 @@ export default function LinkPreviewCard({ preview }: { preview: LinkPreview }) {
       )}
 
       <div className="space-y-0.5 p-2">
-        <p className="text-[10px] uppercase tracking-wider text-muted">
+        <p className="t-small uppercase tracking-wider text-muted">
           {preview.siteName || host}
         </p>
         {preview.title && (
-          <p className="line-clamp-2 text-xs font-medium text-foreground">{preview.title}</p>
+          <p className="line-clamp-2 t-base font-medium text-foreground">{preview.title}</p>
         )}
         {preview.description && (
-          <p className="line-clamp-2 text-[11px] text-muted">{preview.description}</p>
+          <p className="line-clamp-2 t-small text-muted">{preview.description}</p>
         )}
       </div>
     </a>

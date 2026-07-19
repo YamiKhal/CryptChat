@@ -191,10 +191,24 @@ export interface Preferences {
   chatTextSize?: 'tiny' | 'small' | 'normal' | 'large';
 
   /**
+   * Message timestamps in 12-hour (3:05 PM) rather than 24-hour (15:05). Absent
+   * = follow the device locale's own convention. Local only, display-only.
+   */
+  clock12h?: boolean;
+
+  /**
    * Hide profile pictures in the transcript, showing names alone. Local only,
    * and does not affect what avatars are sent or received.
    */
   hideProfileImages?: boolean;
+
+  /**
+   * Drop the message bubble entirely: text sits directly on the chat background
+   * with no fill, border, or tail, IRC-style. The bubble element and its layout
+   * are kept -- only its paint goes transparent -- so spacing and alignment stay
+   * identical to the bubbled view. Local only.
+   */
+  hideMessageBubbles?: boolean;
 
   /**
    * Per-device sound cues (a new message elsewhere, a ringing call, and the
@@ -597,7 +611,7 @@ export class Vault {
   async appendMessage(message: StoredMessage): Promise<StoredMessage[]> {
     const messages = await this.loadMessages(message.channelId);
     // The relay may replay on reconnect before an ack lands.
-    if (messages.some((m) => m.id === message.id)) return messages;
+    if (messages.some((existing) => existing.id === message.id)) return messages;
 
     messages.push(message);
     messages.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -607,7 +621,7 @@ export class Vault {
 
   async replaceMessage(channelId: string, id: string, patch: Partial<StoredMessage>): Promise<void> {
     const messages = await this.loadMessages(channelId);
-    const index = messages.findIndex((m) => m.id === id);
+    const index = messages.findIndex((message) => message.id === id);
     if (index === -1) return;
     messages[index] = { ...messages[index], ...patch };
     await this.saveMessages(channelId, messages);
@@ -631,7 +645,7 @@ export class Vault {
     removed: boolean
   ): Promise<StoredMessage[] | null> {
     const messages = await this.loadMessages(channelId);
-    const index = messages.findIndex((m) => m.id === targetId);
+    const index = messages.findIndex((message) => message.id === targetId);
     if (index === -1) return null;
 
     messages[index] = {
@@ -659,7 +673,7 @@ export class Vault {
     editedAt: string = new Date().toISOString()
   ): Promise<StoredMessage[] | null> {
     const messages = await this.loadMessages(channelId);
-    const index = messages.findIndex((m) => m.id === targetId);
+    const index = messages.findIndex((message) => message.id === targetId);
     if (index === -1) return null;
     // Author-only, and never edit a tombstone back to life.
     if (messages[index].senderId !== editorId || messages[index].deleted) return null;
@@ -682,7 +696,7 @@ export class Vault {
     deleterId: string
   ): Promise<StoredMessage[] | null> {
     const messages = await this.loadMessages(channelId);
-    const index = messages.findIndex((m) => m.id === targetId);
+    const index = messages.findIndex((message) => message.id === targetId);
     if (index === -1) return null;
     if (messages[index].senderId !== deleterId) return null;
 
@@ -710,7 +724,7 @@ export class Vault {
    */
   async unlockMessage(channelId: string, id: string, code: string): Promise<StoredMessage[]> {
     const messages = await this.loadMessages(channelId);
-    const index = messages.findIndex((m) => m.id === id);
+    const index = messages.findIndex((message) => message.id === id);
     if (index === -1 || !messages[index].locked) return messages;
 
     const body = await openWithPassword(messages[index].locked!, code);

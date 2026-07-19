@@ -57,44 +57,42 @@ export async function badgeFor(userId) {
     [userId]
   );
 
-  const rows = result.rows;
+  const entitlements = result.rows;
   const now = Date.now();
-  const live = rows.filter((r) => r.expires_at && new Date(r.expires_at).getTime() > now);
+  const live = entitlements.filter(
+    (row) => row.expires_at && new Date(row.expires_at).getTime() > now
+  );
+
+  const parkedMonths = (rows) =>
+    rows
+      .filter((row) => row.status === 'credit')
+      .reduce((sum, row) => sum + (row.duration_months ?? 0), 0);
 
   if (live.length > 0) {
     // Something is already granting time. Any parked credit stays parked --
     // that is the whole point of parking it.
     const best = live[0];
-    const parkedMonths = rows
-      .filter((r) => r.status === 'credit')
-      .reduce((n, r) => n + (r.duration_months ?? 0), 0);
-
     return {
       active: true,
-      // The badge grant date -- the record of when they subscribed. Not a
-      // payment date, and it carries no amount.
+      // The badge grant date, not a payment date, and it carries no amount.
       since: best.granted_at,
       until: best.expires_at,
-      creditMonths: parkedMonths,
+      creditMonths: parkedMonths(entitlements),
     };
   }
 
   // Nothing live. If gift credit is parked, now is when it starts counting.
-  const parked = rows.filter((r) => r.status === 'credit');
-  if (parked.length === 0) return null;
+  if (!entitlements.some((row) => row.status === 'credit')) return null;
 
   const activated = await activateOldestCredit(userId);
   if (!activated) return null;
-
-  const stillParked = parked
-    .filter((r) => r.id !== activated.id)
-    .reduce((n, r) => n + (r.duration_months ?? 0), 0);
 
   return {
     active: true,
     since: activated.granted_at,
     until: activated.expires_at,
-    creditMonths: stillParked,
+    // The just-activated credit is still 'credit' in this stale array; exclude it.
+    creditMonths: parkedMonths(entitlements.filter((row) => row.id !== activated.id)),
   };
 }
 

@@ -88,7 +88,7 @@ export default function TwoFactorSection({ token }: { token: string }) {
         <SettingBlock>
           {status && (
             <p
-              className={`rounded border p-3 text-[11px] ${
+              className={`rounded border p-3 t-small ${
                 status.kind === 'ok'
                   ? 'border-primary-line bg-primary-soft text-primary'
                   : 'border-error-line bg-error-soft text-error'
@@ -105,8 +105,8 @@ export default function TwoFactorSection({ token }: { token: string }) {
                   key={cred.id}
                   className="flex items-center gap-2 rounded border border-border bg-surface-raised px-3 py-2"
                 >
-                  <span className="flex-1 truncate text-xs">{cred.label}</span>
-                  <span className="text-[10px] text-muted">
+                  <span className="flex-1 truncate t-base">{cred.label}</span>
+                  <span className="t-small text-muted">
                     {new Date(cred.createdAt).toLocaleDateString()}
                   </span>
                   <button
@@ -127,7 +127,7 @@ export default function TwoFactorSection({ token }: { token: string }) {
 
       <SettingBlock>
         <label className="block space-y-1">
-          <span className="text-xs text-muted">name for a new key (optional)</span>
+          <span className="t-base text-muted">name for a new key (optional)</span>
           <input
             className="field"
             value={label}
@@ -137,7 +137,7 @@ export default function TwoFactorSection({ token }: { token: string }) {
           />
         </label>
 
-        <button onClick={enroll} disabled={busy} className="btn-ghost w-full text-xs">
+        <button onClick={enroll} disabled={busy} className="btn-ghost w-full t-base">
           {credentials.length > 0 ? 'add another security key' : 'add a security key'}
         </button>
       </SettingBlock>

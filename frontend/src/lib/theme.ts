@@ -42,7 +42,7 @@ export function setTheme(theme: Theme): void {
     // Storage can be unavailable (private mode); still apply for this session.
   }
   applyTheme(theme);
-  listeners.forEach((l) => l());
+  listeners.forEach((listener) => listener());
 }
 
 export function toggleTheme(): Theme {
@@ -133,17 +133,21 @@ export interface BubbleTheme {
 const DERIVED_TOKENS = ['primary-strong', 'primary-foreground', 'secondary-foreground'] as const;
 
 function toRgb(hex: string): [number, number, number] | null {
-  let h = hex.replace('#', '');
-  if (h.length === 3) h = h.split('').map((c) => c + c).join('');
-  if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
-  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  let hexDigits = hex.replace('#', '');
+  if (hexDigits.length === 3) hexDigits = hexDigits.split('').map((char) => char + char).join('');
+  if (!/^[0-9a-fA-F]{6}$/.test(hexDigits)) return null;
+  return [
+    parseInt(hexDigits.slice(0, 2), 16),
+    parseInt(hexDigits.slice(2, 4), 16),
+    parseInt(hexDigits.slice(4, 6), 16),
+  ];
 }
 
 function toHex([r, g, b]: [number, number, number]): string {
   return (
     '#' +
     [r, g, b]
-      .map((x) => Math.max(0, Math.min(255, Math.round(x))).toString(16).padStart(2, '0'))
+      .map((channel) => Math.max(0, Math.min(255, Math.round(channel))).toString(16).padStart(2, '0'))
       .join('')
   );
 }
@@ -158,8 +162,8 @@ function luminance([r, g, b]: [number, number, number]): number {
 }
 
 /** #rgb or #rrggbb. The native color input only ever emits the latter. */
-export function isHexColor(v: string): boolean {
-  return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v);
+export function isHexColor(value: string): boolean {
+  return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value);
 }
 
 /** The four bubble vars, paired with their colour source field. */
@@ -198,7 +202,7 @@ export function applyCustomThemeVars(
   // Derived companions. Cleared first, then set only when their source is a
   // valid custom colour, so falling back to the base theme is clean. The hover
   // shade is only derived when the user did not set primary-strong themselves.
-  for (const t of DERIVED_TOKENS) root.style.removeProperty(`--color-${t}`);
+  for (const token of DERIVED_TOKENS) root.style.removeProperty(`--color-${token}`);
 
   const primaryRgb = colors?.primary && isHexColor(colors.primary) ? toRgb(colors.primary) : null;
   if (primaryRgb) {
@@ -226,9 +230,9 @@ export function applyCustomThemeVars(
   // Per-bubble colour. SOLID only — a bubble sits over the wallpaper (which can
   // be a video), so any translucency would let it bleed through. Opacity fields
   // that may exist on older saved themes are ignored; the colour is applied flat.
-  for (const b of BUBBLE_VARS) {
-    const color = bubbles?.[b.color] as string | undefined;
-    if (color && isHexColor(color)) root.style.setProperty(b.var, color);
-    else root.style.removeProperty(b.var);
+  for (const bubbleVar of BUBBLE_VARS) {
+    const color = bubbles?.[bubbleVar.color] as string | undefined;
+    if (color && isHexColor(color)) root.style.setProperty(bubbleVar.var, color);
+    else root.style.removeProperty(bubbleVar.var);
   }
 }

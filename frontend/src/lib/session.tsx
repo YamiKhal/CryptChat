@@ -10,7 +10,6 @@ import {
   parseRecoveryCode,
   sealRecoveryBlob,
   openRecoveryBlob,
-  generateSalt,
   KeyBundle,
 } from './crypto';
 import { wipe } from './binary';

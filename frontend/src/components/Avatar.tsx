@@ -12,9 +12,9 @@ import { BinaryAsset, unpackAsset, decodeImage } from '../lib/binary';
  */
 
 const SIZES = {
-  sm: 'h-6 w-6 text-[10px]',
-  md: 'h-8 w-8 text-xs',
-  lg: 'h-20 w-20 text-2xl',
+  sm: 'h-6 w-6 t-small',
+  md: 'h-8 w-8 t-base',
+  lg: 'h-20 w-20 t-h1',
   // Fills its parent -- the caller sizes the box (e.g. from a CSS variable) and
   // the initials scale with it via em.
   fluid: 'h-full w-full text-[0.42em]',

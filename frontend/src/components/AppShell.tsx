@@ -45,7 +45,7 @@ export default function AppShell() {
           } ${sidebarHidden ? 'lg:hidden' : 'lg:flex'}`}
         >
           <div className="hidden h-14.25 shrink-0 items-center justify-between border-b border-border px-3 lg:flex">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted">
+            <span className="t-base font-semibold uppercase tracking-wider text-muted">
               dark-chat
             </span>
             <button
@@ -95,8 +95,8 @@ export default function AppShell() {
             <div className="grid h-full place-items-center p-6 text-center">
               <div className="space-y-3 text-muted">
                 <MessagesSquare size={48} className="mx-auto" aria-hidden />
-                <p className="text-sm">No channel selected</p>
-                <p className="text-xs">Pick a channel on the left to start reading.</p>
+                <p className="t-h4">No channel selected</p>
+                <p className="t-base">Pick a channel on the left to start reading.</p>
               </div>
             </div>
           )}

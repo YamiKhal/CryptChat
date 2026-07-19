@@ -147,7 +147,7 @@ export default function EmojiPicker({ onPick, onClose, anchor }: EmojiPickerProp
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="search"
-          className="w-full bg-transparent text-xs outline-none placeholder:text-muted"
+          className="w-full bg-transparent t-base outline-none placeholder:text-muted"
         />
       </div>
 
@@ -157,7 +157,7 @@ export default function EmojiPicker({ onPick, onClose, anchor }: EmojiPickerProp
             <button
               key={g.name}
               onClick={() => setGroup(i)}
-              className={`whitespace-nowrap rounded px-2 py-1 text-[10px] transition-colors
+              className={`whitespace-nowrap rounded px-2 py-1 t-small transition-colors
                 ${i === group ? 'bg-primary-soft text-primary' : 'text-muted hover:text-foreground'}`}
             >
               {g.name}
@@ -171,7 +171,7 @@ export default function EmojiPicker({ onPick, onClose, anchor }: EmojiPickerProp
           <button
             key={emoji}
             onClick={() => onPick(emoji)}
-            className="rounded p-1 text-lg leading-none transition-colors hover:bg-primary-soft"
+            className="rounded p-1 t-h2 leading-none transition-colors hover:bg-primary-soft"
             title={KEYWORDS[emoji] ?? ''}
           >
             {emoji}
@@ -180,7 +180,7 @@ export default function EmojiPicker({ onPick, onClose, anchor }: EmojiPickerProp
       </div>
 
       {results.length === 0 && (
-        <p className="py-4 text-center text-xs text-muted">nothing matches “{query}”</p>
+        <p className="py-4 text-center t-base text-muted">nothing matches “{query}”</p>
       )}
     </div>
   );

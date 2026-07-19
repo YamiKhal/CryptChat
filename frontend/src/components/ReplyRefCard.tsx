@@ -40,7 +40,7 @@ export function ReplyQuote({ reply, onJump, missing }: ReplyRefCardProps) {
       disabled={missing}
       title={missing ? 'The original is not on this device' : 'Jump to message'}
       className={`mb-1 flex w-full items-center gap-1.5 rounded border-l-2 border-primary
-                  bg-primary-soft px-2 py-1 text-left text-[11px] transition-colors
+                  bg-primary-soft px-2 py-1 text-left t-small transition-colors
                   ${missing ? 'cursor-default' : 'hover:border-primary-strong'}`}
     >
       <span className="flex-none font-medium text-primary">{reply.displayName}</span>
@@ -55,7 +55,7 @@ export function ReplyComposing({ reply, onCancel }: { reply: ReplyRef; onCancel:
   return (
     <div className="flex items-center gap-2 border-t border-border bg-surface px-4 py-2">
       <CornerUpLeft size={12} className="flex-none text-primary" aria-hidden="true" />
-      <div className="flex min-w-0 flex-1 items-center gap-1.5 text-[11px]">
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 t-small">
         <span className="flex-none text-muted">replying to</span>
         <span className="flex-none font-medium text-primary">{reply.displayName}</span>
         <KindIcon kind={reply.kind} />

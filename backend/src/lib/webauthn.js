@@ -65,9 +65,9 @@ export function registrationOptions(userId, existing) {
     userName: 'CryptChat account',
     userDisplayName: 'CryptChat account',
     attestationType: 'none',
-    excludeCredentials: existing.map((c) => ({
-      id: c.id,
-      transports: c.transports ? JSON.parse(c.transports) : undefined,
+    excludeCredentials: existing.map((credential) => ({
+      id: credential.id,
+      transports: credential.transports ? JSON.parse(credential.transports) : undefined,
     })),
     authenticatorSelection: {
       residentKey: 'discouraged',
@@ -90,9 +90,9 @@ export function verifyRegistration(response, expectedChallenge) {
 export function authenticationOptions(credentials) {
   return generateAuthenticationOptions({
     rpID: RP.rpID,
-    allowCredentials: credentials.map((c) => ({
-      id: c.id,
-      transports: c.transports ? JSON.parse(c.transports) : undefined,
+    allowCredentials: credentials.map((credential) => ({
+      id: credential.id,
+      transports: credential.transports ? JSON.parse(credential.transports) : undefined,
     })),
     userVerification: 'preferred',
   });

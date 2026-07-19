@@ -1,19 +1,10 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useReducer, type ReactNode } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { CornerUpLeft, Smile, Copy, Download, Pencil, Trash2, Lock, LockKeyhole, Timer, ShieldCheck, MessageCircle, Phone, Video, Ban, LogOut, Image as ImageIcon, User, EyeOff, LogOutIcon } from 'lucide-react';
+import { CornerUpLeft, Smile, Copy, Download, Pencil, Trash2, Lock, LockKeyhole, Timer, ShieldCheck, MessageCircle, Phone, Video, Ban, LogOut, Image as ImageIcon, User, EyeOff } from 'lucide-react';
 import { incognitoHue, incognitoLabel } from '../lib/incognito';
 import TrustPanel from '../components/TrustPanel';
 import { useCall } from '../lib/callContext';
 import { setActiveChannel, playSound } from '../lib/sounds';
-
-/** Disappearing-message durations offered in the composer. */
-const BURN_OPTIONS = [
-  { ttl: 5, label: '5s' },
-  { ttl: 30, label: '30s' },
-  { ttl: 60, label: '1m' },
-  { ttl: 300, label: '5m' },
-  { ttl: 3600, label: '1h' },
-] as const;
 import { useSession } from '../lib/session';
 import { useRelayContext } from '../lib/relayContext';
 import { StoredMessage, Vault, Contact, UserProfile } from '../lib/vault';
@@ -42,6 +33,15 @@ import { ChannelNameModal } from '../components/ChannelNameModal';
 import { ChannelIcon } from '../components/ChannelIcon';
 import { UserProfileModal } from '../components/UserProfileModal';
 import { ReplyComposing } from '../components/ReplyRefCard';
+
+/** Disappearing-message durations offered in the composer. */
+const BURN_OPTIONS = [
+  { ttl: 5, label: '5s' },
+  { ttl: 30, label: '30s' },
+  { ttl: 60, label: '1m' },
+  { ttl: 300, label: '5m' },
+  { ttl: 3600, label: '1h' },
+] as const;
 
 /**
  * Decrypt an attachment and save it.
@@ -120,6 +120,7 @@ function MessageRow({
   leftAligned,
   hideAvatars,
   showTail,
+  hour12,
 }: {
   message: StoredMessage;
   isSelf: boolean;
@@ -140,6 +141,7 @@ function MessageRow({
   senderTrusted?: boolean;
   leftAligned?: boolean;
   hideAvatars?: boolean;
+  hour12?: boolean;
 }) {
   const { handlers, position, close } = useContextMenu();
 
@@ -173,6 +175,7 @@ function MessageRow({
       leftAligned={leftAligned}
       hideAvatars={hideAvatars}
       showTail={showTail}
+      hour12={hour12}
     />
   );
 }
@@ -220,12 +223,12 @@ function UnlockModal({
         className="w-full max-w-xs space-y-3 rounded-lg border border-border bg-surface p-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <p className="flex items-center gap-1.5 text-xs text-muted">
+        <p className="flex items-center gap-1.5 t-base text-muted">
           <LockKeyhole size={13} aria-hidden="true" />
           Enter the code for this message
         </p>
         {message.locked?.hint && (
-          <p className="text-[11px] italic text-muted">hint: {message.locked.hint}</p>
+          <p className="t-small italic text-muted">hint: {message.locked.hint}</p>
         )}
         <input
           className="field"
@@ -237,15 +240,15 @@ function UnlockModal({
           autoCorrect="off"
           autoFocus
         />
-        {error && <p className="text-[11px] text-error">{error}</p>}
+        {error && <p className="t-small text-error">{error}</p>}
         <div className="flex gap-2">
-          <button onClick={onClose} className="btn-ghost flex-1 text-xs">
+          <button onClick={onClose} className="btn-ghost flex-1 t-base">
             cancel
           </button>
           <button
             onClick={submit}
             disabled={busy || !code.trim()}
-            className="btn-primary flex-1 text-xs"
+            className="btn-primary flex-1 t-base"
           >
             unlock
           </button>
@@ -543,8 +546,10 @@ export default function Chat() {
       try {
         await editMessage(channelId, editingId, body);
         setMessages((current) =>
-          current.map((m) =>
-            m.id === editingId ? { ...m, body, editedAt: new Date().toISOString() } : m
+          current.map((message) =>
+            message.id === editingId
+              ? { ...message, body, editedAt: new Date().toISOString() }
+              : message
           )
         );
         setText('');
@@ -652,10 +657,10 @@ export default function Chat() {
       try {
         await deleteMessage(channelId, message.id);
         setMessages((current) =>
-          current.map((m) =>
-            m.id === message.id
-              ? { ...m, deleted: true, body: '', asset: undefined, attachments: undefined, preview: undefined, replyTo: undefined }
-              : m
+          current.map((existing) =>
+            existing.id === message.id
+              ? { ...existing, deleted: true, body: '', asset: undefined, attachments: undefined, preview: undefined, replyTo: undefined }
+              : existing
           )
         );
         if (editingId === message.id) {
@@ -1066,7 +1071,7 @@ export default function Chat() {
     return (
       <div className="grid h-full place-items-center p-4 text-center">
         <div className="card max-w-sm space-y-3">
-          <p className="text-sm">This channel is not on this device.</p>
+          <p className="t-h4">This channel is not on this device.</p>
           <Link to="/channels" className="btn-ghost">
             Back to channels
           </Link>
@@ -1103,14 +1108,14 @@ export default function Chat() {
             size="md"
           />
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-foreground">
+            <p className="truncate t-h4 font-medium text-foreground">
               {isDm
                 ? channel.peerId
                   ? nameFor(channel.peerId)
                   : 'direct message'
                 : channel.label || 'Group'}
             </p>
-            <p className="flex items-center gap-1.5 text-[11px] text-muted">
+            <p className="flex items-center gap-1.5 t-small text-muted">
               <span
                 className={`inline-block h-1.5 w-1.5 rounded-full ${connected ? 'bg-primary' : 'bg-warn'}`}
               />
@@ -1131,7 +1136,7 @@ export default function Chat() {
               title="Voice call"
               aria-label="Voice call"
             >
-              <Phone size={20} />
+              <Phone size={18} />
             </button>
             <button
               onClick={() => startCall('video')}
@@ -1139,20 +1144,20 @@ export default function Chat() {
               title={limits.premium ? 'Video call' : 'Video calling is a supporter feature'}
               aria-label="Video call"
             >
-              <Video size={20} />
+              <Video size={18} />
             </button>
           </>
         )}
 
         <button onClick={handleLeave} className="text-muted transition-colors hover:text-primary cursor-pointer p-2"
-              title={"Leave"}
+              title="Leave"
               aria-label="Leave channel">
-          <LogOutIcon size={20} />
+          <LogOut size={18} />
         </button>
       </header>
 
       {!channel.hasKey && (
-        <div className="border-b border-warn-line bg-warn-soft px-4 py-3 text-xs text-warn">
+        <div className="border-b border-warn-line bg-warn-soft px-4 py-3 t-base text-warn">
           <p className="font-medium">Waiting for the channel key</p>
           <p className="mt-1 text-warn">
             Nobody has sent it yet. A member who is online will pass it to you automatically — the
@@ -1187,6 +1192,7 @@ export default function Chat() {
 
         <div
           data-chat-size={vault.preferences.chatTextSize ?? 'normal'}
+          data-chat-bubbles={vault.preferences.hideMessageBubbles ? 'hidden' : undefined}
           className="absolute inset-0 overflow-y-auto overflow-x-hidden p-4 space-y-1 bg-cover bg-center"
           style={
             chatBackground && !chatBackground.isVideo
@@ -1196,10 +1202,10 @@ export default function Chat() {
               : undefined
           }
         >
-          {loading && <p className="text-center text-xs text-muted">decrypting…</p>}
+          {loading && <p className="text-center t-base text-muted">decrypting…</p>}
 
         {!loading && messages.length === 0 && channel.hasKey && (
-          <p className="text-center text-xs text-muted">No messages yet.</p>
+          <p className="text-center t-base text-muted">No messages yet.</p>
         )}
 
         {(() => {
@@ -1208,8 +1214,13 @@ export default function Chat() {
           // the bottom. A presence line also breaks message grouping, so the
           // next message shows its header again.
           const items = [
-            ...messages.map((m) => ({ type: 'msg' as const, at: m.createdAt, message: m })),
-            ...presenceLog.map((p) => ({ type: 'presence' as const, at: p.at, id: p.id, text: p.text })),
+            ...messages.map((message) => ({ type: 'msg' as const, at: message.createdAt, message })),
+            ...presenceLog.map((notice) => ({
+              type: 'presence' as const,
+              at: notice.at,
+              id: notice.id,
+              text: notice.text,
+            })),
           ].sort((a, b) => a.at.localeCompare(b.at));
 
           let prevSenderId: string | null = null;
@@ -1229,7 +1240,7 @@ export default function Chat() {
               nodes.push(
                 <div key={`day-${day}`} className="my-3 flex items-center gap-3 px-2">
                   <span className="h-px flex-1 bg-border" />
-                  <span className="rounded-full bg-surface-raised px-3 py-1 text-[11px] font-medium text-muted">
+                  <span className="rounded-full bg-surface-raised px-3 py-1 t-small font-medium text-muted">
                     {dayLabel(item.at)}
                   </span>
                   <span className="h-px flex-1 bg-border" />
@@ -1242,7 +1253,7 @@ export default function Chat() {
               prevAt = null;
               nodes.push(
                 <div key={`p-${item.id}`} className="my-2 flex justify-center">
-                  <span className="rounded-full bg-surface-raised px-3 py-1 text-[11px] text-muted">
+                  <span className="rounded-full bg-surface-raised px-3 py-1 t-small text-muted">
                     {item.text}
                   </span>
                 </div>,
@@ -1302,6 +1313,7 @@ export default function Chat() {
                 senderTrusted={!channel.incognito && isVerified(message.senderId)}
                 leftAligned={vault.preferences.messagesLeftAligned}
                 hideAvatars={vault.preferences.hideProfileImages}
+                hour12={vault.preferences.clock12h}
               />,
             );
             return nodes;
@@ -1312,11 +1324,11 @@ export default function Chat() {
         </div>
       </div>
 
-      {error && <p className="border-t border-error-line bg-error-soft px-4 py-2 text-xs text-error">{error}</p>}
+      {error && <p className="border-t border-error-line bg-error-soft px-4 py-2 t-base text-error">{error}</p>}
 
       {upload && (
         <div className="border-t border-border px-4 py-2">
-          <div className="flex items-center justify-between text-[11px] text-muted">
+          <div className="flex items-center justify-between t-small text-muted">
             <span>encrypting &amp; uploading…</span>
             <span>{Math.round((upload.loaded / Math.max(1, upload.total)) * 100)}%</span>
           </div>
@@ -1330,7 +1342,7 @@ export default function Chat() {
       )}
 
       {pending.length > 0 && (
-        <div className="flex flex-wrap gap-2 border-t border-border px-4 py-2 text-xs">
+        <div className="flex flex-wrap gap-2 border-t border-border px-4 py-2 t-base">
           {pending.map((attachment) => (
             <span
               key={attachment.blobId}
@@ -1362,7 +1374,7 @@ export default function Chat() {
               ? `${names.join(', ')} are typing…`
               : 'Several people are typing…';
         return (
-          <div className="flex items-center gap-2 px-4 py-1 text-[11px] text-muted">
+          <div className="flex items-center gap-2 px-4 py-1 t-small text-muted">
             <span className="animate-pulse">{typingLabel}</span>
           </div>
         );
@@ -1374,7 +1386,7 @@ export default function Chat() {
       {(lockArmed || burnTtl != null || spoilerArmed) && (
         <div className="flex flex-wrap items-center gap-1.5 border-t border-primary-line bg-primary-soft px-4 py-1.5">
           {lockArmed && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-primary-line bg-primary-soft px-2 py-0.5 text-[11px] text-primary">
+            <span className="inline-flex items-center gap-1 rounded-full border border-primary-line bg-primary-soft px-2 py-0.5 t-small text-primary">
               <button
                 onClick={() => setShowLockModal(true)}
                 className="inline-flex items-center gap-1"
@@ -1397,7 +1409,7 @@ export default function Chat() {
             </span>
           )}
           {burnTtl != null && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-primary-line bg-primary-soft px-2 py-0.5 text-[11px] text-primary">
+            <span className="inline-flex items-center gap-1 rounded-full border border-primary-line bg-primary-soft px-2 py-0.5 t-small text-primary">
               <button
                 onClick={() => setShowBurnModal(true)}
                 className="inline-flex items-center gap-1"
@@ -1416,7 +1428,7 @@ export default function Chat() {
             </span>
           )}
           {spoilerArmed && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-primary-line bg-primary-soft px-2 py-0.5 text-[11px] text-primary">
+            <span className="inline-flex items-center gap-1 rounded-full border border-primary-line bg-primary-soft px-2 py-0.5 t-small text-primary">
               <EyeOff size={11} aria-hidden="true" />
               Spoiler
               <button
@@ -1432,7 +1444,7 @@ export default function Chat() {
       )}
 
       {editingId && (
-        <div className="flex items-center justify-between border-t border-primary-line bg-primary-soft px-4 py-1.5 text-[11px]">
+        <div className="flex items-center justify-between border-t border-primary-line bg-primary-soft px-4 py-1.5 t-small">
           <span className="text-primary">Editing message</span>
           <button
             onClick={() => {
@@ -1458,7 +1470,7 @@ export default function Chat() {
       />
 
       {dmBlocked && (
-        <div className="flex items-center justify-between border-t border-error-line bg-error-soft px-4 py-2 text-[11px] text-error">
+        <div className="flex items-center justify-between border-t border-error-line bg-error-soft px-4 py-2 t-small text-error">
           <span>You blocked this person. Their messages won't reach you.</span>
           <button onClick={handleToggleBlock} className="underline hover:no-underline">
             unblock
@@ -1588,7 +1600,7 @@ export default function Chat() {
           x={reactingTo.x}
           y={reactingTo.y}
           onPick={(emoji) => {
-            const target = messages.find((m) => m.id === reactingTo.id);
+            const target = messages.find((message) => message.id === reactingTo.id);
             if (target) handleToggleReaction(target, emoji);
             setReactingTo(null);
           }}
@@ -1642,12 +1654,12 @@ function LockComposeModal({
         className="w-full max-w-xs space-y-3 rounded-lg border border-border bg-surface p-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <p className="flex items-center gap-1.5 text-sm font-medium">
+        <p className="flex items-center gap-1.5 t-h4 font-medium">
           <Lock size={14} className="text-primary" aria-hidden="true" />
           Password-protect message
         </p>
         <input
-          className="field text-sm"
+          className="field t-h4"
           placeholder="code recipients must enter"
           value={code}
           onChange={(e) => setCode(e.target.value)}
@@ -1656,23 +1668,23 @@ function LockComposeModal({
           autoFocus
         />
         <input
-          className="field text-sm"
+          className="field t-h4"
           placeholder="hint (optional, shown before unlocking)"
           value={hint}
           onChange={(e) => setHint(e.target.value)}
           maxLength={140}
           autoComplete="off"
         />
-        <p className="text-[11px] text-muted">
+        <p className="t-small text-muted">
           Share the code another way. It never reaches our servers and cannot be recovered — without
           it, the message stays locked. This guards against a glance over the shoulder, not against
           someone who already has the message.
         </p>
         <div className="flex gap-2">
-          <button onClick={armed ? onDisable : onClose} className="btn-ghost flex-1 text-xs">
+          <button onClick={armed ? onDisable : onClose} className="btn-ghost flex-1 t-base">
             {armed ? 'Turn off lock' : 'Cancel'}
           </button>
-          <button onClick={confirm} disabled={!code.trim()} className="btn-primary flex-1 text-xs">
+          <button onClick={confirm} disabled={!code.trim()} className="btn-primary flex-1 t-base">
             Lock message
           </button>
         </div>
@@ -1713,7 +1725,7 @@ function BurnComposeModal({
         className="w-full max-w-xs space-y-3 rounded-lg border border-border bg-surface p-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <p className="flex items-center gap-1.5 text-sm font-medium">
+        <p className="flex items-center gap-1.5 t-h4 font-medium">
           <Timer size={14} className="text-primary" aria-hidden="true" />
           Disappearing message
         </p>
@@ -1722,7 +1734,7 @@ function BurnComposeModal({
             <button
               key={o.ttl}
               onClick={() => setTtl(o.ttl)}
-              className={`rounded px-3 py-1 text-xs ${
+              className={`rounded px-3 py-1 t-base ${
                 ttl === o.ttl
                   ? 'bg-primary text-primary-foreground'
                   : 'border border-border text-muted hover:text-foreground'
@@ -1732,15 +1744,15 @@ function BurnComposeModal({
             </button>
           ))}
         </div>
-        <p className="text-[11px] text-muted">
+        <p className="t-small text-muted">
           Removed from both sides after the timer, on cooperating clients. It cannot stop a
           screenshot or a photo of the screen.
         </p>
         <div className="flex gap-2">
-          <button onClick={armed ? onDisable : onClose} className="btn-ghost flex-1 text-xs">
+          <button onClick={armed ? onDisable : onClose} className="btn-ghost flex-1 t-base">
             {armed ? 'Turn off' : 'Cancel'}
           </button>
-          <button onClick={() => onConfirm(ttl)} className="btn-primary flex-1 text-xs">
+          <button onClick={() => onConfirm(ttl)} className="btn-primary flex-1 t-base">
             Set timer
           </button>
         </div>
@@ -1793,7 +1805,7 @@ function QuickReactions({
         <button
           key={emoji}
           onClick={() => onPick(emoji)}
-          className="rounded-full p-1 text-lg leading-none transition-transform hover:scale-125"
+          className="rounded-full p-1 t-h2 leading-none transition-transform hover:scale-125"
           aria-label={`React with ${emoji}`}
         >
           {emoji}

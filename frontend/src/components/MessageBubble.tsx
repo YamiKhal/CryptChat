@@ -104,9 +104,9 @@ function renderInline(nodes: InlineNode[]): ReactNode {
 }
 
 const HEADING_CLASS: Record<1 | 2 | 3, string> = {
-  1: "text-base font-semibold",
-  2: "text-[15px] font-semibold",
-  3: "text-sm font-semibold",
+  1: "t-h3 font-semibold",
+  2: "t-h4 font-semibold",
+  3: "t-lead font-semibold",
 };
 
 /**
@@ -161,6 +161,8 @@ interface MessageBubbleProps {
   hideAvatars?: boolean;
   /** Show the speech-bubble tail. Only the last message in a grouped run gets one. */
   showTail?: boolean;
+  /** Timestamps in 12-hour form; undefined follows the device locale. */
+  hour12?: boolean;
 }
 
 /**
@@ -173,11 +175,11 @@ interface MessageBubbleProps {
 function LockedBody({ hint }: { hint?: string }) {
   return (
     <div className="space-y-1">
-      <p className="flex items-center gap-1.5 text-xs text-muted">
+      <p className="flex items-center gap-1.5 t-base text-muted">
         <LockKeyhole size={13} aria-hidden="true" />
         Password-protected — open the menu to unlock
       </p>
-      {hint && <p className="text-[11px] italic text-muted">hint: {hint}</p>}
+      {hint && <p className="t-small italic text-muted">hint: {hint}</p>}
     </div>
   );
 }
@@ -203,7 +205,7 @@ function Attachment({ asset, bare }: { asset: BinaryAsset; bare?: boolean }) {
   }, [asset]);
 
   if (failed)
-    return <p className="text-xs text-error">unsupported attachment</p>;
+    return <p className="t-base text-error">unsupported attachment</p>;
   if (!url) return null;
 
   return (
@@ -241,6 +243,7 @@ export default function MessageBubble({
   leftAligned,
   hideAvatars,
   showTail,
+  hour12,
 }: MessageBubbleProps) {
   // Whether this bubble sits on the right. Only your own messages do, and only
   // when not in the single-column (Discord-style) layout.
@@ -249,6 +252,8 @@ export default function MessageBubble({
   const time = new Date(message.createdAt).toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
+    // undefined lets the locale pick; the preference overrides it either way.
+    hour12,
   });
 
   // Whole-message spoiler. Transient by design: state resets when the bubble
@@ -301,6 +306,12 @@ export default function MessageBubble({
     >
       {!hideAvatars && (
         <div
+          // On grouped rows the slot is empty and only reserves the avatar's
+          // WIDTH for indent alignment; its reserved height is dead space. With
+          // bubbles hidden the message line is short, so that height would force
+          // the row taller than the text and open an uneven gap below each
+          // grouped line -- the "no bubbles" CSS collapses it via this marker.
+          data-av-spacer={grouped ? '' : undefined}
           className="flex-none"
           style={{ width: 'var(--chat-avatar)', height: 'var(--chat-avatar)' }}
         >
@@ -383,6 +394,7 @@ export default function MessageBubble({
         // never slips behind the page.
         <div className="relative isolate w-fit max-w-full">
         <div
+          data-bubble
           style={{
             fontSize: "var(--chat-body)",
             // Bubble fill + border come from CSS vars so a custom theme can
@@ -439,8 +451,7 @@ export default function MessageBubble({
           ) : (
             <>
               {message.body &&
-                (!message.preview ||
-                  (message.preview && message.preview!.kind === "youtube")) && (
+                (!message.preview || message.preview.kind === "youtube") && (
                   <Body text={message.body} />
                 )}
               {message.asset && <Attachment asset={message.asset} />}
@@ -468,7 +479,7 @@ export default function MessageBubble({
                 </span>
               )}
               {message.editedAt && (
-                <span className="ml-1 align-baseline text-[10px] text-muted">(edited)</span>
+                <span className="ml-1 align-baseline t-small text-muted">(edited)</span>
               )}
               {/* Once uncovered, keep a marker so it stays clear this message was
                   posted as a spoiler. */}
@@ -484,7 +495,7 @@ export default function MessageBubble({
           )}
 
           {message.pending && (
-            <p className="mt-1 text-[10px] text-muted">queued — not yet sent</p>
+            <p className="mt-1 t-small text-muted">queued — not yet sent</p>
           )}
           </div>
 
@@ -498,7 +509,7 @@ export default function MessageBubble({
                 setSpoilerRevealed(true);
               }}
               className="absolute inset-0 flex items-center justify-center gap-1.5
-                         bg-surface-raised text-[11px] font-medium text-muted
+                         bg-surface-raised t-small font-medium text-muted
                          transition hover:text-foreground"
               title="Spoiler — click to reveal"
             >

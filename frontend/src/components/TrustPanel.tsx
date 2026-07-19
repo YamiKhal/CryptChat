@@ -73,26 +73,26 @@ export default function TrustPanel({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2">
-          <h2 className="flex-1 text-sm font-semibold uppercase tracking-wider">verify contacts</h2>
+          <h2 className="flex-1 t-h4 font-semibold uppercase tracking-wider">verify contacts</h2>
           <button onClick={onClose} className="text-muted hover:text-foreground" aria-label="Close">
-            <X size={16} />
+            <X size={18} />
           </button>
         </div>
 
-        <p className="text-[11px] text-muted">
+        <p className="t-small text-muted">
           Compare a safety number with the other person over a channel you already trust — in
           person, a call, another app. If both of you see the same number, no one is sitting in the
           middle. Then mark them verified. This lasts the current session only — you will verify
           again after reconnecting or logging back in.
         </p>
 
-        <div className="space-y-1 rounded border border-border bg-surface-raised p-3 text-[11px]">
+        <div className="space-y-1 rounded border border-border bg-surface-raised p-3 t-small">
           <p className="text-muted">your key fingerprint</p>
           <p className="font-mono tracking-wider text-primary">{myFp || '…'}</p>
         </div>
 
         {contacts.length === 0 && (
-          <p className="text-xs text-muted">
+          <p className="t-base text-muted">
             No one to verify yet — a contact appears here once they have sent a message.
           </p>
         )}
@@ -103,7 +103,7 @@ export default function TrustPanel({
           return (
             <div key={c.userId} className="space-y-2 rounded border border-border p-3">
               <div className="flex items-center gap-2">
-                <span className="flex-1 truncate text-sm font-medium">
+                <span className="flex-1 truncate t-h4 font-medium">
                   {c.displayName || 'unknown'}
                 </span>
                 {c.keyChangedAt ? (
@@ -120,7 +120,7 @@ export default function TrustPanel({
               </div>
 
               {c.keyChangedAt && (
-                <p className="rounded border border-error-line bg-error-soft p-2 text-[11px] text-error">
+                <p className="rounded border border-error-line bg-error-soft p-2 t-small text-error">
                   This contact's signing key changed. That happens on a reinstall or new device — but
                   it is also exactly what a relay attack looks like. Verify a fresh safety number
                   before trusting it again.
@@ -128,15 +128,15 @@ export default function TrustPanel({
               )}
 
               <div className="space-y-1">
-                <p className="text-[11px] text-muted">safety number</p>
-                <p className="rounded bg-surface-raised p-2 font-mono text-[11px] leading-relaxed tracking-wider">
+                <p className="t-small text-muted">safety number</p>
+                <p className="rounded bg-surface-raised p-2 font-mono t-small leading-relaxed tracking-wider">
                   {d?.number ?? '…'}
                 </p>
               </div>
 
               <button
                 onClick={() => onSetVerified(c.userId, !verified)}
-                className={`text-xs ${verified ? 'btn-ghost' : 'btn-primary'} px-3 py-1.5`}
+                className={`t-base ${verified ? 'btn-ghost' : 'btn-primary'} px-3 py-1.5`}
               >
                 {verified ? 'remove verification' : 'mark as verified'}
               </button>

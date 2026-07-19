@@ -207,11 +207,11 @@ export default function ThemeCustomizer({ vault, isPremium, onChange }: Props) {
     return (
       <SettingsSection title="Custom theme">
         <SettingBlock>
-          <p className="flex items-center gap-1.5 text-xs text-warn">
+          <p className="flex items-center gap-1.5 t-base text-warn">
             <Crown size={13} className="fill-warn-soft" aria-hidden="true" />
             Custom colours and chat wallpaper are a supporter perk.
           </p>
-          <Link to="/subscribe" className="btn-ghost w-full text-xs">
+          <Link to="/subscribe" className="btn-ghost w-full t-base">
             Become a supporter
           </Link>
         </SettingBlock>
@@ -250,12 +250,12 @@ export default function ThemeCustomizer({ vault, isPremium, onChange }: Props) {
                   onChange={(e) => setToken(token, e.target.value)}
                   aria-label={TOKEN_LABELS[token]}
                 />
-                <span className="truncate text-[11px]">{TOKEN_LABELS[token]}</span>
+                <span className="truncate t-small">{TOKEN_LABELS[token]}</span>
               </label>
             ))}
           </div>
           <div className="space-y-2">
-            <p className="text-[11px] font-medium text-muted">Message bubbles</p>
+            <p className="t-small font-medium text-muted">Message bubbles</p>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <BubbleControl
                 label="Your bubble fill"
@@ -280,7 +280,7 @@ export default function ThemeCustomizer({ vault, isPremium, onChange }: Props) {
             </div>
           </div>
 
-          <button onClick={reset} className="btn-ghost w-full text-xs">
+          <button onClick={reset} className="btn-ghost w-full t-base">
             <RotateCcw size={12} aria-hidden="true" />
             Reset colours to base
           </button>
@@ -295,11 +295,11 @@ export default function ThemeCustomizer({ vault, isPremium, onChange }: Props) {
             onChange={importTheme}
           />
           <div className="flex gap-2">
-            <button onClick={exportTheme} className="btn-ghost flex-1 text-xs">
+            <button onClick={exportTheme} className="btn-ghost flex-1 t-base">
               <Download size={12} aria-hidden="true" />
               Export theme
             </button>
-            <button onClick={() => themeInput.current?.click()} className="btn-ghost flex-1 text-xs">
+            <button onClick={() => themeInput.current?.click()} className="btn-ghost flex-1 t-base">
               <Upload size={12} aria-hidden="true" />
               Import theme
             </button>
@@ -309,7 +309,7 @@ export default function ThemeCustomizer({ vault, isPremium, onChange }: Props) {
 
       <SettingBlock>
         <div className="flex items-center gap-1.5">
-          <span className="text-xs text-muted">Chat wallpaper</span>
+          <span className="t-base text-muted">Chat wallpaper</span>
           <InfoTip
             title="Chat wallpaper"
             tip="Image, GIF, or MP4 — shown behind your messages on this device only."
@@ -342,16 +342,16 @@ export default function ThemeCustomizer({ vault, isPremium, onChange }: Props) {
           onChange={chooseBackground}
         />
         <div className="flex gap-2">
-          <button onClick={() => bgInput.current?.click()} className="btn-ghost flex-1 text-xs">
+          <button onClick={() => bgInput.current?.click()} className="btn-ghost flex-1 t-base">
             {bgUrl ? 'change wallpaper' : 'choose wallpaper'}
           </button>
           {bgUrl && (
-            <button onClick={removeBackground} className="btn-ghost text-xs text-error">
+            <button onClick={removeBackground} className="btn-ghost t-base text-error">
               remove
             </button>
           )}
         </div>
-        {error && <p className="text-[11px] text-error">{error}</p>}
+        {error && <p className="t-small text-error">{error}</p>}
       </SettingBlock>
     </SettingsSection>
   );
@@ -370,7 +370,7 @@ function BubbleControl({
 }) {
   return (
     <div className="flex items-center justify-between gap-2 rounded border border-border bg-surface-raised p-2">
-      <span className="truncate text-[11px]">{label}</span>
+      <span className="truncate t-small">{label}</span>
       <input
         type="color"
         className="h-6 w-6 shrink-0 cursor-pointer rounded border-0 bg-transparent p-0"

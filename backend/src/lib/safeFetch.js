@@ -101,7 +101,7 @@ function safeLookup(hostname, options, callback) {
   dns.lookup(hostname, { ...options, all: true, verbatim: true }, (err, addresses) => {
     if (err) return callback(err);
 
-    const allowed = addresses.filter((a) => isPublicAddress(a.address, a.family));
+    const allowed = addresses.filter((record) => isPublicAddress(record.address, record.family));
     if (allowed.length === 0) {
       return callback(Object.assign(new Error('blocked: resolves to a private address'), {
         code: 'EBLOCKED',

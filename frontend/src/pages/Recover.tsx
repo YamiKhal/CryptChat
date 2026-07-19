@@ -31,7 +31,6 @@ export default function Recover() {
 
   const [stage, setStage] = useState<Stage>(token ? 'reset' : 'request');
   const [email, setEmail] = useState('');
-  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [phrase, setPhrase] = useState('');
@@ -75,7 +74,10 @@ export default function Recover() {
       const existing = getAccount(res.userId);
       saveAccount({
         userId: res.userId,
-        username: existing?.username ?? username.trim() ?? 'recovered',
+        // `||`, not `??`: an absent local record leaves this blank, and a blank
+        // string is not nullish -- so `??` would save an empty username instead
+        // of falling through to the label.
+        username: existing?.username || 'recovered',
         publicKey: res.pubkey,
         signPublicKey: res.signPubkey,
         vaultSalt: res.vaultSalt,
@@ -109,25 +111,25 @@ export default function Recover() {
   }
 
   const errorBox = error && (
-    <p className="rounded border border-error-line bg-error-soft p-4 text-xs text-error">{error}</p>
+    <p className="rounded border border-error-line bg-error-soft p-4 t-base text-error">{error}</p>
   );
 
   return (
     <div className="min-h-screen grid place-items-center p-4">
       <div className="w-full max-w-sm space-y-4">
         <header className="text-center space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight text-primary">CryptChat</h1>
-          <p className="text-xs text-muted">account recovery</p>
+          <h1 className="t-h1 font-bold tracking-tight text-primary">CryptChat</h1>
+          <p className="t-base text-muted">account recovery</p>
         </header>
 
         {stage === 'request' && (
           <form onSubmit={handleRequest} className="card space-y-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted">
+            <h2 className="t-h4 font-semibold uppercase tracking-wider text-muted">
               Reset your password
             </h2>
 
             <label className="block space-y-1">
-              <span className="text-xs text-muted">the email on your account</span>
+              <span className="t-base text-muted">the email on your account</span>
               <input
                 className="field"
                 type="email"
@@ -137,7 +139,7 @@ export default function Recover() {
               />
             </label>
 
-            <p className="rounded border border-warn-line bg-warn-soft p-4 text-xs text-warn">
+            <p className="rounded border border-warn-line bg-warn-soft p-4 t-base text-warn">
               You will also need your 24-word recovery code. The email gets you back into the
               account; only the recovery code can decrypt your channels. Without it, the account
               comes back empty.
@@ -149,7 +151,7 @@ export default function Recover() {
               {busy ? 'working…' : 'Send reset link'}
             </button>
 
-            <Link to="/" className="block w-full text-center text-xs text-muted hover:text-foreground">
+            <Link to="/" className="block w-full text-center t-base text-muted hover:text-foreground">
               back to log in
             </Link>
           </form>
@@ -157,16 +159,16 @@ export default function Recover() {
 
         {stage === 'sent' && (
           <div className="card space-y-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted">Check your mail</h2>
-            <p className="text-xs text-muted">
+            <h2 className="t-h4 font-semibold uppercase tracking-wider text-muted">Check your mail</h2>
+            <p className="t-base text-muted">
               If that address is attached to a verified account, a reset link is on its way. It
               expires in 30 minutes.
             </p>
-            <p className="text-[11px] text-muted">
+            <p className="t-small text-muted">
               We do not confirm whether an address has an account here — that would let anyone test
               who is registered.
             </p>
-            <Link to="/" className="btn-ghost w-full text-center text-xs">
+            <Link to="/" className="btn-ghost w-full text-center t-base">
               back to log in
             </Link>
           </div>
@@ -174,12 +176,12 @@ export default function Recover() {
 
         {stage === 'reset' && (
           <form onSubmit={handleReset} className="card space-y-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted">
+            <h2 className="t-h4 font-semibold uppercase tracking-wider text-muted">
               Choose a new password
             </h2>
 
             <label className="block space-y-1">
-              <span className="text-xs text-muted">new password</span>
+              <span className="t-base text-muted">new password</span>
               <input
                 className="field"
                 type="password"
@@ -191,7 +193,7 @@ export default function Recover() {
             </label>
 
             <label className="block space-y-1">
-              <span className="text-xs text-muted">confirm password</span>
+              <span className="t-base text-muted">confirm password</span>
               <input
                 className="field"
                 type="password"
@@ -201,7 +203,7 @@ export default function Recover() {
               />
             </label>
 
-            <p className="text-xs text-muted">Minimum 12 characters. Next you will enter your recovery code.</p>
+            <p className="t-base text-muted">Minimum 12 characters. Next you will enter your recovery code.</p>
 
             {errorBox}
 
@@ -213,20 +215,20 @@ export default function Recover() {
 
         {stage === 'code' && (
           <form onSubmit={handleCode} className="card space-y-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted">
+            <h2 className="t-h4 font-semibold uppercase tracking-wider text-muted">
               Your recovery code
             </h2>
 
-            <p className="rounded border border-info-line bg-info-soft p-4 text-xs text-info">
+            <p className="rounded border border-info-line bg-info-soft p-4 t-base text-info">
               Your password is reset. Enter the {RECOVERY_CODE_WORDS} words you saved when you
               registered to decrypt your channels. Your keys were never on our server — this code is
               the only thing that can unlock them.
             </p>
 
             <label className="block space-y-1">
-              <span className="text-xs text-muted">{RECOVERY_CODE_WORDS} words, in order</span>
+              <span className="t-base text-muted">{RECOVERY_CODE_WORDS} words, in order</span>
               <textarea
-                className="field h-28 resize-none font-mono text-xs"
+                className="field h-28 resize-none font-mono t-base"
                 value={phrase}
                 onChange={(e) => setPhrase(e.target.value)}
                 placeholder="witch collapse practice feed shame open despair creek road again ice least"
@@ -244,13 +246,13 @@ export default function Recover() {
 
             <button
               type="button"
-              className="w-full text-xs text-muted hover:text-foreground"
+              className="w-full t-base text-muted hover:text-foreground"
               onClick={() => navigate('/channels')}
             >
               I do not have my recovery code
             </button>
 
-            <p className="text-[11px] text-muted">
+            <p className="t-small text-muted">
               Continuing without it leaves you logged in with no channels and no history. Nothing
               can restore them later — not us, not a support ticket.
             </p>

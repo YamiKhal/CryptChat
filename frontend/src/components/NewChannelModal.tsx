@@ -55,7 +55,7 @@ export function NewChannelModal({
               <ArrowLeft size={16} />
             </button>
           )}
-          <p className="text-sm font-medium">
+          <p className="t-h4 font-medium">
             {mode === 'choice' ? 'New channel' : mode === 'create' ? 'Create a channel' : 'Join a channel'}
           </p>
         </div>
@@ -93,7 +93,7 @@ export function NewChannelModal({
                   checked={incognito}
                   onChange={(e) => setIncognito(e.target.checked)}
                 />
-                <span className="text-[11px]">
+                <span className="t-small">
                   Incognito
                   <span className="mt-0.5 block text-muted">
                     Members appear as colours only — no names or avatars are shown or sent, and
@@ -135,7 +135,7 @@ export function NewChannelModal({
           </div>
         )}
 
-        {error && <p className="text-[11px] text-error">{error}</p>}
+        {error && <p className="t-small text-error">{error}</p>}
       </div>
     </div>
   );

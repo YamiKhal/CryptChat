@@ -31,7 +31,7 @@ export default function Badge({ since, size = 'sm', withLabel = false }: BadgePr
     >
       {/* fill + stroke: at 12px an outline-only crown reads as noise. */}
       <Crown size={px} strokeWidth={2} className="fill-warn-soft" aria-hidden="true" />
-      {withLabel && <span className="text-[11px] font-medium">supporter</span>}
+      {withLabel && <span className="t-small font-medium">supporter</span>}
     </span>
   );
 }

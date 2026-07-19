@@ -106,7 +106,7 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
             item.onSelect();
             onClose();
           }}
-          className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors
+          className={`flex w-full items-center gap-2.5 px-3 py-2 text-left t-base transition-colors
             ${item.disabled ? 'cursor-not-allowed text-muted' : 'hover:bg-primary-soft'}
             ${item.danger && !item.disabled ? 'text-error hover:bg-error-soft' : ''}`}
         >

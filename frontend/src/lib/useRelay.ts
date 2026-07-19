@@ -75,15 +75,23 @@ async function drainParked(
   channelId: string,
   messageId: string
 ): Promise<boolean> {
-  const ready = parked.current.filter((r) => r.channelId === channelId && r.targetId === messageId);
+  const ready = parked.current.filter(
+    (reaction) => reaction.channelId === channelId && reaction.targetId === messageId
+  );
   if (ready.length === 0) return false;
 
   parked.current = parked.current.filter(
-    (r) => !(r.channelId === channelId && r.targetId === messageId)
+    (reaction) => !(reaction.channelId === channelId && reaction.targetId === messageId)
   );
 
-  for (const r of ready) {
-    await vault.applyReactionToMessage(channelId, r.targetId, r.emoji, r.senderId, r.removed);
+  for (const reaction of ready) {
+    await vault.applyReactionToMessage(
+      channelId,
+      reaction.targetId,
+      reaction.emoji,
+      reaction.senderId,
+      reaction.removed
+    );
   }
   return true;
 }
@@ -113,18 +121,20 @@ async function drainMutations(
   channelId: string,
   messageId: string
 ): Promise<boolean> {
-  const ready = parked.current.filter((m) => m.channelId === channelId && m.targetId === messageId);
+  const ready = parked.current.filter(
+    (mutation) => mutation.channelId === channelId && mutation.targetId === messageId
+  );
   if (ready.length === 0) return false;
 
   parked.current = parked.current.filter(
-    (m) => !(m.channelId === channelId && m.targetId === messageId)
+    (mutation) => !(mutation.channelId === channelId && mutation.targetId === messageId)
   );
 
-  for (const m of ready) {
-    if (m.kind === 'edit') {
-      await vault.editMessage(channelId, m.targetId, m.senderId, m.body ?? '', m.at);
+  for (const mutation of ready) {
+    if (mutation.kind === 'edit') {
+      await vault.editMessage(channelId, mutation.targetId, mutation.senderId, mutation.body ?? '', mutation.at);
     } else {
-      await vault.deleteMessage(channelId, m.targetId, m.senderId);
+      await vault.deleteMessage(channelId, mutation.targetId, mutation.senderId);
     }
   }
   return true;

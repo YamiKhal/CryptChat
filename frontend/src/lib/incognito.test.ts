@@ -12,7 +12,6 @@ import { incognitoHue, incognitoLabel } from './incognito';
  */
 
 const CHAN_A = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
-const CHAN_B = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
 const SENDER = '11111111-1111-1111-1111-111111111111';
 
 describe('incognitoHue', () => {

@@ -48,11 +48,14 @@ function fromB64(value: string): Bytes {
 }
 
 /**
- * Bumped to 3 when replies and reactions landed.
+ * The envelope format version. Bumped once per additive field block (see the
+ * `env.v >= N` ladder in canonicalBytes); new envelopes are always written at
+ * the current value.
  *
- * We still *verify* v2 (see canonicalBytes): messages already sitting in a
- * vault were signed under the v2 field list, and refusing to open them would
- * silently destroy every existing transcript. New envelopes are always v3.
+ * Every older version stays *verifiable* (see SUPPORTED_VERSIONS and
+ * canonicalBytes): messages already sitting in a vault were signed under an
+ * earlier field list, and refusing to open them would silently destroy existing
+ * transcripts. That is why the canonical encoding only ever appends.
  */
 export const ENVELOPE_VERSION = 8;
 const SUPPORTED_VERSIONS = new Set([2, 3, 4, 5, 6, 7, 8]);
@@ -876,8 +879,8 @@ export async function openEnvelope(
   const envelope = JSON.parse(json) as SignedEnvelope;
 
   if (typeof envelope !== 'object' || envelope === null) throw new Error('malformed envelope');
-  // v2 is still accepted for reading: it is what every message already in a
-  // vault was signed under. Only v3 is ever written.
+  // Older versions are still accepted for reading: they are what messages
+  // already in a vault were signed under. Only ENVELOPE_VERSION is ever written.
   if (!SUPPORTED_VERSIONS.has(envelope.v)) {
     throw new Error(`unsupported envelope version ${envelope.v}`);
   }

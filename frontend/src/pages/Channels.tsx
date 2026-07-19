@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useNavigate, Link, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   Copy,
   Pencil,
@@ -9,8 +9,6 @@ import {
   Trash2,
   Check,
   X,
-  Settings as SettingsIcon,
-  Lock,
   Plus,
   Key,
 } from "lucide-react";
@@ -28,7 +26,7 @@ import {
 import { ChannelNameModal } from "../components/ChannelNameModal";
 import { NewChannelModal } from "../components/NewChannelModal";
 import { ChannelIcon } from "../components/ChannelIcon";
-import Avatar from "../components/Avatar";
+import AccountBar from "../components/AccountBar";
 
 /**
  * One channel row plus its context-menu wiring.
@@ -120,7 +118,7 @@ function ChannelRow({
           {unread > 0 && (
             <span
               className="absolute -bottom-1 left-4 inline-flex min-w-5 flex-none items-center justify-center rounded-full
-                         bg-error px-0.5 py-0.5 text-[8px] font-semibold text-white"
+                         bg-error px-0.5 py-0.5 t-small font-semibold text-white"
               aria-label={`${unread} unread`}
             >
               {unread > 99 ? "99+" : unread}
@@ -128,13 +126,13 @@ function ChannelRow({
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-foreground">
+          <p className="truncate t-h4 font-medium text-foreground">
             {title}
           </p>
           {request ? (
-            <p className="text-[11px] text-primary">wants to message you</p>
+            <p className="t-small text-primary">wants to message you</p>
           ) : (
-            <p className="flex items-center gap-1.5 text-[11px] text-muted">
+            <p className="flex items-center gap-1.5 t-small text-muted">
               joined {new Date(channel.joinedAt).toLocaleDateString()}
             </p>
           )}
@@ -149,7 +147,7 @@ function ChannelRow({
             aria-label="Accept message request"
             className="rounded-full p-1.5 text-ok transition-colors hover:bg-ok-soft"
           >
-            <Check size={17} />
+            <Check size={18} />
           </button>
           <button
             onClick={onDecline}
@@ -157,7 +155,7 @@ function ChannelRow({
             aria-label="Decline message request"
             className="rounded-full p-1.5 text-error transition-colors hover:bg-error-soft"
           >
-            <X size={17} />
+            <X size={18} />
           </button>
         </div>
       ) : (
@@ -173,8 +171,11 @@ function ChannelRow({
               incognito
             </span>
           )}
-          {channel.hasKey ?? (
-            <span className="tag flex-none animate-pulse bg-warn-soft text-warn">
+          {!channel.hasKey && (
+            <span
+              className="tag flex-none animate-pulse bg-warn-soft text-warn"
+              title="Waiting for the channel key"
+            >
               <Key size={14} />
             </span>
           )}
@@ -185,8 +186,8 @@ function ChannelRow({
 }
 
 export default function Channels() {
-  const { vault, token, account, lock } = useSession();
-  const { connected, revision } = useRelayContext();
+  const { vault, token, account } = useSession();
+  const { revision } = useRelayContext();
   const navigate = useNavigate();
   // Which channel is open in the panel beside us (desktop two-pane), so its row
   // reads as selected. Undefined on the bare /channels route.
@@ -553,13 +554,11 @@ export default function Channels() {
 
   if (!vault || !account) return null;
 
-  const profile = vault.profile;
-
   return (
     <div className="flex h-full flex-col">
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
         <div className="flex items-center justify-between px-1">
-          <p className="text-xs uppercase tracking-wider text-muted">
+          <p className="t-base uppercase tracking-wider text-muted">
             channels
           </p>
           <button
@@ -579,18 +578,18 @@ export default function Channels() {
         {/* Feedback from row actions and joins. Create/join errors live in the
             modal instead, so they are not doubled here while it is open. */}
         {error && !showNew && (
-          <p className="rounded border border-error-line bg-error-soft p-2 text-xs text-error">
+          <p className="rounded border border-error-line bg-error-soft p-2 t-base text-error">
             {error}
           </p>
         )}
         {notice && (
-          <p className="rounded border border-info-line bg-info-soft p-2 text-xs text-info">
+          <p className="rounded border border-info-line bg-info-soft p-2 t-base text-info">
             {notice}
           </p>
         )}
 
         {channels.length === 0 && (
-          <p className="px-1 text-xs text-muted">
+          <p className="px-1 t-base text-muted">
             No channels yet. Create one or join with a code.
           </p>
         )}
@@ -619,38 +618,7 @@ export default function Channels() {
         ))}
       </div>
 
-      {/* Discord-style account bar, pinned to the bottom of the column: identity,
-          connection dot, then settings and lock. */}
-      <div className="flex min-h-15 shrink-0 items-center gap-3 border-t border-border bg-surface px-3">
-        <Avatar asset={profile.avatar} name={profile.displayName} size="md" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{profile.displayName}</p>
-          <p className="flex items-center gap-1.5 text-[11px] text-muted">
-            <span
-              className={`inline-block h-1.5 w-1.5 rounded-full ${
-                connected ? "bg-primary" : "bg-warn"
-              }`}
-            />
-            {connected ? "relay connected" : "reconnecting…"}
-          </p>
-        </div>
-        <Link
-          to="/settings"
-          className="rounded p-2 text-muted transition-colors hover:bg-surface-raised hover:text-primary"
-          title="Settings"
-          aria-label="Settings"
-        >
-          <SettingsIcon size={18} />
-        </Link>
-        <button
-          onClick={lock}
-          className="rounded p-2 text-muted transition-colors hover:bg-surface-raised hover:text-error"
-          title="Lock vault"
-          aria-label="Lock vault"
-        >
-          <Lock size={18} />
-        </button>
-      </div>
+      <AccountBar />
 
       {showNew && (
         <NewChannelModal
