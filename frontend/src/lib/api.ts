@@ -71,6 +71,8 @@ export interface Plan {
   months: number;
   label: string;
   blurb: string;
+  /** Display price in the store currency, e.g. "4.99". Null when unpriced. */
+  priceValue: string | null;
 }
 
 export interface MeResponse {

@@ -1,20 +1,28 @@
-import { Link } from 'react-router-dom';
-import { Crown, ExternalLink } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import Badge from '@/components/ui/Badge';
+import InfoBox from '@/components/ui/InfoBox';
 import { SettingsSection, SettingBlock } from '@/components/settings/SettingsUI';
+import CreditCounter from '@/components/settings/billing/CreditCounter';
+import PerksComparison from '@/components/settings/billing/PerksComparison';
+import PlanPicker from '@/components/settings/billing/PlanPicker';
 import type { Badge as BadgeState } from '@/lib/api';
 
 /**
- * The Subscription panel in Settings.
+ * The whole subscription surface, in Settings.
  *
- * Extracted from Settings so it can be tested without standing up a vault, a
- * session, and a relay socket — none of which it touches. That mattered
- * immediately: the redeem field originally lived inside the "no badge" branch,
- * which silently made gift redemption unreachable for anyone who already had a
- * subscription. Nothing caught it, because there was nothing that could.
+ * This is the merged home for everything billing: current status, the banked-gift
+ * counter, the free-vs-supporter comparison, buying or gifting a plan, and
+ * redeeming a code. The standalone /subscribe page still exists for buying while
+ * logged out, but a signed-in user never has to leave Settings.
  *
- * Purely presentational. The parent owns the code, the busy flag, and the
- * status message.
+ * Presentational for the parts the parent owns -- the redeem field's code, busy
+ * flag, and status message. The perks table, plan picker, and credit counter are
+ * self-contained: the picker fetches plans and drives its own anonymous checkout,
+ * so nothing about buying is wired through here.
+ *
+ * The redeem field lives OUTSIDE the badge check, deliberately. It once sat
+ * inside the "no badge" branch, which made gift redemption unreachable for a
+ * subscriber -- the exact person the parked-credit model exists for.
  */
 
 interface SubscriptionSectionProps {
@@ -35,34 +43,33 @@ export default function SubscriptionSection({
   onRedeem,
   busy,
 }: SubscriptionSectionProps) {
+  const active = Boolean(badge);
+
   return (
-    <SettingsSection
-      title="Subscription"
-      info="Your badge is the only record — no payment details are stored."
-      infoDetails="Your badge is the only record. We store no payment details and your account is not linked to your payment in our database — the badge and the purchase are connected only by a random code you redeemed."
-    >
-      <SettingBlock>
-        {badge ? (
-          <>
+    <>
+      {/* --- Subscription: status + the banked-gift counter. Always shown, so
+          the mechanic is never invisible. --- */}
+      <SettingsSection
+        title="Subscription"
+        info="Your badge is the only record — no payment details are stored."
+        infoDetails="Your badge is the only record. We store no payment details and your account is not linked to your payment in our database — the badge and the purchase are connected only by a random code you redeemed."
+      >
+        <SettingBlock>
+          {badge ? (
             <p className="flex items-center gap-2 t-base">
               <Badge since={badge.since} size="md" withLabel />
               <span className="text-muted">
                 since {new Date(badge.since).toLocaleDateString()}
               </span>
             </p>
+          ) : (
+            <p className="t-base text-muted">Free account — no subscription active.</p>
+          )}
 
-            {badge.creditMonths ? (
-              <p className="rounded border border-info-line bg-info-soft p-3 t-small text-info">
-                <span className="font-medium">
-                  {badge.creditMonths} gifted {badge.creditMonths === 1 ? 'month' : 'months'} in
-                  reserve.
-                </span>{' '}
-                They are not counting down. They start automatically once nothing else is covering
-                your account — so you never pay for time you were given.
-              </p>
-            ) : null}
+          <CreditCounter creditMonths={badge?.creditMonths} />
 
-            {portalUrl ? (
+          {badge &&
+            (portalUrl ? (
               <>
                 <a
                   href={portalUrl}
@@ -83,66 +90,57 @@ export default function SubscriptionSection({
                 </p>
               </>
             ) : (
-              <p className="rounded border border-warn-line bg-warn-soft p-3 t-small text-warn">
+              <InfoBox variant="warn">
                 Cancellation is not configured on this deployment. Contact support to cancel.
-              </p>
-            )}
-          </>
-        ) : (
-          <>
-            <p className="t-base text-muted">No subscription on this account.</p>
+              </InfoBox>
+            ))}
+        </SettingBlock>
+      </SettingsSection>
 
-            <Link to="/subscribe" className="btn-primary block w-full text-center t-base">
-              <span className="inline-flex items-center gap-1.5">
-                <Crown size={13} className="fill-warn-soft" aria-hidden="true" />
-                Become a supporter
-              </span>
-            </Link>
+      {/* --- Plans: what supporter is, and how to buy or gift it. A subscriber
+          sees only gifting -- a second recurring plan would double-bill, but
+          banking a gift is fine. --- */}
+      <SettingsSection title="Plans">
+        <SettingBlock>
+          <PerksComparison premium={active} />
+        </SettingBlock>
+        <SettingBlock>
+          <PlanPicker giftOnly={active} />
+        </SettingBlock>
+      </SettingsSection>
 
-            <Link
-              to="/subscribe"
-              className="block w-full text-center t-small text-muted hover:text-foreground"
-            >
-              …or buy a gift code for someone
-            </Link>
-          </>
-        )}
-      </SettingBlock>
-
-      {/*
-        Outside the badge check, deliberately.
-        Having a subscription is not a reason to be unable to redeem a code --
-        being gifted months while subscribed is exactly the case the parked
-        credit model exists for.
-      */}
-      <SettingBlock>
-        <label className="block space-y-1">
-          <span className="t-base text-muted">
-            {badge ? 'Redeem another code' : 'Redemption code'}
-          </span>
-          <input
-            className="field font-mono"
-            value={redeemCode}
-            onChange={(e) => onCodeChange(e.target.value)}
-            placeholder="XXXXX-XXXXX-XXXXX-XXXXX"
-            autoCapitalize="characters"
-            autoCorrect="off"
-            spellCheck={false}
-          />
-        </label>
-        <button
-          className="btn-ghost w-full t-base"
-          disabled={busy || !redeemCode.trim()}
-          onClick={onRedeem}
-        >
-          redeem
-        </button>
-        <p className="t-small text-muted">
-          {badge
-            ? 'Gifted months are held in reserve and start once nothing else is covering your account — you will not pay for time you were given.'
-            : 'Subscriptions and gifts are bought logged out and redeemed with a code, so the payment is never tied to this account on our side.'}
-        </p>
-      </SettingBlock>
-    </SettingsSection>
+      {/* --- Redeem code, for everyone. It sits outside any badge check on
+          purpose: see the class comment. --- */}
+      <SettingsSection title="Redeem code">
+        <SettingBlock>
+          <label className="block space-y-1">
+            <span className="t-base text-muted">
+              {badge ? 'Redeem another code' : 'Redemption code'}
+            </span>
+            <input
+              className="field font-mono"
+              value={redeemCode}
+              onChange={(e) => onCodeChange(e.target.value)}
+              placeholder="XXXXX-XXXXX-XXXXX-XXXXX"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+            />
+          </label>
+          <button
+            className="btn-ghost w-full t-base"
+            disabled={busy || !redeemCode.trim()}
+            onClick={onRedeem}
+          >
+            redeem
+          </button>
+          <p className="t-small text-muted">
+            {badge
+              ? 'Gifted months are held in reserve and start once nothing else is covering your account — you will not pay for time you were given.'
+              : 'Subscriptions and gifts are bought logged out and redeemed with a code, so the payment is never tied to this account on our side.'}
+          </p>
+        </SettingBlock>
+      </SettingsSection>
+    </>
   );
 }

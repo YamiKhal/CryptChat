@@ -12,7 +12,18 @@ import type { Badge } from '@/lib/api';
  * "no badge" branch, so a subscriber could not redeem a gift code at all -- the
  * one group the parked-credit model was built for. The backend supported it
  * perfectly; the UI simply never showed the input.
+ *
+ * PlanPicker is stubbed: it fetches plans and drives its own Stripe checkout, so
+ * exercising it here would mean mocking the network for no gain. This file owns
+ * the panel's own logic -- status, the credit counter, cancellation, redeem --
+ * and only checks which picker variant it hands down.
  */
+
+vi.mock('@/components/settings/billing/PlanPicker', () => ({
+  default: ({ giftOnly }: { giftOnly?: boolean }) => (
+    <div data-testid="plan-picker">{giftOnly ? 'gift-only' : 'full'}</div>
+  ),
+}));
 
 const active: Badge = {
   active: true,
@@ -119,35 +130,51 @@ describe('SubscriptionSection', () => {
       expect(screen.queryByRole('link', { name: /manage or cancel/i })).not.toBeInTheDocument();
     });
 
+    it('offers a subscriber only the gifting picker, never a second subscription', () => {
+      renderSection({ badge: active });
+      expect(screen.getByTestId('plan-picker')).toHaveTextContent('gift-only');
+    });
+  });
+
+  describe('the credit counter', () => {
     it('shows banked gift months when there are some', () => {
       renderSection({ badge: { ...active, creditMonths: 3 } });
-      expect(screen.getByText(/3 gifted months in reserve/i)).toBeInTheDocument();
+      expect(screen.getByText('3')).toBeInTheDocument();
+      expect(screen.getByText(/gifted months banked/i)).toBeInTheDocument();
       expect(screen.getByText(/not counting down/i)).toBeInTheDocument();
     });
 
     it('says "month" not "months" for a single banked month', () => {
       renderSection({ badge: { ...active, creditMonths: 1 } });
-      expect(screen.getByText(/1 gifted month in reserve/i)).toBeInTheDocument();
+      expect(screen.getByText('1')).toBeInTheDocument();
+      expect(screen.getByText(/gifted month banked/i)).toBeInTheDocument();
     });
 
-    it('says nothing about banked months when there are none', () => {
+    it('is visible at zero, so the mechanic is discoverable', () => {
+      // The whole point of the "visible even without credit" ask: someone must be
+      // able to learn that gifted months bank here before they ever have any.
       renderSection({ badge: { ...active, creditMonths: 0 } });
-      // Anchored on the leading count: the redeem hint below also mentions
-      // months held in reserve, and a loose /in reserve/ matches that instead.
-      expect(screen.queryByText(/\d+ gifted months? in reserve/i)).not.toBeInTheDocument();
+      expect(screen.getByText('0')).toBeInTheDocument();
+      expect(screen.getByText(/bank here until your subscription lapses/i)).toBeInTheDocument();
+      expect(screen.queryByText(/not counting down/i)).not.toBeInTheDocument();
     });
 
-    it('does not offer a subscribe button to someone already subscribed', () => {
-      renderSection({ badge: active });
-      expect(screen.queryByRole('link', { name: /become a supporter/i })).not.toBeInTheDocument();
+    it('shows for a free account too', () => {
+      renderSection({ badge: null });
+      expect(screen.getByText('0')).toBeInTheDocument();
+      expect(screen.getByText(/bank here until your subscription lapses/i)).toBeInTheDocument();
     });
   });
 
   describe('without a subscription', () => {
-    it('offers subscribing and gifting', () => {
+    it('offers the full picker to subscribe or gift', () => {
       renderSection({ badge: null });
-      expect(screen.getByRole('link', { name: /become a supporter/i })).toBeInTheDocument();
-      expect(screen.getByRole('link', { name: /buy a gift code/i })).toBeInTheDocument();
+      expect(screen.getByTestId('plan-picker')).toHaveTextContent('full');
+    });
+
+    it('shows a free-account status', () => {
+      renderSection({ badge: null });
+      expect(screen.getByText(/free account/i)).toBeInTheDocument();
     });
 
     it('does not show a cancel link with nothing to cancel', () => {
