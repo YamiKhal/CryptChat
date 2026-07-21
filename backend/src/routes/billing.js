@@ -373,6 +373,9 @@ router.post('/redeem', requireAuth, billingLimiter, async (req, res, next) => {
 function periodEnd(subscriptionOrInvoice) {
   const seconds =
     subscriptionOrInvoice.current_period_end ??
+    // Stripe API >= 2025-03-31.basil moved the period off the Subscription
+    // object and onto its items. Retrieved subscriptions carry it here now.
+    subscriptionOrInvoice.items?.data?.[0]?.current_period_end ??
     subscriptionOrInvoice.lines?.data?.[0]?.period?.end;
   if (!seconds) return null;
   return new Date(seconds * 1000);
