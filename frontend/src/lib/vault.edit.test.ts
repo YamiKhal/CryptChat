@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Vault, StoredMessage } from './vault';
-import { generateIdentity, sealWithPassword } from './crypto';
+import { Vault, StoredMessage } from '@/lib/vault';
+import { generateIdentity, sealWithPassword } from '@/lib/crypto';
 
 /**
  * Edit and delete authorization (ROADMAP #4).

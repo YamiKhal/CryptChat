@@ -13,7 +13,6 @@
     "dev:frontend": "npm --prefix frontend run dev",
     "build": "npm --prefix frontend run build",
     "start": "npm --prefix backend start",
-
     "test": "npm run db:up && npm run test:frontend && npm run test:backend",
     "test:frontend": "npm --prefix frontend run test",
     "test:backend": "npm --prefix backend run test",
@@ -23,6 +22,8 @@
     "verify": "npm run typecheck && npm run test && npm run build"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "prettier": "^3.9.6",
+    "prettier-plugin-tailwindcss": "^0.8.1"
   }
 }

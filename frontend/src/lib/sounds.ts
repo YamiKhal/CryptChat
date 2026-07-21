@@ -13,7 +13,7 @@
  * unsupported AudioContext must never throw into a caller.
  */
 
-import { base64UrlToBytes, bytesToDataUrl } from './binary';
+import { base64UrlToBytes, bytesToDataUrl } from '@/lib/binary';
 
 /** Every distinct cue the app can play. */
 export type SoundEvent =

@@ -8,12 +8,15 @@ import {
   useState,
   ReactNode,
 } from 'react';
-import { api } from './api';
-import { useSession } from './session';
-import { useRelayContext } from './relayContext';
-import { suppressMic } from './noiseSuppression';
-import { startRingtone, stopRingtone } from './sounds';
-import type { CallSignal } from './crypto';
+import { api } from '@/lib/api';
+import { useSession } from '@/lib/session';
+import { useRelayContext } from '@/lib/relayContext';
+import { startRingtone, stopRingtone } from '@/lib/sounds';
+import type { CallSignal } from '@/lib/crypto';
+import { CallStatus, IncomingCall, CallContextValue } from '@/lib/call/types';
+import { acquireLocalMedia, mediaError } from '@/lib/call/media';
+import { buildPeerConnection } from '@/lib/call/peer';
+import { handleCallSignal } from '@/lib/call/signals';
 
 /**
  * 1:1 WebRTC calls for direct messages.
@@ -28,44 +31,6 @@ import type { CallSignal } from './crypto';
  * it, exactly like the custom-theme perk -- we do not pretend otherwise. Voice
  * is always free.
  */
-
-type CallStatus = 'idle' | 'ringing-out' | 'ringing-in' | 'connecting' | 'connected';
-
-export interface IncomingCall {
-  channelId: string;
-  peerId: string;
-  media: 'audio' | 'video';
-  callId: string;
-}
-
-interface CallContextValue {
-  status: CallStatus;
-  channelId: string | null;
-  peerId: string | null;
-  /** The media the call was placed with. Screen-share replaces the video track in place. */
-  media: 'audio' | 'video';
-  incoming: IncomingCall | null;
-  localStream: MediaStream | null;
-  remoteStream: MediaStream | null;
-  /** The peer is sending live video (camera or a shared screen). Tier-independent. */
-  remoteHasVideo: boolean;
-  muted: boolean;
-  cameraOff: boolean;
-  sharingScreen: boolean;
-  premium: boolean;
-  /** True when a TURN relay is configured, so strict-NAT calls should connect. */
-  relayAvailable: boolean;
-  error: string | null;
-  /** Start a call. Rejects video before it touches the camera if not premium. */
-  startCall: (channelId: string, peerId: string, media: 'audio' | 'video') => Promise<void>;
-  accept: () => Promise<void>;
-  decline: () => void;
-  hangup: () => void;
-  toggleMute: () => void;
-  toggleCamera: () => void;
-  toggleScreenShare: () => Promise<void>;
-  clearError: () => void;
-}
 
 const CallContext = createContext<CallContextValue | null>(null);
 
@@ -174,116 +139,42 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   // Build a peer connection wired to the relay for this call. Shared by caller
   // and callee.
+  // Build a peer connection wired to the relay for this call. Shared by caller
+  // and callee; the WebRTC plumbing lives in @/lib/call/peer.
   const buildPeer = useCallback(
-    async (cid: string): Promise<RTCPeerConnection> => {
-      let iceServers: RTCIceServer[] = [];
-      if (token) {
-        try {
-          const res = await api.ice(token);
-          iceServers = res.iceServers;
-          setRelayAvailable(res.relay);
-        } catch {
-          // No ICE config: LAN / open-NAT calls can still connect.
-        }
-      }
-
-      const pc = new RTCPeerConnection({ iceServers });
-
-      pc.onicecandidate = (e) => {
-        if (e.candidate && callIdRef.current) {
-          void sendSignal(cid, {
-            kind: 'ice',
-            callId: callIdRef.current,
-            candidate: JSON.stringify(e.candidate.toJSON()),
-          });
-        }
-      };
-
-      const remote = new MediaStream();
-      setRemoteStream(remote);
-      pc.ontrack = (e) => {
-        remote.addTrack(e.track);
-        setRemoteStream(new MediaStream(remote.getTracks()));
-
-        // Track whether the peer is actually sending video. A reserved-but-idle
-        // video transceiver delivers a muted track; it unmutes when the peer
-        // starts their camera or shares a screen. We show the remote tile on
-        // unmute regardless of our own tier, so a free user sees a shared screen.
-        if (e.track.kind === 'video') {
-          const t = e.track;
-          setRemoteHasVideo(!t.muted && t.readyState === 'live');
-          t.onunmute = () => setRemoteHasVideo(true);
-          t.onmute = () => setRemoteHasVideo(false);
-          t.onended = () => setRemoteHasVideo(false);
-        }
-      };
-
-      pc.onconnectionstatechange = () => {
-        const s = pc.connectionState;
-        if (s === 'connected') {
-          stopRingtone();
-          setStatus('connected');
-        }
-        else if (s === 'failed' || s === 'disconnected' || s === 'closed') {
-          // A media-path failure ends the call; the peer gets a hangup below via
-          // the normal teardown path when the user closes it, but a hard failure
-          // ends it locally too.
-          if (s === 'failed') teardown();
-        }
-      };
-
-      return pc;
-    },
+    (cid: string): Promise<RTCPeerConnection> =>
+      buildPeerConnection(cid, {
+        token,
+        getCallId: () => callIdRef.current,
+        sendSignal,
+        onRelayAvailable: setRelayAvailable,
+        setRemoteStream,
+        setRemoteHasVideo,
+        onConnected: () => setStatus('connected'),
+        onFailed: teardown,
+      }),
     [token, sendSignal, teardown]
   );
 
-  const acquireLocal = useCallback(async (
-    wantVideo: boolean
-  ): Promise<{ outgoingAudio: MediaStreamTrack | null; videoTrack: MediaStreamTrack | null }> => {
-    // Standard constraints plus Chromium's stronger, non-standard `goog*` hints
-    // (Edge/Chrome honour them; Firefox ignores them harmlessly). Mono, because a
-    // voice call has nothing to gain from stereo and the extra channel only
-    // carries more room noise.
-    const audio = {
-      echoCancellation: { ideal: true },
-      noiseSuppression: { ideal: true },
-      autoGainControl: { ideal: true },
-      channelCount: { ideal: 1 },
-      googEchoCancellation: true,
-      googNoiseSuppression: true,
-      googNoiseSuppression2: true,
-      googAutoGainControl: true,
-      googHighpassFilter: true,
-      googTypingNoiseDetection: true,
-    } as unknown as MediaTrackConstraints;
+  // Open mic/camera (mic cleaned through RNNoise, in @/lib/call/media) and record
+  // the tracks in refs so mute/teardown can reach them.
+  const acquireLocal = useCallback(
+    async (
+      wantVideo: boolean
+    ): Promise<{ outgoingAudio: MediaStreamTrack | null; videoTrack: MediaStreamTrack | null }> => {
+      const { stream, outgoingAudio, videoTrack, audioDispose } =
+        await acquireLocalMedia(wantVideo);
 
-    const stream = await navigator.mediaDevices.getUserMedia({ audio, video: wantVideo });
+      localStreamRef.current = stream;
+      setLocalStream(stream);
+      if (videoTrack) cameraTrackRef.current = videoTrack;
+      audioDisposeRef.current = audioDispose;
+      outgoingAudioTrackRef.current = outgoingAudio;
 
-    localStreamRef.current = stream;
-    setLocalStream(stream);
-
-    const rawMic = stream.getAudioTracks()[0] ?? null;
-    const videoTrack = wantVideo ? (stream.getVideoTracks()[0] ?? null) : null;
-    if (videoTrack) cameraTrackRef.current = videoTrack;
-
-    // Run the mic through RNNoise. The browser suppression above is the baseline
-    // and the fallback if the worklet cannot start -- a call must never fail
-    // because the fancy filter did not load.
-    let outgoingAudio = rawMic;
-    if (rawMic) {
-      try {
-        const suppressed = await suppressMic(rawMic);
-        audioDisposeRef.current = suppressed.dispose;
-        outgoingAudio = suppressed.track;
-      } catch {
-        audioDisposeRef.current = null;
-        outgoingAudio = rawMic;
-      }
-    }
-    outgoingAudioTrackRef.current = outgoingAudio;
-
-    return { outgoingAudio, videoTrack };
-  }, []);
+      return { outgoingAudio, videoTrack };
+    },
+    []
+  );
 
   const startCall = useCallback(
     async (cid: string, pid: string, kind: 'audio' | 'video') => {
@@ -479,92 +370,27 @@ export function CallProvider({ children }: { children: ReactNode }) {
   }, [premium, sharingScreen, notifyVideoState]);
 
   // Consume incoming call-control frames. Registered once; the relay layer keeps
-  // no state of its own.
+  // no state of its own. The routing lives in @/lib/call/signals.
   useEffect(() => {
-    const unsub = subscribeSignals(({ channelId: cid, senderId, signal }) => {
-      switch (signal.kind) {
-        case 'offer': {
-          // Busy: reject a second caller rather than clobber the live call.
-          if (status !== 'idle' || pcRef.current) {
-            void sendSignal(cid, { kind: 'decline', callId: signal.callId });
-            return;
-          }
-          // A video call needs BOTH sides premium. The caller was gated when
-          // starting; gate the callee here. A non-premium callee never sees a
-          // video ring it cannot fulfil -- it auto-declines with a reason.
-          // (Screen-share is different: it arrives inside a voice call and needs
-          // only the sharer premium, so it is never gated here.)
-          if (signal.media === 'video' && !premium) {
-            void sendSignal(cid, { kind: 'decline', callId: signal.callId });
-            setError('A video call needs a supporter account on both sides.');
-            return;
-          }
-          pendingOfferRef.current = signal;
-          pendingIceRef.current = [];
-          setIncoming({
-            channelId: cid,
-            peerId: senderId,
-            media: signal.media === 'video' ? 'video' : 'audio',
-            callId: signal.callId,
-          });
-          setStatus('ringing-in');
-          startRingtone('call-incoming');
-          break;
-        }
-        case 'answer': {
-          if (signal.callId !== callIdRef.current || !pcRef.current || !signal.sdp) return;
-          stopRingtone(); // callee picked up — stop our outgoing ring
-          setStatus('connecting');
-          void pcRef.current
-            .setRemoteDescription({ type: 'answer', sdp: signal.sdp })
-            .then(async () => {
-              for (const c of pendingIceRef.current) await pcRef.current!.addIceCandidate(c).catch(() => {});
-              pendingIceRef.current = [];
-            })
-            .catch(() => {});
-          break;
-        }
-        case 'ice': {
-          if (signal.callId !== callIdRef.current && signal.callId !== pendingOfferRef.current?.callId) return;
-          if (!signal.candidate) return;
-          let cand: RTCIceCandidateInit;
-          try {
-            cand = JSON.parse(signal.candidate);
-          } catch {
-            return;
-          }
-          const pc = pcRef.current;
-          if (pc && pc.remoteDescription) void pc.addIceCandidate(cand).catch(() => {});
-          else pendingIceRef.current.push(cand);
-          break;
-        }
-        case 'video': {
-          // Authoritative remote-video state: the peer turned their camera or a
-          // shared screen on or off. Overrides the unreliable track-mute heuristic.
-          if (signal.callId !== callIdRef.current && signal.callId !== pendingOfferRef.current?.callId) {
-            return;
-          }
-          setRemoteHasVideo(signal.on === true);
-          break;
-        }
-        case 'decline': {
-          if (signal.callId === callIdRef.current) {
-            setError('Call declined.');
-            teardown();
-          }
-          break;
-        }
-        case 'hangup': {
-          if (signal.callId === callIdRef.current || signal.callId === pendingOfferRef.current?.callId) {
-            teardown();
-          }
-          break;
-        }
-        default:
-          break;
-      }
-    });
-    return unsub;
+    return subscribeSignals((event) =>
+      handleCallSignal(
+        {
+          status,
+          premium,
+          pcRef,
+          callIdRef,
+          pendingOfferRef,
+          pendingIceRef,
+          sendSignal,
+          setIncoming,
+          setStatus,
+          setError,
+          setRemoteHasVideo,
+          teardown,
+        },
+        event,
+      ),
+    );
   }, [subscribeSignals, sendSignal, status, premium, teardown]);
 
   // A hard unmount (logout / lock) must not leave a camera light on.
@@ -627,13 +453,4 @@ export function useCall(): CallContextValue {
   const ctx = useContext(CallContext);
   if (!ctx) throw new Error('useCall must be used inside CallProvider');
   return ctx;
-}
-
-/** Turn a getUserMedia/getDisplayMedia failure into a line worth showing. */
-function mediaError(err: unknown): string {
-  const name = (err as Error)?.name;
-  if (name === 'NotAllowedError') return 'Camera / microphone permission was denied.';
-  if (name === 'NotFoundError') return 'No camera or microphone was found.';
-  if (name === 'NotReadableError') return 'The camera or microphone is already in use.';
-  return 'Could not start the call.';
 }

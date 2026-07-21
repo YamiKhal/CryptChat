@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseInline, toBlocks, InlineNode } from './format';
+import { parseInline, toBlocks, InlineNode } from '@/lib/format';
 
 /** Flatten a node tree back to the visible characters, dropping the marks. */
 function plain(nodes: InlineNode[]): string {

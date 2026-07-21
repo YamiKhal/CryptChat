@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { api } from '../lib/api';
+import { api } from '@/lib/api';
 
 /**
  * Consumes an email confirmation link.

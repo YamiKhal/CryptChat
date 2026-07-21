@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Crown, Check, Loader2, Gift } from 'lucide-react';
-import { api, Plan } from '../lib/api';
+import { api, Plan } from '@/lib/api';
 
 /**
  * Buying a subscription, deliberately while logged out.

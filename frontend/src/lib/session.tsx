@@ -1,6 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode, useCallback } from 'react';
-import { startAuthentication } from '@simplewebauthn/browser';
-import { api, AuthResponse, isTwoFactorChallenge } from './api';
+import { api } from '@/lib/api';
 import {
   generateIdentity,
   Identity,
@@ -11,9 +10,9 @@ import {
   sealRecoveryBlob,
   openRecoveryBlob,
   KeyBundle,
-} from './crypto';
-import { wipe } from './binary';
-import { clearImageCache } from './blob';
+} from '@/lib/crypto';
+import { wipe } from '@/lib/binary';
+import { clearImageCache } from '@/lib/blob';
 import {
   Vault,
   AccountDescriptor,
@@ -24,92 +23,16 @@ import {
   touchAccount,
   forgetAccount,
   hasVault,
-} from './vault';
-
-/**
- * Session state for multi-account use in one browser.
- *
- * Four states, and the differences matter:
- *   restoring -- reading the account and resuming a tab-scoped vault key
- *   anonymous -- no account selected
- *   locked    -- account exists on this device, vault key not derived yet
- *   unlocked  -- vault key in memory, keys usable
- *
- * `restoring` is not cosmetic. Restore is async (it opens a secretbox), so
- * without a distinct state the first render reports `anonymous` and route
- * guards bounce a deep link -- a refresh on /chat/:id or /settings would land
- * on the auth screen and then redirect to /channels, losing the route.
- *
- * "Logged in" is not the same as "can read messages". A valid token from a
- * fresh device still leaves the vault locked and every channel unreadable,
- * because the server never had the private keys to give back.
- */
-
-type Status = 'restoring' | 'anonymous' | 'locked' | 'unlocked';
-
-interface SessionState {
-  status: Status;
-  account: AccountDescriptor | null;
-  token: string | null;
-  vault: Vault | null;
-}
-
-interface SessionApi extends SessionState {
-  accounts: AccountDescriptor[];
-  /** True when the active account has no vault on this device (needs an import). */
-  needsImport: boolean;
-  /**
-   * Returned once, by `register`, and never again. The caller MUST show it and
-   * make the user confirm they wrote it down -- it is not stored anywhere and
-   * cannot be reissued.
-   */
-  register(username: string, password: string, email?: string): Promise<{ recoveryPhrase: string }>;
-  login(username: string, password: string, remember: boolean): Promise<void>;
-  unlock(password: string, remember: boolean): Promise<void>;
-  /** Rebuild this device's vault from an exported key file. */
-  importIdentity(bundle: EncryptedBundle, passphrase: string, password: string): Promise<void>;
-  /**
-   * Rebuild this device's vault from the server-held recovery blob.
-   *
-   * The counterpart to `importIdentity` for people who have their recovery code
-   * but no key file. This is the whole point of the recovery code existing.
-   */
-  recoverWithCode(phrase: string, password: string): Promise<void>;
-  /** Re-seal and re-upload the recovery blob. Call after the channel set changes. */
-  syncRecoveryBlob(phrase: string): Promise<void>;
-  lock(): void;
-  logout(): void;
-  selectAccount(userId: string): void;
-  removeAccount(userId: string): void;
-  /** Re-read vault-backed state after a mutation. */
-  refresh(): void;
-}
+} from '@/lib/vault';
+import {
+  SessionState,
+  SessionApi,
+  ACTIVE_KEY,
+  tokenKey,
+  resolveLogin,
+} from '@/lib/sessionShared';
 
 const SessionContext = createContext<SessionApi | null>(null);
-
-const ACTIVE_KEY = 'darkchat:active';
-const tokenKey = (userId: string) => `darkchat:tok:${userId}`;
-
-/**
- * Resolve a login, transparently completing a WebAuthn second factor if the
- * account has one enrolled.
- *
- * The server withholds the session token when 2FA is on and returns a challenge
- * instead; this runs the authenticator ceremony and exchanges the assertion for
- * the real AuthResponse. Callers get an AuthResponse either way and never have
- * to know a second factor was involved.
- */
-async function resolveLogin(username: string, password: string): Promise<AuthResponse> {
-  const result = await api.login(username, password);
-  if (!isTwoFactorChallenge(result)) return result;
-
-  // Prompts the authenticator (security key, passkey, platform biometric).
-  // Throws if the user cancels, which surfaces as a normal login failure.
-  const assertion = await startAuthentication({
-    optionsJSON: result.options as Parameters<typeof startAuthentication>[0]['optionsJSON'],
-  });
-  return api.completeTwoFactor(result.challengeToken, assertion);
-}
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<SessionState>({
@@ -119,7 +42,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     vault: null,
   });
   const [accounts, setAccounts] = useState<AccountDescriptor[]>(() => listAccounts());
+  const [recoveryPending, setRecoveryPending] = useState(false);
+  const [recoveryPhrase, setRecoveryPhrase] = useState('');
   const [, setTick] = useState(0);
+
+  const acknowledgeRecovery = useCallback(() => {
+    setRecoveryPending(false);
+    setRecoveryPhrase('');
+  }, []);
 
   const refresh = useCallback(() => setTick((n) => n + 1), []);
 
@@ -209,6 +139,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
 
       setAccounts(listAccounts());
+      setRecoveryPhrase(recovery.phrase);
+      setRecoveryPending(true);
       setState({ status: 'unlocked', account, token: res.token, vault });
 
       return { recoveryPhrase: recovery.phrase };
@@ -329,6 +261,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
 
   const login = useCallback(async (username: string, password: string, remember: boolean) => {
+    setRecoveryPending(false);
+    setRecoveryPhrase('');
     const res = await resolveLogin(username, password);
 
     const existing = getAccount(res.userId);
@@ -444,6 +378,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [state.vault]);
 
   const logout = useCallback(() => {
+    setRecoveryPending(false);
+    setRecoveryPhrase('');
     state.vault?.lock();
     clearImageCache();
     if (state.account) sessionStorage.removeItem(tokenKey(state.account.userId));
@@ -485,6 +421,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       ...state,
       accounts,
       needsImport: state.status === 'locked' && !!state.account && !hasVault(state.account.userId),
+      recoveryPending,
+      recoveryPhrase,
+      acknowledgeRecovery,
       register,
       login,
       unlock,
@@ -500,6 +439,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [
       state,
       accounts,
+      recoveryPending,
+      recoveryPhrase,
+      acknowledgeRecovery,
       register,
       login,
       unlock,

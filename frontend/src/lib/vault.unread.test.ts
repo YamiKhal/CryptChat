@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Vault, StoredMessage } from './vault';
-import { generateIdentity } from './crypto';
+import { Vault, StoredMessage } from '@/lib/vault';
+import { generateIdentity } from '@/lib/crypto';
 
 /**
  * Unread counting and the read marker (ROADMAP #3c).

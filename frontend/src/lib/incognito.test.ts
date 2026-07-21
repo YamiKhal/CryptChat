@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { incognitoHue, incognitoLabel } from './incognito';
+import { incognitoHue, incognitoLabel } from '@/lib/incognito';
 
 /**
  * Incognito identity (ROADMAP #7).

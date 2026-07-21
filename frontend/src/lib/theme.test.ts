@@ -6,7 +6,7 @@ import {
   applyTheme,
   isHexColor,
   applyCustomThemeVars,
-} from './theme';
+} from '@/lib/theme';
 
 /**
  * Theme persistence.

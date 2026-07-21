@@ -127,6 +127,9 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      // `@/` -> src root, so imports survive file moves without recomputing
+      // `../` depth. Keep in sync with tsconfig `paths` and vitest.config.
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
       // libsodium-wrappers-sumo@0.7.16 ships a broken ESM build: it imports
       // './libsodium-sumo.mjs' as a sibling, but that file lives in the
       // separate libsodium-sumo package, so rollup cannot resolve it. Point at

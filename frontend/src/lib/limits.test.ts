@@ -9,9 +9,9 @@ import {
   buildReplyRef,
   DEFAULT_LIMITS,
   Limits,
-} from './limits';
-import { MAX_REPLY_EXCERPT } from './crypto';
-import type { StoredMessage } from './vault';
+} from '@/lib/limits';
+import { MAX_REPLY_EXCERPT } from '@/lib/crypto';
+import type { StoredMessage } from '@/lib/vault';
 
 const free: Limits = { ...DEFAULT_LIMITS, tier: 'free', maxChars: 1000 };
 const premium: Limits = { ...DEFAULT_LIMITS, tier: 'premium', premium: true, maxChars: 4000 };

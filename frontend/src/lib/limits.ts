@@ -1,7 +1,7 @@
 // Type-only: vault.ts imports applyReaction from here, so a value import would
 // close a runtime cycle. `import type` is erased at compile time.
-import type { StoredMessage } from './vault';
-import { MAX_REPLY_EXCERPT, type ReplyRef } from './crypto';
+import type { StoredMessage } from '@/lib/vault';
+import { MAX_REPLY_EXCERPT, type ReplyRef } from '@/lib/crypto';
 
 /**
  * Tier limits, mirrored from the server for UX only.

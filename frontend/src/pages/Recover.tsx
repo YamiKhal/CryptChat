@@ -1,9 +1,9 @@
-import { useState, FormEvent } from 'react';
-import { useNavigate, useSearchParams, Link } from 'react-router-dom';
-import { api } from '../lib/api';
-import { useSession } from '../lib/session';
-import { generateSalt, RECOVERY_CODE_WORDS } from '../lib/crypto';
-import { saveAccount, getAccount } from '../lib/vault';
+import { useState, FormEvent } from "react";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
+import { api } from "@/lib/api";
+import { useSession } from "@/lib/session";
+import { generateSalt, RECOVERY_CODE_WORDS } from "@/lib/crypto";
+import { saveAccount, getAccount } from "@/lib/vault";
 
 /**
  * Password recovery, in the only shape that is honest.
@@ -21,244 +21,241 @@ import { saveAccount, getAccount } from '../lib/vault';
  * flow rather than an optional extra afterwards.
  */
 
-type Stage = 'request' | 'sent' | 'reset' | 'code' | 'done';
+type Stage = "request" | "sent" | "reset" | "code" | "done";
 
 export default function Recover() {
-  const session = useSession();
-  const navigate = useNavigate();
-  const [params] = useSearchParams();
-  const token = params.get('token');
+    const session = useSession();
+    const navigate = useNavigate();
+    const [params] = useSearchParams();
+    const token = params.get("token");
 
-  const [stage, setStage] = useState<Stage>(token ? 'reset' : 'request');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirm, setConfirm] = useState('');
-  const [phrase, setPhrase] = useState('');
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
+    const [stage, setStage] = useState<Stage>(token ? "reset" : "request");
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
+    const [confirm, setConfirm] = useState("");
+    const [phrase, setPhrase] = useState("");
+    const [error, setError] = useState("");
+    const [busy, setBusy] = useState(false);
 
-  async function handleRequest(e: FormEvent) {
-    e.preventDefault();
-    setError('');
-    setBusy(true);
-    try {
-      await api.requestReset(email.trim());
-      // Always the same screen. The server will not say whether the address is
-      // registered, and neither will we -- branching here would rebuild the
-      // enumeration oracle the server went out of its way to avoid.
-      setStage('sent');
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
+    async function handleRequest(e: FormEvent) {
+        e.preventDefault();
+        setError("");
+        setBusy(true);
+        try {
+            await api.requestReset(email.trim());
+            setStage("sent");
+        } catch (err) {
+            setError((err as Error).message);
+        } finally {
+            setBusy(false);
+        }
     }
-  }
 
-  async function handleReset(e: FormEvent) {
-    e.preventDefault();
-    setError('');
-    if (password !== confirm) {
-      setError('passwords do not match');
-      return;
+    async function handleReset(e: FormEvent) {
+        e.preventDefault();
+        setError("");
+        if (password !== confirm) {
+            setError("passwords do not match");
+            return;
+        }
+        setBusy(true);
+        try {
+            // A fresh salt: the old vault is sealed under the old password and is not
+            // coming back, so carrying its salt forward would imply a continuity that
+            // does not exist.
+            const vaultSalt = await generateSalt();
+            const res = await api.resetPassword(token!, password, vaultSalt);
+
+            // Park enough for the code step to run. The vault itself does not exist
+            // yet -- it gets built from the recovery blob in the next stage.
+            const existing = getAccount(res.userId);
+            saveAccount({
+                userId: res.userId,
+                // `||`, not `??`: an absent local record leaves this blank, and a blank
+                // string is not nullish -- so `??` would save an empty username instead
+                // of falling through to the label.
+                username: existing?.username || "recovered",
+                publicKey: res.pubkey,
+                signPublicKey: res.signPubkey,
+                vaultSalt: res.vaultSalt,
+                lastUsedAt: new Date().toISOString(),
+            });
+            sessionStorage.setItem(`darkchat:tok:${res.userId}`, res.token);
+            localStorage.setItem("darkchat:active", res.userId);
+
+            session.selectAccount(res.userId);
+            setStage("code");
+        } catch (err) {
+            setError((err as Error).message);
+        } finally {
+            setBusy(false);
+        }
     }
-    setBusy(true);
-    try {
-      // A fresh salt: the old vault is sealed under the old password and is not
-      // coming back, so carrying its salt forward would imply a continuity that
-      // does not exist.
-      const vaultSalt = await generateSalt();
-      const res = await api.resetPassword(token!, password, vaultSalt);
 
-      // Park enough for the code step to run. The vault itself does not exist
-      // yet -- it gets built from the recovery blob in the next stage.
-      const existing = getAccount(res.userId);
-      saveAccount({
-        userId: res.userId,
-        // `||`, not `??`: an absent local record leaves this blank, and a blank
-        // string is not nullish -- so `??` would save an empty username instead
-        // of falling through to the label.
-        username: existing?.username || 'recovered',
-        publicKey: res.pubkey,
-        signPublicKey: res.signPubkey,
-        vaultSalt: res.vaultSalt,
-        lastUsedAt: new Date().toISOString(),
-      });
-      sessionStorage.setItem(`darkchat:tok:${res.userId}`, res.token);
-      localStorage.setItem('darkchat:active', res.userId);
-
-      session.selectAccount(res.userId);
-      setStage('code');
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
+    async function handleCode(e: FormEvent) {
+        e.preventDefault();
+        setError("");
+        setBusy(true);
+        try {
+            await session.recoverWithCode(phrase, password);
+            setStage("done");
+            navigate("/channels");
+        } catch (err) {
+            setError((err as Error).message);
+        } finally {
+            setBusy(false);
+        }
     }
-  }
 
-  async function handleCode(e: FormEvent) {
-    e.preventDefault();
-    setError('');
-    setBusy(true);
-    try {
-      await session.recoverWithCode(phrase, password);
-      setStage('done');
-      navigate('/channels');
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
+    const errorBox = error && (
+        <p className="border-error-line bg-error-soft t-base text-error rounded border p-4">
+            {error}
+        </p>
+    );
 
-  const errorBox = error && (
-    <p className="rounded border border-error-line bg-error-soft p-4 t-base text-error">{error}</p>
-  );
+    return (
+        <div className="grid min-h-screen place-items-center p-4">
+            <div className="w-full max-w-sm space-y-4">
+                <header className="space-y-1 text-center">
+                    <h1 className="t-h1 text-primary font-bold tracking-tight">
+                        CryptChat
+                    </h1>
+                    <p className="t-base text-muted">Account recovery</p>
+                </header>
 
-  return (
-    <div className="min-h-screen grid place-items-center p-4">
-      <div className="w-full max-w-sm space-y-4">
-        <header className="text-center space-y-1">
-          <h1 className="t-h1 font-bold tracking-tight text-primary">CryptChat</h1>
-          <p className="t-base text-muted">account recovery</p>
-        </header>
+                {stage === "request" && (
+                    <form onSubmit={handleRequest} className="card space-y-4">
+                        <label className="block space-y-1">
+                            <span className="t-base text-muted">
+                                Vault Email
+                            </span>
+                            <input
+                                className="field"
+                                type="email"
+                                autoComplete="email"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                            />
+                        </label>
 
-        {stage === 'request' && (
-          <form onSubmit={handleRequest} className="card space-y-4">
-            <h2 className="t-h4 font-semibold uppercase tracking-wider text-muted">
-              Reset your password
-            </h2>
+                        {errorBox}
 
-            <label className="block space-y-1">
-              <span className="t-base text-muted">the email on your account</span>
-              <input
-                className="field"
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </label>
+                        <button className="btn-primary w-full" disabled={busy}>
+                            {busy ? "working…" : "Send reset link"}
+                        </button>
 
-            <p className="rounded border border-warn-line bg-warn-soft p-4 t-base text-warn">
-              You will also need your 24-word recovery code. The email gets you back into the
-              account; only the recovery code can decrypt your channels. Without it, the account
-              comes back empty.
-            </p>
+                        <Link
+                            to="/"
+                            className="t-base text-muted hover:text-foreground block w-full text-center"
+                        >
+                            Back
+                        </Link>
+                    </form>
+                )}
 
-            {errorBox}
+                {stage === "sent" && (
+                    <div className="card space-y-4">
+                        <p className="t-base text-muted">
+                            If that address is attached to a verified account, a
+                            reset link is on its way. It may take up to 5
+                            minutes. It expires in 30 minutes.
+                        </p>
+                        <Link
+                            to="/"
+                            className="btn-ghost t-base w-full text-center"
+                        >
+                            Back
+                        </Link>
+                    </div>
+                )}
 
-            <button className="btn-primary w-full" disabled={busy}>
-              {busy ? 'working…' : 'Send reset link'}
-            </button>
+                {stage === "reset" && (
+                    <form onSubmit={handleReset} className="card space-y-4">
+                        <label className="block space-y-1">
+                            <span className="t-base text-muted">
+                                New password
+                            </span>
+                            <input
+                                className="field"
+                                type="password"
+                                autoComplete="new-password"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                placeholder="••••••••••••"
+                            />
+                        </label>
 
-            <Link to="/" className="block w-full text-center t-base text-muted hover:text-foreground">
-              back to log in
-            </Link>
-          </form>
-        )}
+                        <label className="block space-y-1">
+                            <span className="t-base text-muted">
+                                Confirm password
+                            </span>
+                            <input
+                                className="field"
+                                type="password"
+                                autoComplete="new-password"
+                                value={confirm}
+                                onChange={(e) => setConfirm(e.target.value)}
+                            />
+                        </label>
 
-        {stage === 'sent' && (
-          <div className="card space-y-4">
-            <h2 className="t-h4 font-semibold uppercase tracking-wider text-muted">Check your mail</h2>
-            <p className="t-base text-muted">
-              If that address is attached to a verified account, a reset link is on its way. It
-              expires in 30 minutes.
-            </p>
-            <p className="t-small text-muted">
-              We do not confirm whether an address has an account here — that would let anyone test
-              who is registered.
-            </p>
-            <Link to="/" className="btn-ghost w-full text-center t-base">
-              back to log in
-            </Link>
-          </div>
-        )}
+                        <p className="t-base text-muted">
+                            Minimum 12 characters. Next you will enter your
+                            recovery code.
+                        </p>
 
-        {stage === 'reset' && (
-          <form onSubmit={handleReset} className="card space-y-4">
-            <h2 className="t-h4 font-semibold uppercase tracking-wider text-muted">
-              Choose a new password
-            </h2>
+                        {errorBox}
 
-            <label className="block space-y-1">
-              <span className="t-base text-muted">new password</span>
-              <input
-                className="field"
-                type="password"
-                autoComplete="new-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••••••"
-              />
-            </label>
+                        <button className="btn-primary w-full" disabled={busy}>
+                            {busy ? "working…" : "Set password"}
+                        </button>
+                    </form>
+                )}
 
-            <label className="block space-y-1">
-              <span className="t-base text-muted">confirm password</span>
-              <input
-                className="field"
-                type="password"
-                autoComplete="new-password"
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-              />
-            </label>
+                {stage === "code" && (
+                    <form onSubmit={handleCode} className="card space-y-4">
+                        <p className="t-base text-muted rounded">
+                            Your password is reset. Enter the{" "}
+                            {RECOVERY_CODE_WORDS} words you saved when you
+                            registered to decrypt your channels.
+                        </p>
 
-            <p className="t-base text-muted">Minimum 12 characters. Next you will enter your recovery code.</p>
+                        <label className="block space-y-1">
+                            <textarea
+                                className="field t-base h-28 resize-none font-mono"
+                                value={phrase}
+                                onChange={(e) => setPhrase(e.target.value)}
+                                placeholder={`${RECOVERY_CODE_WORDS} words, in order`}
+                                autoCapitalize="none"
+                                autoCorrect="off"
+                                spellCheck={false}
+                            />
+                        </label>
 
-            {errorBox}
+                        <p className="t-small text-warn">
+                            Continuing without it leaves you logged in with no
+                            channels and no history. Nothing can restore them
+                            later.
+                        </p>
 
-            <button className="btn-primary w-full" disabled={busy}>
-              {busy ? 'working…' : 'Set password'}
-            </button>
-          </form>
-        )}
+                        {errorBox}
 
-        {stage === 'code' && (
-          <form onSubmit={handleCode} className="card space-y-4">
-            <h2 className="t-h4 font-semibold uppercase tracking-wider text-muted">
-              Your recovery code
-            </h2>
+                        <button
+                            className="btn-primary w-full"
+                            disabled={busy || !phrase.trim()}
+                        >
+                            {busy ? "decrypting…" : "Restore my channels"}
+                        </button>
 
-            <p className="rounded border border-info-line bg-info-soft p-4 t-base text-info">
-              Your password is reset. Enter the {RECOVERY_CODE_WORDS} words you saved when you
-              registered to decrypt your channels. Your keys were never on our server — this code is
-              the only thing that can unlock them.
-            </p>
-
-            <label className="block space-y-1">
-              <span className="t-base text-muted">{RECOVERY_CODE_WORDS} words, in order</span>
-              <textarea
-                className="field h-28 resize-none font-mono t-base"
-                value={phrase}
-                onChange={(e) => setPhrase(e.target.value)}
-                placeholder="witch collapse practice feed shame open despair creek road again ice least"
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-              />
-            </label>
-
-            {errorBox}
-
-            <button className="btn-primary w-full" disabled={busy || !phrase.trim()}>
-              {busy ? 'decrypting…' : 'Restore my channels'}
-            </button>
-
-            <button
-              type="button"
-              className="w-full t-base text-muted hover:text-foreground"
-              onClick={() => navigate('/channels')}
-            >
-              I do not have my recovery code
-            </button>
-
-            <p className="t-small text-muted">
-              Continuing without it leaves you logged in with no channels and no history. Nothing
-              can restore them later — not us, not a support ticket.
-            </p>
-          </form>
-        )}
-      </div>
-    </div>
-  );
+                        <button
+                            type="button"
+                            className="t-base text-muted hover:text-foreground w-full"
+                            onClick={() => navigate("/channels")}
+                        >
+                            Continue Without Decryption
+                        </button>
+                    </form>
+                )}
+            </div>
+        </div>
+    );
 }

@@ -1,406 +1,466 @@
-import { useState, FormEvent, useRef, ChangeEvent } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { useSession } from '../lib/session';
-import { EncryptedBundle } from '../lib/crypto';
-import Avatar from '../components/Avatar';
+import { useState, FormEvent, useRef, ChangeEvent } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { useSession } from "@/lib/session";
+import { EncryptedBundle } from "@/lib/crypto";
+import Avatar from "@/components/ui/Avatar";
+import { InfoTip } from "@/components/ui/InfoTip";
 
-type Mode = 'login' | 'register';
+type Mode = "login" | "register";
 
 export default function Auth() {
-  const session = useSession();
-  const navigate = useNavigate();
+    const session = useSession();
+    const navigate = useNavigate();
 
-  const [mode, setMode] = useState<Mode>('login');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirm, setConfirm] = useState('');
-  const [email, setEmail] = useState('');
-  const [remember, setRemember] = useState(true);
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
+    const [mode, setMode] = useState<Mode>("login");
+    const [username, setUsername] = useState("");
+    const [password, setPassword] = useState("");
+    const [confirm, setConfirm] = useState("");
+    const [email, setEmail] = useState("");
+    const [remember, setRemember] = useState(true);
+    const [error, setError] = useState("");
+    const [busy, setBusy] = useState(false);
+    const recoveryPhrase = session.recoveryPhrase;
+    const [phraseAcknowledged, setPhraseAcknowledged] = useState(false);
+    const [bundle, setBundle] = useState<EncryptedBundle | null>(null);
+    const [bundlePassphrase, setBundlePassphrase] = useState("");
+    const bundleInput = useRef<HTMLInputElement>(null);
 
-  // Shown once, after registration, before the app is reachable. Not a toast:
-  // the phrase is the only route back into the account and it exists nowhere
-  // else, so it gets a screen and an explicit acknowledgement.
-  const [recoveryPhrase, setRecoveryPhrase] = useState('');
-  const [phraseAcknowledged, setPhraseAcknowledged] = useState(false);
+    const locked = session.status === "locked" && session.account !== null;
+    const needsImport = session.needsImport;
 
-  const [bundle, setBundle] = useState<EncryptedBundle | null>(null);
-  const [bundlePassphrase, setBundlePassphrase] = useState('');
-  const bundleInput = useRef<HTMLInputElement>(null);
-
-  // A locked account means the keys are here but the vault is closed. That is
-  // an unlock prompt, not a login form -- asking for a username again would be
-  // nonsense.
-  const locked = session.status === 'locked' && session.account !== null;
-
-  // Correct credentials, but no vault on this device: the server never had the
-  // private keys to return. Only an exported key file can fix this, so offer
-  // that instead of a password prompt that cannot succeed.
-  const needsImport = session.needsImport;
-
-  function handleBundleFile(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setError('');
-    file
-      .text()
-      .then((text) => setBundle(JSON.parse(text) as EncryptedBundle))
-      .catch(() => setError('not a valid key file'));
-  }
-
-  async function handleImport(e: FormEvent) {
-    e.preventDefault();
-    setError('');
-    setBusy(true);
-    try {
-      if (!bundle) throw new Error('choose your key file first');
-      await session.importIdentity(bundle, bundlePassphrase, password);
-      navigate('/channels');
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-      setPassword('');
-      setBundlePassphrase('');
-    }
-  }
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    setError('');
-
-    if (mode === 'register' && password !== confirm) {
-      setError('passwords do not match');
-      return;
+    function handleBundleFile(e: ChangeEvent<HTMLInputElement>) {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setError("");
+        file.text()
+            .then((text) => setBundle(JSON.parse(text) as EncryptedBundle))
+            .catch(() => setError("not a valid key file"));
     }
 
-    setBusy(true);
-    try {
-      if (locked) {
-        await session.unlock(password, remember);
-      } else if (mode === 'register') {
-        const { recoveryPhrase: phrase } = await session.register(
-          username,
-          password,
-          email.trim() || undefined
-        );
-        // Deliberately does NOT navigate. The user is registered and unlocked,
-        // but sending them straight to the app would bury the one screen that
-        // shows the recovery phrase, and it can never be shown again.
-        setRecoveryPhrase(phrase);
-        return;
-      } else {
-        await session.login(username, password, remember);
-      }
-      navigate('/channels');
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-      setPassword('');
-      setConfirm('');
+    async function handleImport(e: FormEvent) {
+        e.preventDefault();
+        setError("");
+        setBusy(true);
+        try {
+            if (!bundle) throw new Error("choose your key file first");
+            await session.importIdentity(bundle, bundlePassphrase, password);
+            navigate("/channels");
+        } catch (err) {
+            setError((err as Error).message);
+        } finally {
+            setBusy(false);
+            setPassword("");
+            setBundlePassphrase("");
+        }
     }
-  }
 
-  return (
-    <div className="min-h-screen grid place-items-center p-4">
-      <div className="w-full max-w-sm space-y-4">
-        <header className="text-center space-y-1">
-          <h1 className="t-h1 font-bold tracking-tight text-primary">CryptChat</h1>
-          <p className="t-base text-muted">
-            end-to-end encrypted &middot; the server never learns your name
-          </p>
-        </header>
+    async function handleSubmit(e: FormEvent) {
+        e.preventDefault();
+        setError("");
 
-        {recoveryPhrase ? (
-          <div className="card space-y-4">
-            <h2 className="t-h4 font-semibold uppercase tracking-wider text-muted">
-              Your recovery code
-            </h2>
+        if (mode === "register" && password !== confirm) {
+            setError("passwords do not match");
+            return;
+        }
 
-            <p className="rounded border border-warn-line bg-warn-soft p-4 t-base text-warn">
-              Write these 24 words down and keep them somewhere safe. This is the{' '}
-              <strong>only</strong> way back into your account if you forget your password or lose
-              this device. We cannot show them again and we cannot reset them — the server never
-              sees them.
-            </p>
+        setBusy(true);
 
-            <ol className="grid grid-cols-3 gap-x-3 gap-y-1 rounded border border-border bg-surface-raised p-4">
-              {recoveryPhrase.split(' ').map((word, i) => (
-                <li key={i} className="flex gap-1.5 font-mono t-base">
-                  <span className="w-4 shrink-0 text-right text-muted">{i + 1}</span>
-                  <span className="truncate">{word}</span>
-                </li>
-              ))}
-            </ol>
+        try {
+            if (locked) {
+                await session.unlock(password, remember);
+            } else if (mode === "register") {
+                await session.register(
+                    username,
+                    password,
+                    email.trim() || undefined,
+                );
+                // Deliberately does NOT navigate.
+                return;
+            } else {
+                await session.login(username, password, remember);
+            }
+            navigate("/channels");
+        } catch (err) {
+            setError((err as Error).message);
+        } finally {
+            setBusy(false);
+            setPassword("");
+            setConfirm("");
+        }
+    }
 
-            <button
-              type="button"
-              className="btn-ghost w-full t-base"
-              onClick={() => navigator.clipboard?.writeText(recoveryPhrase)}
-            >
-              copy to clipboard
-            </button>
+    return (
+        <div className="grid min-h-screen place-items-center p-4">
+            <div className="w-full max-w-sm space-y-4">
+                <header className="space-y-1 text-center">
+                    <h1 className="t-h1 text-primary font-bold tracking-tight">
+                        CryptChat
+                    </h1>
+                    <p className="t-base text-muted">
+                        end-to-end encrypted chat
+                    </p>
+                </header>
 
-            <label className="flex items-start gap-2 t-base text-muted">
-              <input
-                type="checkbox"
-                checked={phraseAcknowledged}
-                onChange={(e) => setPhraseAcknowledged(e.target.checked)}
-                className="mt-0.5 accent-primary"
-              />
-              <span>
-                I have written down my recovery code. I understand that without it, a forgotten
-                password means my channels are gone permanently.
-              </span>
-            </label>
+                {recoveryPhrase ? (
+                    <div className="card space-y-4">
+                        <h2 className="t-h4 text-muted font-semibold tracking-wider uppercase">
+                            Your recovery code
+                        </h2>
 
-            <button
-              className="btn-primary w-full"
-              disabled={!phraseAcknowledged}
-              onClick={() => {
-                setRecoveryPhrase('');
-                navigate('/channels');
-              }}
-            >
-              Continue
-            </button>
-          </div>
-        ) : needsImport ? (
-          <form onSubmit={handleImport} className="card space-y-4">
-            <div className="flex items-center gap-3">
-              <Avatar name={session.account!.username} size="md" />
-              <div className="min-w-0">
-                <p className="truncate t-h4 font-medium">{session.account!.username}</p>
-                <p className="t-base text-warn">no keys on this device</p>
-              </div>
+                        <p className="t-base text-warn">
+                            Write these 24 words down and keep them somewhere
+                            safe. This is the <strong>only</strong> way back
+                            into your account if you forget your password or
+                            lose this device. These will never be shown again.
+                        </p>
+
+                        <ol className="border-border bg-surface-raised grid grid-cols-3 gap-x-3 gap-y-1 rounded border p-4">
+                            {recoveryPhrase.split(" ").map((word, i) => (
+                                <li
+                                    key={i}
+                                    className="t-base flex gap-1.5 font-mono"
+                                >
+                                    <span className="truncate">{word}</span>
+                                </li>
+                            ))}
+                        </ol>
+
+                        <button
+                            type="button"
+                            className="btn-ghost t-base w-full"
+                            onClick={() =>
+                                navigator.clipboard?.writeText(recoveryPhrase)
+                            }
+                        >
+                            copy to clipboard
+                        </button>
+
+                        <label className="t-base text-muted flex items-start gap-2">
+                            <input
+                                type="checkbox"
+                                checked={phraseAcknowledged}
+                                onChange={(e) =>
+                                    setPhraseAcknowledged(e.target.checked)
+                                }
+                                className="accent-primary mt-0.5"
+                            />
+                            <span>
+                                I have written down my recovery code. I
+                                understand that without it, a forgotten password
+                                means my channels are gone permanently.
+                            </span>
+                        </label>
+
+                        <button
+                            className="btn-primary w-full"
+                            disabled={!phraseAcknowledged}
+                            onClick={() => {
+                                session.acknowledgeRecovery();
+                                navigate("/channels");
+                            }}
+                        >
+                            Continue
+                        </button>
+                    </div>
+                ) : needsImport ? (
+                    <form onSubmit={handleImport} className="card space-y-4">
+                        <div className="flex items-center gap-3">
+                            <Avatar
+                                name={session.account!.username}
+                                size="md"
+                            />
+                            <div className="min-w-0">
+                                <p className="t-h4 truncate font-medium">
+                                    {session.account!.username}
+                                </p>
+                                <p className="t-base text-warn">
+                                    no keys on this device
+                                </p>
+                            </div>
+                        </div>
+
+                        <p className="border-info-line bg-info-soft t-base text-info rounded border p-4">
+                            Your password is correct, but this device has none
+                            of your keys — the server never had them to give
+                            back. Import the key file you exported from your
+                            other device.
+                        </p>
+
+                        <input
+                            ref={bundleInput}
+                            type="file"
+                            accept="application/json,.json"
+                            className="hidden"
+                            onChange={handleBundleFile}
+                        />
+                        <button
+                            type="button"
+                            onClick={() => bundleInput.current?.click()}
+                            className="btn-ghost t-base w-full"
+                        >
+                            {bundle ? "key file loaded ✓" : "choose key file"}
+                        </button>
+
+                        <label className="block space-y-1">
+                            <span className="t-base text-muted">
+                                key file passphrase
+                            </span>
+                            <input
+                                className="field"
+                                type="password"
+                                value={bundlePassphrase}
+                                onChange={(e) =>
+                                    setBundlePassphrase(e.target.value)
+                                }
+                            />
+                        </label>
+
+                        <label className="block space-y-1">
+                            <span className="t-base text-muted">
+                                your account password
+                            </span>
+                            <input
+                                className="field"
+                                type="password"
+                                autoComplete="current-password"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                            />
+                        </label>
+
+                        {error && (
+                            <p className="border-error-line bg-error-soft t-base text-error rounded border p-4">
+                                {error}
+                            </p>
+                        )}
+
+                        <button
+                            className="btn-primary w-full"
+                            disabled={busy || !bundle}
+                        >
+                            {busy ? "importing…" : "Import keys"}
+                        </button>
+
+                        <button
+                            type="button"
+                            className="t-base text-muted hover:text-foreground w-full"
+                            onClick={() => session.logout()}
+                        >
+                            use a different account
+                        </button>
+                    </form>
+                ) : (
+                    <form onSubmit={handleSubmit} className="card space-y-4">
+                        {locked ? (
+                            <div className="space-y-3">
+                                <div className="flex items-center gap-3">
+                                    <Avatar
+                                        name={session.account!.username}
+                                        size="md"
+                                    />
+                                    <div className="min-w-0">
+                                        <p className="t-h4 truncate font-medium">
+                                            {session.account!.username}
+                                        </p>
+                                        <p className="t-base text-muted">
+                                            Vault Locked
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <>
+                                <label className="block space-y-1">
+                                    <span className="t-base text-muted">
+                                        Username
+                                        {mode == "register" && (
+                                            <span className="text-error">
+                                                {" "}
+                                                *
+                                            </span>
+                                        )}
+                                    </span>
+                                    <input
+                                        className="field"
+                                        autoComplete="username"
+                                        value={username}
+                                        onChange={(e) =>
+                                            setUsername(e.target.value)
+                                        }
+                                        placeholder="Anon"
+                                    />
+                                </label>
+                            </>
+                        )}
+
+                        <label className="block space-y-1">
+                            <div className="m-0 flex w-full flex-row justify-between">
+                                <span className="t-base text-muted">
+                                    Password
+                                    {mode == "register" && (
+                                        <span className="text-error"> *</span>
+                                    )}
+                                </span>
+                                {mode === "login" && (
+                                    <Link
+                                        to="/recover"
+                                        className="t-base text-primary hover:text-primary-strong block w-full text-end"
+                                    >
+                                        Forgot your password?
+                                    </Link>
+                                )}
+                            </div>
+                            <input
+                                className="field"
+                                type="password"
+                                autoComplete={
+                                    mode === "register"
+                                        ? "new-password"
+                                        : "current-password"
+                                }
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                placeholder="Enter your password"
+                            />
+                        </label>
+
+                        {mode === "register" && !locked && (
+                            <>
+                                <label className="block space-y-1">
+                                    <span className="t-base text-muted">
+                                        Confirm Password
+                                        {mode == "register" && (
+                                            <span className="text-error">
+                                                {" "}
+                                                *
+                                            </span>
+                                        )}
+                                    </span>
+                                    <input
+                                        className="field"
+                                        type="password"
+                                        autoComplete="new-password"
+                                        value={confirm}
+                                        onChange={(e) =>
+                                            setConfirm(e.target.value)
+                                        }
+                                    />
+                                </label>
+
+                                <label className="block space-y-1">
+                                    <span className="t-base text-muted flex flex-row items-center gap-1">
+                                        Email{" "}
+                                        <div className="flex w-max">
+                                            <InfoTip
+                                                tip="It remains encrypted and hidden. Only used for password recovery. You can't send files without a verified email. Providing it is optional."
+                                                details="An email lets you reset a forgotten password. It is encrypted, never shown to
+                      anyone, and never displayed in full, not even to you. You can add or remove it
+                      later in Settings. Skipping it costs you the ability to send files in chats."
+                                                title="How we use your Email"
+                                            />
+                                        </div>
+                                    </span>
+                                    <input
+                                        className="field"
+                                        type="email"
+                                        autoComplete="email"
+                                        value={email}
+                                        onChange={(e) =>
+                                            setEmail(e.target.value)
+                                        }
+                                        placeholder="Optional Email"
+                                    />
+                                </label>
+                            </>
+                        )}
+
+                        <label className="t-base text-muted flex items-center gap-2">
+                            <input
+                                type="checkbox"
+                                checked={remember}
+                                onChange={(e) => setRemember(e.target.checked)}
+                                className="accent-primary"
+                            />
+                            Keep unlocked in this tab
+                        </label>
+
+                        {error && (
+                            <p className="border-error-line bg-error-soft t-base text-error rounded border p-4">
+                                {error}
+                            </p>
+                        )}
+
+                        <button className="btn-primary w-full" disabled={busy}>
+                            {busy
+                                ? "working…"
+                                : locked
+                                  ? "Unlock"
+                                  : mode === "login"
+                                    ? "Unlock"
+                                    : "Register"}
+                        </button>
+
+                        {locked ? (
+                            <button
+                                type="button"
+                                className="t-base text-muted hover:text-foreground w-full"
+                                onClick={() => session.logout()}
+                            >
+                                Use a different account
+                            </button>
+                        ) : (
+                            <div className="flex w-full flex-col justify-between md:flex-row">
+                                <button
+                                    type="button"
+                                    className="t-base text-muted hover:text-foreground w-full"
+                                    onClick={() => {
+                                        setMode(
+                                            mode === "login"
+                                                ? "register"
+                                                : "login",
+                                        );
+                                        setError("");
+                                    }}
+                                >
+                                    {mode === "login"
+                                        ? "Create identity"
+                                        : "Have an identity? Log in"}
+                                </button>
+                            </div>
+                        )}
+                    </form>
+                )}
+
+                {!locked &&
+                    !needsImport &&
+                    session.accounts.length > 0 &&
+                    !recoveryPhrase && (
+                        <div className="space-y-2">
+                            <p className="t-base text-muted tracking-wider uppercase">
+                                identities on this device
+                            </p>
+                            {session.accounts.map((account) => (
+                                <button
+                                    key={account.userId}
+                                    onClick={() => {
+                                        session.selectAccount(account.userId);
+                                        setUsername(account.username);
+                                        setMode("login");
+                                    }}
+                                    className="border-border hover:border-primary flex w-full items-center gap-3 rounded border p-4 text-left transition-colors"
+                                >
+                                    <Avatar name={account.username} size="sm" />
+                                    <span className="t-h4 flex-1 truncate">
+                                        {account.username}
+                                    </span>
+                                    <span className="tag bg-surface-raised text-muted">
+                                        locked
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
             </div>
-
-            <p className="rounded border border-info-line bg-info-soft p-4 t-base text-info">
-              Your password is correct, but this device has none of your keys — the server never had
-              them to give back. Import the key file you exported from your other device.
-            </p>
-
-            <input
-              ref={bundleInput}
-              type="file"
-              accept="application/json,.json"
-              className="hidden"
-              onChange={handleBundleFile}
-            />
-            <button
-              type="button"
-              onClick={() => bundleInput.current?.click()}
-              className="btn-ghost w-full t-base"
-            >
-              {bundle ? 'key file loaded ✓' : 'choose key file'}
-            </button>
-
-            <label className="block space-y-1">
-              <span className="t-base text-muted">key file passphrase</span>
-              <input
-                className="field"
-                type="password"
-                value={bundlePassphrase}
-                onChange={(e) => setBundlePassphrase(e.target.value)}
-              />
-            </label>
-
-            <label className="block space-y-1">
-              <span className="t-base text-muted">your account password</span>
-              <input
-                className="field"
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </label>
-
-            {error && (
-              <p className="rounded border border-error-line bg-error-soft p-4 t-base text-error">
-                {error}
-              </p>
-            )}
-
-            <button className="btn-primary w-full" disabled={busy || !bundle}>
-              {busy ? 'importing…' : 'Import keys'}
-            </button>
-
-            <button
-              type="button"
-              className="w-full t-base text-muted hover:text-foreground"
-              onClick={() => session.logout()}
-            >
-              use a different account
-            </button>
-          </form>
-        ) : (
-        <form onSubmit={handleSubmit} className="card space-y-4">
-          {locked ? (
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <Avatar name={session.account!.username} size="md" />
-                <div className="min-w-0">
-                  <p className="t-h4 font-medium truncate">{session.account!.username}</p>
-                  <p className="t-base text-muted">vault locked</p>
-                </div>
-              </div>
-              <p className="t-base text-muted">
-                Your password decrypts this device's keys. It is never sent for this step.
-              </p>
-            </div>
-          ) : (
-            <>
-              <h2 className="t-h4 font-semibold uppercase tracking-wider text-muted">
-                {mode === 'login' ? 'Log in' : 'Create identity'}
-              </h2>
-              <label className="block space-y-1">
-                <span className="t-base text-muted">username</span>
-                <input
-                  className="field"
-                  autoComplete="username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="anon"
-                />
-              </label>
-            </>
-          )}
-
-          <label className="block space-y-1">
-            <span className="t-base text-muted">password</span>
-            <input
-              className="field"
-              type="password"
-              autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••••••"
-            />
-          </label>
-
-          {mode === 'register' && !locked && (
-            <>
-              <label className="block space-y-1">
-                <span className="t-base text-muted">confirm password</span>
-                <input
-                  className="field"
-                  type="password"
-                  autoComplete="new-password"
-                  value={confirm}
-                  onChange={(e) => setConfirm(e.target.value)}
-                />
-              </label>
-
-              <label className="block space-y-1">
-                <span className="t-base text-muted">
-                  email <span className="text-muted">— optional</span>
-                </span>
-                <input
-                  className="field"
-                  type="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="leave blank to stay anonymous"
-                />
-              </label>
-
-              <p className="rounded border border-info-line bg-info-soft p-4 t-base text-info">
-                An email lets you reset a forgotten password. It is encrypted, never shown to
-                anyone, and never displayed in full — not even to you. You can add or remove it
-                later in Settings. Skipping it costs you nothing except password reset.
-              </p>
-
-              <p className="rounded border border-warn-line bg-warn-soft p-4 t-base text-warn">
-                This password also encrypts your keys on this device. Minimum 12 characters. After
-                you register we will show you a 24-word recovery code — that code, not your email,
-                is what restores your channels.
-              </p>
-            </>
-          )}
-
-          <label className="flex items-center gap-2 t-base text-muted">
-            <input
-              type="checkbox"
-              checked={remember}
-              onChange={(e) => setRemember(e.target.checked)}
-              className="accent-primary"
-            />
-            keep unlocked in this tab
-          </label>
-
-          {error && (
-            <p className="rounded border border-error-line bg-error-soft p-4 t-base text-error">
-              {error}
-            </p>
-          )}
-
-          <button className="btn-primary w-full" disabled={busy}>
-            {busy ? 'working…' : locked ? 'Unlock' : mode === 'login' ? 'Log in' : 'Register'}
-          </button>
-
-          {locked ? (
-            <button
-              type="button"
-              className="w-full t-base text-muted hover:text-foreground"
-              onClick={() => session.logout()}
-            >
-              use a different account
-            </button>
-          ) : (
-            <>
-              <button
-                type="button"
-                className="w-full t-base text-muted hover:text-foreground"
-                onClick={() => {
-                  setMode(mode === 'login' ? 'register' : 'login');
-                  setError('');
-                }}
-              >
-                {mode === 'login' ? 'No identity? Create one' : 'Have an identity? Log in'}
-              </button>
-
-              {mode === 'login' && (
-                <Link
-                  to="/recover"
-                  className="block w-full text-center t-base text-muted hover:text-foreground"
-                >
-                  Forgot your password?
-                </Link>
-              )}
-            </>
-          )}
-        </form>
-        )}
-
-        {!locked && !needsImport && session.accounts.length > 0 && (
-          <div className="card space-y-2">
-            <p className="t-base uppercase tracking-wider text-muted">identities on this device</p>
-            {session.accounts.map((account) => (
-              <button
-                key={account.userId}
-                onClick={() => {
-                  session.selectAccount(account.userId);
-                  setUsername(account.username);
-                  setMode('login');
-                }}
-                className="flex w-full items-center gap-3 rounded border border-border p-4 text-left
-                           transition-colors hover:border-primary"
-              >
-                <Avatar name={account.username} size="sm" />
-                <span className="flex-1 truncate t-h4">{account.username}</span>
-                <span className="tag bg-surface-raised text-muted">locked</span>
-              </button>
-            ))}
-            <p className="t-small text-muted">
-              Each identity has its own encrypted store. They cannot read each other.
-            </p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+        </div>
+    );
 }

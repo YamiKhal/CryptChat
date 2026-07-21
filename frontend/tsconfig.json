@@ -1,22 +1,23 @@
 {
-  "compilerOptions": {
-    "target": "ES2020",
-    "useDefineForClassFields": true,
-    // ES2022 for the *types* only (Intl.Segmenter, used to count grapheme
-    // clusters rather than UTF-16 code units). The emit target stays ES2020, and
-    // Segmenter is still feature-detected at runtime with a fallback -- lib does
-    // not promise the API exists, only that TypeScript knows its shape.
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "skipLibCheck": true,
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true,
-    "jsx": "react-jsx",
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true
-  },
-  "include": ["src"]
+    "compilerOptions": {
+        "target": "ES2020",
+        "useDefineForClassFields": true,
+        "lib": ["ES2022", "DOM", "DOM.Iterable"],
+        "module": "ESNext",
+        "skipLibCheck": true,
+        "moduleResolution": "bundler",
+        "baseUrl": ".",
+        "ignoreDeprecations": "6.0",
+        "paths": {
+            "@/*": ["src/*"]
+        },
+        "resolveJsonModule": true,
+        "isolatedModules": true,
+        "noEmit": true,
+        "jsx": "react-jsx",
+        "strict": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true
+    },
+    "include": ["src"]
 }

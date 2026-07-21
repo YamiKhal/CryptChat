@@ -1,9 +1,9 @@
 import { createContext, useContext, ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { useRelay } from './useRelay';
-import { useSession } from './session';
-import { StoredMessage } from './vault';
-import type { CallSignal } from './crypto';
-import { configureSounds, configureCustomSounds, playIncomingMessage } from './sounds';
+import { useRelay } from '@/lib/useRelay';
+import { useSession } from '@/lib/session';
+import { StoredMessage } from '@/lib/vault';
+import type { CallSignal } from '@/lib/crypto';
+import { configureSounds, configureCustomSounds, playIncomingMessage } from '@/lib/sounds';
 
 /** A decrypted, verified call-control frame for a DM, handed to the call layer. */
 export interface IncomingSignal {

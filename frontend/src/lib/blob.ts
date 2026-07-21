@@ -1,11 +1,11 @@
-import { api } from './api';
+import { api } from '@/lib/api';
 import {
   createFileEncryptor,
   createFileDecryptor,
   createHasher,
   Attachment,
   FILE_CHUNK_OVERHEAD,
-} from './crypto';
+} from '@/lib/crypto';
 import {
   Bytes,
   blobToBytes,
@@ -14,7 +14,7 @@ import {
   packAsset,
   sniffImageMime,
   RENDERABLE_IMAGE_MIME,
-} from './binary';
+} from '@/lib/binary';
 
 /**
  * Encrypted file transfer.

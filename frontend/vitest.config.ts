@@ -24,7 +24,11 @@ const sodiumCjs = fileURLToPath(
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: { 'libsodium-wrappers-sumo': sodiumCjs },
+    alias: {
+      // Keep in sync with tsconfig `paths` and vite.config.
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      'libsodium-wrappers-sumo': sodiumCjs,
+    },
   },
   test: {
     environment: 'jsdom',
