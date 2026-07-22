@@ -207,20 +207,14 @@ export default function Composer({
               <>
                 {/* Click-away backdrop, below the popover. */}
                 <div className="fixed inset-0 z-40" onClick={() => setShowTools(false)} />
-                <div
-                  className="absolute bottom-full right-0 z-50 mb-2 w-52 space-y-1 rounded-lg
-                             border border-border bg-surface-raised p-1.5 shadow-xl animate-fade-in"
-                >
+                <div className="menu-panel absolute bottom-full right-0 z-50 mb-2 w-52 origin-bottom">
                   {canLock && (
                     <button
                       onClick={() => {
                         onToggleLock?.();
                         setShowTools(false);
                       }}
-                      className={`flex w-full items-center gap-2 rounded px-2 py-1.5 t-base
-                                  transition-colors hover:bg-primary-soft ${
-                                    lockArmed ? 'text-primary' : 'text-foreground'
-                                  }`}
+                      className={`menu-item ${lockArmed ? 'text-primary' : ''}`}
                     >
                       <Lock size={15} className="flex-none" />
                       Password-protect
@@ -232,10 +226,7 @@ export default function Composer({
                         onToggleSpoiler();
                         setShowTools(false);
                       }}
-                      className={`flex w-full items-center gap-2 rounded px-2 py-1.5 t-base
-                                  transition-colors hover:bg-primary-soft ${
-                                    spoilerArmed ? 'text-primary' : 'text-foreground'
-                                  }`}
+                      className={`menu-item ${spoilerArmed ? 'text-primary' : ''}`}
                     >
                       <EyeOff size={15} className="flex-none" />
                       Mark as spoiler
@@ -247,10 +238,7 @@ export default function Composer({
                         onToggleBurn?.();
                         setShowTools(false);
                       }}
-                      className={`flex w-full items-center gap-2 rounded px-2 py-1.5 t-base
-                                  transition-colors hover:bg-primary-soft ${
-                                    burnArmed ? 'text-primary' : 'text-foreground'
-                                  }`}
+                      className={`menu-item ${burnArmed ? 'text-primary' : ''}`}
                     >
                       <Timer size={15} className="flex-none" />
                       Disappearing message
@@ -287,7 +275,7 @@ export default function Composer({
         <button
           onClick={onSend}
           disabled={disabled || sending || !canSend || over}
-          className="btn-primary h-11 flex-none self-end px-3.5"
+          className="btn-primary h-11 flex-none self-end rounded-xl px-3.5"
           title={over ? 'Message is too long' : 'Send'}
           aria-label="Send message"
         >

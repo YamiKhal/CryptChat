@@ -8,6 +8,7 @@ import TwoFactorSection from "@/components/settings/TwoFactorSection";
 import {
     SettingsSection,
     SettingBlock,
+    SettingRow,
 } from "@/components/settings/SettingsUI";
 import { SetStatus } from "@/pages/settings/types";
 
@@ -99,23 +100,23 @@ export default function AccountTab({
     return (
         <div className="space-y-8">
             <SettingsSection title="Identity">
-                <SettingBlock>
-                    <p className="t-base text-muted">username</p>
-                    <p className="t-h4 font-mono">{account.username}</p>
-                </SettingBlock>
-                <SettingBlock>
-                    <div className="flex items-center gap-1.5">
-                        <p className="t-base text-muted">key fingerprint</p>
-                        <InfoTip
-                            title="Key fingerprint"
-                            tip="Read this to a contact to confirm no one swapped keys."
-                            details="Read this to a contact over another channel. If it matches what they see next to your name, no one swapped keys in between."
-                        />
-                    </div>
-                    <p className="t-h4 text-primary font-mono tracking-wider">
+                <SettingRow
+                    title="Username"
+                    control={
+                        <span className="t-base font-mono text-muted">
+                            {account.username}
+                        </span>
+                    }
+                />
+                <SettingRow
+                    title="Key fingerprint"
+                    info="Read this to a contact to confirm no one swapped keys."
+                    infoDetails="Read this to a contact over another channel. If it matches what they see next to your name, no one swapped keys in between."
+                >
+                    <p className="t-base text-primary font-mono tracking-wider">
                         {fingerprint}
                     </p>
-                </SettingBlock>
+                </SettingRow>
             </SettingsSection>
 
             {session.token && <TwoFactorSection token={session.token} />}

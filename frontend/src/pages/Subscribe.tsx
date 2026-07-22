@@ -67,7 +67,7 @@ export default function Subscribe() {
           </InfoBox>
         </section>
 
-        <Link to="/" className="block text-center t-base text-muted hover:text-foreground">
+        <Link to="/login" className="block text-center t-base text-muted hover:text-foreground">
           back
         </Link>
       </div>
@@ -171,7 +171,7 @@ function Done({ sessionId }: { sessionId: string | null }) {
             </>
           )}
 
-          <Link to="/" className="btn-ghost w-full text-center t-base">
+          <Link to="/login" className="btn-ghost w-full text-center t-base">
             continue
           </Link>
         </div>

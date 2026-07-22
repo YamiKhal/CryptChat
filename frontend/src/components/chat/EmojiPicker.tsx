@@ -136,11 +136,10 @@ export default function EmojiPicker({ onPick, onClose, anchor }: EmojiPickerProp
   return (
     <div
       ref={ref}
-      className={`${anchor ? 'fixed' : 'absolute bottom-full right-0 mb-2'} z-50 w-72
-                  rounded-lg border border-border bg-surface-raised p-2 shadow-xl animate-fade-in`}
+      className={`menu-panel ${anchor ? 'fixed' : 'absolute bottom-full right-0 mb-2 origin-bottom'} z-50 w-72 p-2`}
       style={style}
     >
-      <div className="mb-2 flex items-center gap-1.5 rounded border border-border px-2 py-1">
+      <div className="mb-2 flex items-center gap-1.5 rounded-lg border border-border bg-surface px-2 py-1.5 transition-colors focus-within:border-primary">
         <Search size={12} className="flex-none text-muted" aria-hidden="true" />
         <input
           autoFocus
@@ -157,8 +156,8 @@ export default function EmojiPicker({ onPick, onClose, anchor }: EmojiPickerProp
             <button
               key={g.name}
               onClick={() => setGroup(i)}
-              className={`whitespace-nowrap rounded px-2 py-1 t-small transition-colors
-                ${i === group ? 'bg-primary-soft text-primary' : 'text-muted hover:text-foreground'}`}
+              className={`whitespace-nowrap rounded-full px-2.5 py-1 t-small font-medium transition-colors
+                ${i === group ? 'bg-primary-soft text-primary' : 'text-muted hover:bg-surface hover:text-foreground'}`}
             >
               {g.name}
             </button>
@@ -171,7 +170,7 @@ export default function EmojiPicker({ onPick, onClose, anchor }: EmojiPickerProp
           <button
             key={emoji}
             onClick={() => onPick(emoji)}
-            className="rounded p-1 t-h2 leading-none transition-colors hover:bg-primary-soft"
+            className="rounded-lg p-1 t-h2 leading-none transition-[background-color,transform] duration-100 hover:scale-110 hover:bg-primary-soft"
             title={KEYWORDS[emoji] ?? ''}
           >
             {emoji}

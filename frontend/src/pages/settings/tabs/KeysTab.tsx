@@ -1,82 +1,46 @@
 import { useState, useRef, ChangeEvent } from "react";
 import { useNavigate } from "react-router-dom";
+import { Download, Upload, RefreshCw, Check } from "lucide-react";
 import { useSession } from "@/lib/session";
-import {
-    exportKeyBundle,
-    importKeyBundle,
-    EncryptedBundle,
-} from "@/lib/crypto";
-import { saveAccount, Vault, AccountDescriptor } from "@/lib/vault";
+import { AccountDescriptor } from "@/lib/vault";
+import { downloadBackup, readBackupFile } from "@/lib/backup/exportImport";
+import { BackupContainer } from "@/lib/backup/container";
+import { useAutoBackup } from "@/lib/backup/AutoBackupContext";
 import Avatar from "@/components/ui/Avatar";
-import { InfoTip } from "@/components/ui/InfoTip";
-import {
-    SettingsSection,
-    SettingBlock,
-} from "@/components/settings/SettingsUI";
+import { Toggle } from "@/components/ui/Toggle";
+import { SettingsSection, SettingRow } from "@/components/settings/SettingsUI";
 import { SetStatus } from "@/pages/settings/types";
 
+/**
+ * Backups & identities. Discord-rule for this page: one line per row, the
+ * control on the right, every caveat lives behind the row's InfoTip instead of
+ * an inline banner.
+ */
 export default function KeysTab({
-    vault,
     account,
     setStatus,
 }: {
-    vault: Vault;
     account: AccountDescriptor;
     setStatus: SetStatus;
 }) {
     const session = useSession();
     const navigate = useNavigate();
+    const backup = useAutoBackup();
 
-    const [exportPassphrase, setExportPassphrase] = useState("");
-    const [importPassphrase, setImportPassphrase] = useState("");
-    const [importFile, setImportFile] = useState<EncryptedBundle | null>(null);
-    const [importPassword, setImportPassword] = useState("");
+    const [importFile, setImportFile] = useState<BackupContainer | null>(null);
     const [busy, setBusy] = useState(false);
-
-    const bundleInput = useRef<HTMLInputElement>(null);
+    const fileInput = useRef<HTMLInputElement>(null);
 
     async function handleExport() {
         setStatus(null);
-        if (exportPassphrase.length < 12) {
-            setStatus({
-                kind: "error",
-                text: "export passphrase must be at least 12 characters",
-            });
-            return;
-        }
         setBusy(true);
         try {
-            const data = vault.snapshot();
-            const bundle = await exportKeyBundle(
-                {
-                    userId: account.userId,
-                    identity: data.identity,
-                    channels: Object.values(data.channels)
-                        .filter((c) => c.hasKey)
-                        .map((c) => ({
-                            channelId: c.channelId,
-                            code: c.code,
-                            key: c.key,
-                        })),
-                },
-                exportPassphrase,
+            const ok = await downloadBackup(account.userId, account.username);
+            setStatus(
+                ok
+                    ? { kind: "ok", text: "Backup downloaded." }
+                    : { kind: "error", text: "nothing to back up yet" },
             );
-
-            const blob = new Blob([JSON.stringify(bundle, null, 2)], {
-                type: "application/json",
-            });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = `darkchat-keys-${account.username}-${Date.now()}.json`;
-            link.click();
-            URL.revokeObjectURL(url);
-
-            setExportPassphrase("");
-            setStatus({
-                kind: "ok",
-                text: "Key file downloaded. It is encrypted — the passphrase is the only way in.",
-            });
         } catch (err) {
             setStatus({ kind: "error", text: (err as Error).message });
         } finally {
@@ -84,222 +48,251 @@ export default function KeysTab({
         }
     }
 
-    async function handleBundleFile(e: ChangeEvent<HTMLInputElement>) {
+    async function handleBackupFile(e: ChangeEvent<HTMLInputElement>) {
         const file = e.target.files?.[0];
         if (!file) return;
         setStatus(null);
         try {
-            setImportFile(JSON.parse(await file.text()) as EncryptedBundle);
-            setStatus({
-                kind: "info",
-                text: "Key file loaded. Enter its passphrase to import.",
-            });
-        } catch {
-            setStatus({ kind: "error", text: "not a valid key file" });
+            setImportFile(await readBackupFile(file));
+        } catch (err) {
+            setImportFile(null);
+            setStatus({ kind: "error", text: (err as Error).message });
         }
     }
 
-    /**
-     * Import keys from another device.
-     *
-     * Rebuilds this device's vault from the bundle. The account password is
-     * needed too: the bundle passphrase only opens the file, while the vault on
-     * *this* device is keyed from the account password.
-     */
     async function handleImport() {
+        if (!importFile) return;
         setStatus(null);
+        if (importFile.account.userId !== account.userId) {
+            setStatus({
+                kind: "error",
+                text: "this backup belongs to a different identity",
+            });
+            return;
+        }
+        const ok = confirm(
+            "Restore this backup?\n\n" +
+                "Everything currently on this device for this account — channels, contacts, and message history — is replaced by the backup. The app reloads and asks for your password.",
+        );
+        if (!ok) return;
         setBusy(true);
         try {
-            if (!importFile) throw new Error("choose a key file first");
-
-            const bundle = await importKeyBundle(importFile, importPassphrase);
-
-            if (bundle.userId !== account.userId) {
-                throw new Error("this key file belongs to a different identity");
-            }
-
-            const existing = vault.snapshot();
-            const channels = { ...existing.channels };
-            for (const channel of bundle.channels) {
-                channels[channel.channelId] = {
-                    channelId: channel.channelId,
-                    code: channel.code,
-                    key: channel.key,
-                    hasKey: true,
-                    joinedAt:
-                        existing.channels[channel.channelId]?.joinedAt ??
-                        new Date().toISOString(),
-                };
-            }
-
-            const rebuilt = await Vault.create(account.userId, importPassword, {
-                identity: bundle.identity,
-                channels,
-                contacts: existing.contacts,
-                profile: existing.profile,
-            });
-            await rebuilt.rememberForSession();
-
-            saveAccount({
-                ...account,
-                publicKey: bundle.identity.publicKey,
-                signPublicKey: bundle.identity.signPublicKey,
-                vaultSalt: bundle.identity.vaultSalt,
-                lastUsedAt: new Date().toISOString(),
-            });
-
-            setImportFile(null);
-            setImportPassphrase("");
-            setImportPassword("");
-            setStatus({
-                kind: "ok",
-                text: `Imported ${bundle.channels.length} channel key(s). Reloading…`,
-            });
-
-            // Cheapest correct way to rebind every consumer to the rebuilt vault.
-            setTimeout(() => window.location.reload(), 800);
+            // Reloads on success, so no further state updates run here.
+            await session.restoreFromBackup(importFile);
         } catch (err) {
             setStatus({ kind: "error", text: (err as Error).message });
-        } finally {
             setBusy(false);
         }
     }
 
     return (
         <div className="space-y-8">
-            <SettingsSection
-                title="Export keys"
-                info="Save an encrypted copy of your keys to move to another device."
-                infoDetails="Writes your private keys and every channel key to an encrypted file, so you can move this identity to another device. The server cannot do this for you — it has never held these keys."
-            >
-                <SettingBlock>
-                    <label className="block space-y-1">
-                        <span className="t-base text-muted flex items-center gap-1.5">
-                            passphrase for the file (min 12)
-                            <InfoTip
-                                title="Use a fresh passphrase"
-                                tip="Different from your login password — this file leaves the device."
-                                details="Use a different passphrase from your login password. This file leaves the device; if it shares the account secret, one leaked file is a full account compromise."
-                            />
-                        </span>
-                        <input
-                            className="field"
-                            type="password"
-                            autoComplete="new-password"
-                            value={exportPassphrase}
-                            onChange={(e) => setExportPassphrase(e.target.value)}
-                        />
-                    </label>
-                    <button
-                        onClick={handleExport}
-                        disabled={busy}
-                        className="btn-ghost w-full"
-                    >
-                        Export key file
-                    </button>
-                </SettingBlock>
-            </SettingsSection>
-
-            <SettingsSection
-                title="Import keys"
-                info="Restore an identity exported from another device."
-                infoDetails="Restore an identity exported from another device. Replaces this device's keys and merges in the channel keys from the file."
-            >
-                <SettingBlock>
-                    <input
-                        ref={bundleInput}
-                        type="file"
-                        accept="application/json,.json"
-                        className="hidden"
-                        onChange={handleBundleFile}
-                    />
-                    <button
-                        onClick={() => bundleInput.current?.click()}
-                        className="btn-ghost t-base w-full"
-                    >
-                        {importFile ? "key file loaded ✓" : "choose key file"}
-                    </button>
-
-                    <label className="block space-y-1">
-                        <span className="t-base text-muted">file passphrase</span>
-                        <input
-                            className="field"
-                            type="password"
-                            value={importPassphrase}
-                            onChange={(e) => setImportPassphrase(e.target.value)}
-                        />
-                    </label>
-
-                    <label className="block space-y-1">
-                        <span className="t-base text-muted flex items-center gap-1.5">
-                            your account password
-                            <InfoTip
-                                title="Account password"
-                                tip="Re-encrypts the restored vault on this device."
-                                details="The file passphrase only opens the exported file; your account password re-encrypts the vault on this device, which is keyed from it."
-                            />
-                        </span>
-                        <input
-                            className="field"
-                            type="password"
-                            value={importPassword}
-                            onChange={(e) => setImportPassword(e.target.value)}
-                        />
-                    </label>
-
-                    <button
-                        onClick={handleImport}
-                        disabled={
-                            busy ||
-                            !importFile ||
-                            !importPassphrase ||
-                            !importPassword
-                        }
-                        className="btn-ghost w-full"
-                    >
-                        Import
-                    </button>
-                </SettingBlock>
+            <SettingsSection title="Backup">
+                <SettingRow
+                    title="Export"
+                    description="One encrypted file — keys, channels, history."
+                    info="Sealed with your login password."
+                    infoDetails="Writes everything on this device to one encrypted file. Restore it after clearing your browser, or on a new device. Anyone holding the file can attempt an offline crack, so keep it private — and a password change makes older backups unreadable."
+                    control={
+                        <button
+                            onClick={handleExport}
+                            disabled={busy}
+                            className="btn-ghost"
+                        >
+                            <Download size={15} />
+                            Download
+                        </button>
+                    }
+                />
+                <SettingRow
+                    title="Import"
+                    description={
+                        importFile
+                            ? "Backup loaded — restoring replaces this device."
+                            : "Restore a backup file onto this device."
+                    }
+                    info="Replaces everything on this device."
+                    infoDetails="Loads a backup file and replaces this device's data with it. The app reloads and asks for the password the backup was made under."
+                    control={
+                        importFile ? (
+                            <button
+                                onClick={handleImport}
+                                disabled={busy}
+                                className="btn-primary"
+                            >
+                                <Check size={15} />
+                                Restore
+                            </button>
+                        ) : (
+                            <button
+                                onClick={() => fileInput.current?.click()}
+                                className="btn-ghost"
+                            >
+                                <Upload size={15} />
+                                Choose file
+                            </button>
+                        )
+                    }
+                />
+                <input
+                    ref={fileInput}
+                    type="file"
+                    accept="application/json,.json"
+                    className="hidden"
+                    onChange={handleBackupFile}
+                />
+                <AutoBackupRow backup={backup} navigate={navigate} />
             </SettingsSection>
 
             <SettingsSection
                 title="Identities on this device"
-                info="Each identity is a separate encrypted store."
-                infoDetails="Each identity has a separate encrypted store keyed by its own password. Switching does not expose one to the other."
+                info="Each identity is a separate encrypted store keyed by its own password."
             >
-                <SettingBlock>
-                    {session.accounts.map((other) => (
-                        <div
-                            key={other.userId}
-                            className={`flex items-center gap-2 rounded border p-3 ${
-                                other.userId === account.userId
-                                    ? "border-primary-line bg-primary-soft"
-                                    : "border-border"
-                            }`}
-                        >
-                            <Avatar name={other.username} size="sm" />
-                            <span className="t-base flex-1 truncate">
-                                {other.username}
-                            </span>
-                            {other.userId === account.userId ? (
-                                <span className="tag bg-primary-soft text-primary">
-                                    active
+                <div className="space-y-1.5 py-3.5">
+                    {session.accounts.map((other) => {
+                        const isActive = other.userId === account.userId;
+                        return (
+                            <div
+                                key={other.userId}
+                                className={`flex items-center gap-2.5 rounded-lg border p-2.5 transition-colors ${
+                                    isActive
+                                        ? "border-primary-line bg-primary-soft"
+                                        : "border-border hover:border-primary-line"
+                                }`}
+                            >
+                                <Avatar name={other.username} size="sm" />
+                                <span className="t-base flex-1 truncate font-medium">
+                                    {other.username}
                                 </span>
-                            ) : (
-                                <button
-                                    onClick={() => {
-                                        session.selectAccount(other.userId);
-                                        navigate("/channels");
-                                    }}
-                                    className="t-small text-muted hover:text-primary"
-                                >
-                                    switch
-                                </button>
-                            )}
-                        </div>
-                    ))}
-                </SettingBlock>
+                                {isActive ? (
+                                    <span className="tag bg-primary-soft text-primary">
+                                        active
+                                    </span>
+                                ) : (
+                                    <button
+                                        onClick={() => {
+                                            session.selectAccount(other.userId);
+                                            navigate("/channels");
+                                        }}
+                                        className="btn-ghost px-3 py-1"
+                                    >
+                                        Switch
+                                    </button>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
             </SettingsSection>
         </div>
+    );
+}
+
+/**
+ * Auto-backup as ONE row: title, a status dot in the description, and the
+ * control that fits the state — a toggle when it can simply be on/off, an
+ * upgrade button without premium, nothing on unsupported browsers.
+ */
+function AutoBackupRow({
+    backup,
+    navigate,
+}: {
+    backup: ReturnType<typeof useAutoBackup>;
+    navigate: (to: string) => void;
+}) {
+    if (!backup) return null;
+
+    if (!backup.supported) {
+        return (
+            <SettingRow
+                title="Automatic backup"
+                description="Needs Chrome or Edge."
+                info="Firefox and Safari cannot write to a chosen file."
+                infoDetails="Automatic backup keeps a file on disk that rewrites itself after every change. Only Chromium browsers grant that file access — elsewhere, use Export above."
+            />
+        );
+    }
+
+    if (!backup.premium) {
+        return (
+            <SettingRow
+                title="Automatic backup"
+                description="Pick a file once — it keeps itself current."
+                info="A supporter feature."
+                infoDetails="Supporters pick a file on disk that CryptChat rewrites silently after every change. It lives outside the browser, so clearing browsing data cannot touch it. A cloud-synced folder covers a lost device too."
+                control={
+                    <button
+                        onClick={() => navigate("/subscribe")}
+                        className="btn-ghost"
+                    >
+                        Upgrade
+                    </button>
+                }
+            />
+        );
+    }
+
+    const statusText = !backup.configured
+        ? "Off"
+        : backup.status === "saving"
+          ? "Saving…"
+          : backup.status === "reconnect"
+            ? "Reconnect needed"
+            : backup.status === "error"
+              ? (backup.error ?? "Backup failed")
+              : backup.lastSavedAt
+                ? `Saved ${new Date(backup.lastSavedAt).toLocaleTimeString()}`
+                : "Waiting for the next change";
+
+    const dot = !backup.configured
+        ? "bg-border"
+        : backup.status === "error"
+          ? "bg-error"
+          : backup.status === "reconnect"
+            ? "bg-warn"
+            : "bg-ok";
+
+    return (
+        <SettingRow
+            title="Automatic backup"
+            info="Rewrites a file on disk after every change."
+            infoDetails="The file lives outside the browser, so clearing browsing data cannot erase it. Put it in a cloud-synced folder (Drive, Dropbox, iCloud) and a lost device is covered as well."
+            control={
+                backup.status === "reconnect" ? (
+                    <button
+                        onClick={() => backup.reconnect()}
+                        className="btn-primary"
+                    >
+                        <RefreshCw size={15} />
+                        Reconnect
+                    </button>
+                ) : (
+                    <Toggle
+                        checked={backup.configured}
+                        onChange={(next) =>
+                            next ? backup.configure() : backup.disable()
+                        }
+                        label="Automatic backup"
+                    />
+                )
+            }
+        >
+            <p className="t-small text-muted flex items-center gap-1.5">
+                <span
+                    className={`inline-block size-1.5 rounded-full ${dot}`}
+                    aria-hidden="true"
+                />
+                {statusText}
+                {backup.configured &&
+                    (backup.status === "idle" || backup.status === "saved") && (
+                    <button
+                        onClick={() => backup.backupNow()}
+                        className="text-muted hover:text-primary ml-1 underline underline-offset-2"
+                    >
+                        back up now
+                    </button>
+                )}
+            </p>
+        </SettingRow>
     );
 }

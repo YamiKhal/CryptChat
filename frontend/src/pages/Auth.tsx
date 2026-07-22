@@ -1,7 +1,7 @@
 import { useState, FormEvent, useRef, ChangeEvent } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useSession } from "@/lib/session";
-import { EncryptedBundle } from "@/lib/crypto";
+import { readBackupFile } from "@/lib/backup/exportImport";
 import Avatar from "@/components/ui/Avatar";
 import { InfoTip } from "@/components/ui/InfoTip";
 
@@ -21,36 +21,36 @@ export default function Auth() {
     const [busy, setBusy] = useState(false);
     const recoveryPhrase = session.recoveryPhrase;
     const [phraseAcknowledged, setPhraseAcknowledged] = useState(false);
-    const [bundle, setBundle] = useState<EncryptedBundle | null>(null);
-    const [bundlePassphrase, setBundlePassphrase] = useState("");
-    const bundleInput = useRef<HTMLInputElement>(null);
+    const restoreInput = useRef<HTMLInputElement>(null);
 
     const locked = session.status === "locked" && session.account !== null;
     const needsImport = session.needsImport;
 
-    function handleBundleFile(e: ChangeEvent<HTMLInputElement>) {
+    async function handleRestoreFile(e: ChangeEvent<HTMLInputElement>) {
         const file = e.target.files?.[0];
         if (!file) return;
         setError("");
-        file.text()
-            .then((text) => setBundle(JSON.parse(text) as EncryptedBundle))
-            .catch(() => setError("not a valid key file"));
-    }
-
-    async function handleImport(e: FormEvent) {
-        e.preventDefault();
-        setError("");
         setBusy(true);
         try {
-            if (!bundle) throw new Error("choose your key file first");
-            await session.importIdentity(bundle, bundlePassphrase, password);
-            navigate("/channels");
+            const container = await readBackupFile(file);
+            // When restoring into a known account (the needs-import screen after
+            // a login), the file must belong to that identity -- otherwise a
+            // stray backup would silently replace it.
+            if (
+                session.account &&
+                container.account.userId !== session.account.userId
+            ) {
+                throw new Error("this backup belongs to a different identity");
+            }
+            // Reloads into the locked screen, where the backup-era password
+            // unlocks it. No navigate needed.
+            await session.restoreFromBackup(container);
         } catch (err) {
             setError((err as Error).message);
-        } finally {
             setBusy(false);
-            setPassword("");
-            setBundlePassphrase("");
+        } finally {
+            // Let the same file be re-picked if it failed.
+            if (restoreInput.current) restoreInput.current.value = "";
         }
     }
 
@@ -145,9 +145,8 @@ export default function Auth() {
                                 className="accent-primary mt-0.5"
                             />
                             <span>
-                                I have written down my recovery code. I
-                                understand that without it, a forgotten password
-                                means my channels are gone permanently.
+                                I wrote it down. Without it, a forgotten
+                                password means my channels are gone for good.
                             </span>
                         </label>
 
@@ -163,7 +162,7 @@ export default function Auth() {
                         </button>
                     </div>
                 ) : needsImport ? (
-                    <form onSubmit={handleImport} className="card space-y-4">
+                    <div className="card space-y-4">
                         <div className="flex items-center gap-3">
                             <Avatar
                                 name={session.account!.username}
@@ -174,59 +173,32 @@ export default function Auth() {
                                     {session.account!.username}
                                 </p>
                                 <p className="t-base text-warn">
-                                    no keys on this device
+                                    nothing on this device
                                 </p>
                             </div>
                         </div>
 
-                        <p className="border-info-line bg-info-soft t-base text-info rounded border p-4">
-                            Your password is correct, but this device has none
-                            of your keys — the server never had them to give
-                            back. Import the key file you exported from your
-                            other device.
+                        <p className="border-info-line bg-info-soft t-base text-info rounded-lg border p-3">
+                            Password's right, but this device has none of your
+                            data — the server never held it. Restore your backup
+                            file to continue.
                         </p>
 
                         <input
-                            ref={bundleInput}
+                            ref={restoreInput}
                             type="file"
                             accept="application/json,.json"
                             className="hidden"
-                            onChange={handleBundleFile}
+                            onChange={handleRestoreFile}
                         />
                         <button
                             type="button"
-                            onClick={() => bundleInput.current?.click()}
-                            className="btn-ghost t-base w-full"
+                            disabled={busy}
+                            onClick={() => restoreInput.current?.click()}
+                            className="btn-primary w-full"
                         >
-                            {bundle ? "key file loaded ✓" : "choose key file"}
+                            {busy ? "restoring…" : "Restore from backup file"}
                         </button>
-
-                        <label className="block space-y-1">
-                            <span className="t-base text-muted">
-                                key file passphrase
-                            </span>
-                            <input
-                                className="field"
-                                type="password"
-                                value={bundlePassphrase}
-                                onChange={(e) =>
-                                    setBundlePassphrase(e.target.value)
-                                }
-                            />
-                        </label>
-
-                        <label className="block space-y-1">
-                            <span className="t-base text-muted">
-                                your account password
-                            </span>
-                            <input
-                                className="field"
-                                type="password"
-                                autoComplete="current-password"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                            />
-                        </label>
 
                         {error && (
                             <p className="border-error-line bg-error-soft t-base text-error rounded border p-4">
@@ -235,20 +207,13 @@ export default function Auth() {
                         )}
 
                         <button
-                            className="btn-primary w-full"
-                            disabled={busy || !bundle}
-                        >
-                            {busy ? "importing…" : "Import keys"}
-                        </button>
-
-                        <button
                             type="button"
                             className="t-base text-muted hover:text-foreground w-full"
                             onClick={() => session.logout()}
                         >
                             use a different account
                         </button>
-                    </form>
+                    </div>
                 ) : (
                     <form onSubmit={handleSubmit} className="card space-y-4">
                         {locked ? (
@@ -460,6 +425,26 @@ export default function Auth() {
                             ))}
                         </div>
                     )}
+
+                {!locked && !needsImport && !recoveryPhrase && (
+                    <div className="space-y-2 text-center">
+                        <input
+                            ref={restoreInput}
+                            type="file"
+                            accept="application/json,.json"
+                            className="hidden"
+                            onChange={handleRestoreFile}
+                        />
+                        <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => restoreInput.current?.click()}
+                            className="t-base text-muted hover:text-primary w-full"
+                        >
+                            Restore from a backup file
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
     );

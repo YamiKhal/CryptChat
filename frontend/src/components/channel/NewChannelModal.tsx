@@ -26,11 +26,11 @@ export function NewChannelModal({
 
     return (
         <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+            className="modal-backdrop"
             onClick={onClose}
         >
             <div
-                className="border-border bg-surface w-full max-w-xs space-y-3 rounded-lg border p-4"
+                className="modal-panel max-w-xs space-y-3"
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="flex items-center gap-2">
@@ -101,12 +101,9 @@ export function NewChannelModal({
                                 <span className="t-small">
                                     Incognito
                                     <span className="text-muted mt-0.5 block">
-                                        Members appear as colours only — no
-                                        names or avatars are shown or sent, and
-                                        colours are per-channel. This hides
-                                        who's who in the interface; the server
-                                        still routes by membership, so it is not
-                                        anonymity from a determined member.
+                                        Members show as colours — no names, no
+                                        avatars. Hides who's who in the UI, not
+                                        from the server.
                                     </span>
                                 </span>
                             </label>

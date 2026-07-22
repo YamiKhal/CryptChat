@@ -1,4 +1,5 @@
 import { useEffect, useState, Fragment, ReactNode } from 'react';
+import { X } from 'lucide-react';
 import { UserProfile } from '@/lib/vault';
 import { unpackAsset, decodeImage } from '@/lib/binary';
 import { isSafeUrl } from '@/lib/links';
@@ -72,7 +73,7 @@ function Banner({ profile }: { profile: UserProfile }) {
   }, [profile.background]);
 
   return (
-    <div className="h-24 w-full bg-surface-raised">
+    <div className="h-28 w-full bg-primary-soft">
       {url && <img src={url} alt="" className="h-full w-full object-cover" />}
     </div>
   );
@@ -87,37 +88,39 @@ export function UserProfileModal({
 }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black p-4"
+      className="modal-backdrop"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-xs overflow-hidden rounded-lg border border-border bg-surface"
+        className="modal-panel relative max-w-sm overflow-hidden p-0"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Close floats over the banner, Discord-style — no footer needed. */}
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute top-2.5 right-2.5 z-10 grid size-8 place-items-center rounded-full
+                     bg-surface text-muted transition-colors hover:text-foreground"
+        >
+          <X size={16} />
+        </button>
+
         <Banner profile={profile} />
 
-        <div className="space-y-3 p-4">
-          <div className="-mt-10 flex items-end gap-3">
-            <div className="rounded-full ring-2 ring-surface">
-              <Avatar asset={profile.avatar} name={profile.displayName} size="lg" />
-            </div>
+        <div className="space-y-2 px-4 pt-0 pb-4">
+          <div className="-mt-10 w-fit rounded-full ring-4 ring-surface">
+            <Avatar asset={profile.avatar} name={profile.displayName} size="lg" />
           </div>
 
-          <p className="t-h3 font-semibold text-foreground">{profile.displayName}</p>
+          <p className="t-h3 font-bold text-foreground">{profile.displayName}</p>
 
-          {profile.bio ? (
-            <p className="whitespace-pre-wrap wrap-break-word t-h4 text-foreground">
-              {renderBio(profile.bio)}
-            </p>
-          ) : (
-            <p className="t-base italic text-muted">No bio.</p>
+          {profile.bio && (
+            <div className="rounded-lg bg-surface-raised p-3">
+              <p className="t-base whitespace-pre-wrap wrap-break-word text-foreground">
+                {renderBio(profile.bio)}
+              </p>
+            </div>
           )}
-        </div>
-
-        <div className="flex justify-end border-t border-border p-3">
-          <button onClick={onClose} className="btn-ghost t-base">
-            close
-          </button>
         </div>
       </div>
     </div>

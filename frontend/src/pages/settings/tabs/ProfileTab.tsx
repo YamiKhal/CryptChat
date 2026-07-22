@@ -11,7 +11,7 @@ import { Vault, AccountDescriptor } from "@/lib/vault";
 import Avatar from "@/components/ui/Avatar";
 import {
     SettingsSection,
-    SettingBlock,
+    SettingRow,
 } from "@/components/settings/SettingsUI";
 import { SetStatus } from "@/pages/settings/types";
 
@@ -112,107 +112,106 @@ export default function ProfileTab({
                 info="Only channel members see this — never the server."
                 infoDetails="Your name, picture, bio, and banner are encrypted and signed, then sent only to members of channels you are in. The server stores none of it — it only ever holds a hash of your username."
             >
-                <SettingBlock>
-                    <div className="flex items-center gap-4">
-                        <Avatar
-                            asset={avatar}
-                            name={displayName || account.username}
-                            size="lg"
-                        />
-                        <div className="space-y-2">
-                            <input
-                                ref={avatarInput}
-                                type="file"
-                                accept="image/png,image/jpeg,image/webp,image/gif"
-                                className="hidden"
-                                onChange={handleAvatar}
-                            />
-                            <button
-                                onClick={() => avatarInput.current?.click()}
-                                className="btn-ghost t-base"
-                            >
-                                choose image
-                            </button>
+                <SettingRow
+                    title="Picture"
+                    control={
+                        <div className="flex items-center gap-2">
                             {avatar && (
                                 <button
                                     onClick={() => setAvatar(undefined)}
-                                    className="t-base text-muted hover:text-error block"
+                                    className="t-base text-muted hover:text-error"
                                 >
-                                    remove
+                                    Remove
                                 </button>
                             )}
-                        </div>
-                    </div>
-                </SettingBlock>
-
-                <SettingBlock>
-                    <label className="block space-y-1">
-                        <span className="t-base text-muted">display name</span>
-                        <input
-                            className="field"
-                            value={displayName}
-                            onChange={(e) => setDisplayName(e.target.value)}
-                            maxLength={48}
-                        />
-                    </label>
-                </SettingBlock>
-
-                <SettingBlock>
-                    <label className="block space-y-1">
-                        <span className="t-base text-muted">bio</span>
-                        <textarea
-                            className="field min-h-20 resize-y"
-                            value={bio}
-                            onChange={(e) => setBio(e.target.value)}
-                            maxLength={500}
-                            placeholder="A few words about you. Links: [my site](https://example.com)"
-                        />
-                        <span className="t-small text-muted">
-                            {bio.length}/500 — wrap a link as [label](https://…)
-                        </span>
-                    </label>
-                </SettingBlock>
-
-                <SettingBlock>
-                    <span className="t-base text-muted">profile banner</span>
-                    <div className="flex items-center gap-3">
-                        <div className="border-border bg-surface-raised h-12 w-24 shrink-0 overflow-hidden rounded border">
-                            {background && (
-                                <img
-                                    src={bytesToDataUrl(
-                                        base64UrlToBytes(background.data),
-                                        background.mime,
-                                    )}
-                                    alt=""
-                                    className="h-full w-full object-cover"
-                                />
-                            )}
-                        </div>
-                        <div className="space-y-1">
-                            <input
-                                ref={backgroundInput}
-                                type="file"
-                                accept="image/png,image/jpeg,image/webp,image/gif"
-                                className="hidden"
-                                onChange={handleBackground}
-                            />
                             <button
-                                onClick={() => backgroundInput.current?.click()}
-                                className="btn-ghost t-base"
+                                onClick={() => avatarInput.current?.click()}
+                                className="btn-ghost"
                             >
-                                choose banner
+                                Change
                             </button>
+                        </div>
+                    }
+                >
+                    <input
+                        ref={avatarInput}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/gif"
+                        className="hidden"
+                        onChange={handleAvatar}
+                    />
+                    <Avatar
+                        asset={avatar}
+                        name={displayName || account.username}
+                        size="lg"
+                    />
+                </SettingRow>
+
+                <SettingRow title="Display name">
+                    <input
+                        className="field max-w-sm"
+                        value={displayName}
+                        onChange={(e) => setDisplayName(e.target.value)}
+                        maxLength={48}
+                    />
+                </SettingRow>
+
+                <SettingRow title="Bio">
+                    <textarea
+                        className="field min-h-20 max-w-sm resize-y"
+                        value={bio}
+                        onChange={(e) => setBio(e.target.value)}
+                        maxLength={500}
+                        placeholder="Say something. [label](https://…) makes a link."
+                    />
+                    {bio.length > 400 && (
+                        <span className="t-small text-muted">
+                            {bio.length}/500
+                        </span>
+                    )}
+                </SettingRow>
+
+                <SettingRow
+                    title="Banner"
+                    control={
+                        <div className="flex items-center gap-2">
                             {background && (
                                 <button
                                     onClick={() => setBackground(undefined)}
-                                    className="t-base text-muted hover:text-error block"
+                                    className="t-base text-muted hover:text-error"
                                 >
-                                    remove
+                                    Remove
                                 </button>
                             )}
+                            <button
+                                onClick={() => backgroundInput.current?.click()}
+                                className="btn-ghost"
+                            >
+                                Change
+                            </button>
                         </div>
+                    }
+                >
+                    <input
+                        ref={backgroundInput}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/gif"
+                        className="hidden"
+                        onChange={handleBackground}
+                    />
+                    <div className="border-border bg-surface-raised h-14 w-28 overflow-hidden rounded-lg border">
+                        {background && (
+                            <img
+                                src={bytesToDataUrl(
+                                    base64UrlToBytes(background.data),
+                                    background.mime,
+                                )}
+                                alt=""
+                                className="h-full w-full object-cover"
+                            />
+                        )}
                     </div>
-                </SettingBlock>
+                </SettingRow>
             </SettingsSection>
 
             <button
@@ -220,7 +219,7 @@ export default function ProfileTab({
                 disabled={busy}
                 className="btn-primary w-full"
             >
-                Save profile
+                Save
             </button>
         </div>
     );

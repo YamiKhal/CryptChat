@@ -69,7 +69,7 @@ export default function TrustPanel({
       onClick={onClose}
     >
       <div
-        className="max-h-[85vh] w-full max-w-md space-y-3 overflow-y-auto rounded-lg border border-border bg-surface p-4"
+        className="modal-panel max-h-[85vh] max-w-md space-y-3 overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2">

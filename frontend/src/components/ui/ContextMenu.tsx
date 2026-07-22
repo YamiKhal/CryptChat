@@ -89,8 +89,7 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
     <div
       ref={ref}
       role="menu"
-      className="fixed z-50 min-w-44 overflow-hidden rounded-lg border border-border
-                 bg-surface-raised py-1 shadow-xl animate-fade-in"
+      className="menu-panel fixed z-50 min-w-48"
       style={{ left: adjusted.x, top: adjusted.y }}
       // The menu is itself right-clickable territory; don't open the browser's.
       onContextMenu={(e) => e.preventDefault()}
@@ -106,9 +105,7 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
             item.onSelect();
             onClose();
           }}
-          className={`flex w-full items-center gap-2.5 px-3 py-2 text-left t-base transition-colors
-            ${item.disabled ? 'cursor-not-allowed text-muted' : 'hover:bg-primary-soft'}
-            ${item.danger && !item.disabled ? 'text-error hover:bg-error-soft' : ''}`}
+          className={`menu-item ${item.danger && !item.disabled ? 'menu-item-danger' : ''}`}
         >
           {item.icon && <span className="flex-none">{item.icon}</span>}
           <span className="flex-1 truncate">{item.label}</span>

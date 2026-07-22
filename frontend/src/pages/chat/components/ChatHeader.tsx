@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Phone, Video, LogOut } from 'lucide-react';
+import { ArrowLeft, Phone, Video, LogOut } from 'lucide-react';
 import { StoredChannel, Vault } from '@/lib/vault';
 import { Limits } from '@/lib/limits';
 import { ChannelIcon } from '@/components/channel/ChannelIcon';
@@ -37,10 +37,10 @@ export function ChatHeader({
     <header className="flex h-14.25 shrink-0 items-center gap-3 border-b border-border bg-surface px-4">
       <Link
         to="/channels"
-        className="text-muted transition-colors hover:text-primary lg:hidden"
+        className="text-muted hover:bg-surface-raised hover:text-primary -ml-1 rounded-lg p-1.5 transition-colors lg:hidden"
         aria-label="Back to channels"
       >
-        ←
+        <ArrowLeft size={18} />
       </Link>
       {/* Clicking (or right-click / long-press) the icon or name opens the
           channel menu: copy code, rename, set a picture, block, leave. */}
@@ -50,7 +50,7 @@ export function ChatHeader({
           onOpenMenu(r.left, r.bottom + 4);
         }}
         {...headerHandlers}
-        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        className="hover:bg-surface-raised -mx-1.5 flex min-w-0 flex-1 items-center gap-3 rounded-lg px-1.5 py-1 text-left transition-colors"
         title="Channel options"
       >
         <ChannelIcon
@@ -84,7 +84,7 @@ export function ChatHeader({
         <>
           <button
             onClick={() => onStartCall('audio')}
-            className="text-muted transition-colors hover:text-primary cursor-pointer p-2"
+            className="icon-btn flex-none"
             title="Voice call"
             aria-label="Voice call"
           >
@@ -92,7 +92,7 @@ export function ChatHeader({
           </button>
           <button
             onClick={() => onStartCall('video')}
-            className="text-muted transition-colors hover:text-primary cursor-pointer p-2"
+            className="icon-btn flex-none"
             title={limits.premium ? 'Video call' : 'Video calling is a supporter feature'}
             aria-label="Video call"
           >
@@ -103,7 +103,7 @@ export function ChatHeader({
 
       <button
         onClick={onLeave}
-        className="text-muted transition-colors hover:text-primary cursor-pointer p-2"
+        className="text-muted hover:bg-error-soft hover:text-error flex-none rounded-lg p-2 transition-colors"
         title="Leave"
         aria-label="Leave channel"
       >

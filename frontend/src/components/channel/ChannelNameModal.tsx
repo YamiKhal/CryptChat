@@ -21,11 +21,11 @@ export function ChannelNameModal({
 
     return (
         <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+            className="modal-backdrop"
             onClick={onClose}
         >
             <div
-                className="border-border bg-surface w-full max-w-xs space-y-3 rounded-lg border p-4"
+                className="modal-panel max-w-xs space-y-3"
                 onClick={(e) => e.stopPropagation()}
             >
                 <p className="t-base text-muted">Name this channel</p>

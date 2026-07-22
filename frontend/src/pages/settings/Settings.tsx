@@ -40,7 +40,7 @@ const TABS: { id: TabId; label: string; icon: typeof User }[] = [
     { id: "sounds", label: "Sounds", icon: Volume2 },
     { id: "account", label: "Account", icon: ShieldCheck },
     { id: "billing", label: "Subscription", icon: CreditCard },
-    { id: "keys", label: "Keys & devices", icon: KeyRound },
+    { id: "keys", label: "Backup & devices", icon: KeyRound },
     { id: "danger", label: "Danger zone", icon: AlertTriangle },
 ];
 
@@ -101,7 +101,7 @@ export default function Settings() {
             <div className="grid h-full place-items-center p-4">
                 <div className="card space-y-3 text-center">
                     <p className="t-h4">Unlock your vault to change settings.</p>
-                    <Link to="/" className="btn-ghost">
+                    <Link to="/login" className="btn-ghost">
                         Unlock
                     </Link>
                 </div>
@@ -116,7 +116,7 @@ export default function Settings() {
             {/* category list — the left column, mirroring the channel list. On mobile
           it is the whole screen until a category is chosen. */}
             <aside
-                className={`border-border w-full flex-col border-r lg:flex lg:w-85 lg:shrink-0 ${
+                className={`border-border bg-surface w-full flex-col border-r lg:flex lg:w-85 lg:shrink-0 ${
                     tab ? "hidden lg:flex" : "flex"
                 }`}
             >
@@ -180,10 +180,10 @@ export default function Settings() {
                 <div className="border-border flex h-14.25 shrink-0 items-center gap-3 border-b px-4">
                     <button
                         onClick={() => setTab(null)}
-                        className="text-muted hover:text-primary transition-colors lg:hidden"
+                        className="text-muted hover:bg-surface-raised hover:text-primary -ml-1 rounded-lg p-1.5 transition-colors lg:hidden"
                         aria-label="Back to settings"
                     >
-                        ←
+                        <ArrowLeft size={18} />
                     </button>
                     <h2 className="t-h4 font-semibold tracking-wider uppercase">
                         {activeTab?.label ?? "settings"}
@@ -201,7 +201,7 @@ export default function Settings() {
                     >
                         {status && (
                             <p
-                                className={`t-base rounded border p-4 ${STATUS_STYLES[status.kind]}`}
+                                className={`t-base animate-fade-in rounded-lg border p-3 ${STATUS_STYLES[status.kind]}`}
                             >
                                 {status.text}
                             </p>
@@ -231,11 +231,7 @@ export default function Settings() {
                             <BillingTab setStatus={setStatus} />
                         )}
                         {tab === "keys" && (
-                            <KeysTab
-                                vault={vault}
-                                account={account}
-                                setStatus={setStatus}
-                            />
+                            <KeysTab account={account} setStatus={setStatus} />
                         )}
                         {tab === "danger" && <DangerTab account={account} />}
                     </div>

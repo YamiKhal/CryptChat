@@ -23,6 +23,8 @@ interface MessageBubbleProps {
   nameFor: (userId: string) => string;
   onToggleReaction: (emoji: string) => void;
   onJumpToReply: (messageId: string) => void;
+  /** Opens the password prompt for a locked message. */
+  onUnlock?: () => void;
   /** False when the replied-to message is not in this device's transcript. */
   replyTargetExists: boolean;
   /** Spread onto the row to arm right-click / long-press. */
@@ -56,6 +58,7 @@ export default function MessageBubble({
   nameFor,
   onToggleReaction,
   onJumpToReply,
+  onUnlock,
   replyTargetExists,
   contextHandlers,
   highlighted,
@@ -269,7 +272,7 @@ export default function MessageBubble({
             // slot kept so a reply that quoted it still resolves.
             <p className="italic text-muted">message deleted</p>
           ) : message.locked ? (
-            <LockedBody hint={message.locked.hint} />
+            <LockedBody hint={message.locked.hint} onUnlock={onUnlock} />
           ) : (
             <>
               {message.body &&
@@ -317,7 +320,7 @@ export default function MessageBubble({
           )}
 
           {message.pending && (
-            <p className="mt-1 t-small text-muted">queued — not yet sent</p>
+            <p className="mt-0.5 t-small italic text-muted">queued</p>
           )}
           </div>
 
@@ -330,13 +333,17 @@ export default function MessageBubble({
                 e.stopPropagation();
                 setSpoilerRevealed(true);
               }}
-              className="absolute inset-0 flex items-center justify-center gap-1.5
-                         bg-surface-raised t-small font-medium text-muted
-                         transition hover:text-foreground"
-              title="Spoiler — click to reveal"
+              className="group/spoiler absolute inset-0 flex items-center justify-center
+                         bg-surface-raised"
+              title="Reveal spoiler"
             >
-              <EyeOff size={13} aria-hidden="true" />
-              Spoiler — tap to reveal
+              <span
+                className="tag border border-border bg-surface text-muted transition-colors
+                           group-hover/spoiler:border-primary-line group-hover/spoiler:text-foreground"
+              >
+                <EyeOff size={11} aria-hidden="true" />
+                spoiler
+              </span>
             </button>
           )}
         </div>

@@ -25,6 +25,7 @@ export function MessageRow({
   onToggleReaction,
   onJumpToReply,
   onOpenMenu,
+  onUnlock,
   avatarColor,
   nameOverride,
   senderTrusted,
@@ -47,6 +48,7 @@ export function MessageRow({
   onToggleReaction: (emoji: string) => void;
   onJumpToReply: (id: string) => void;
   onOpenMenu: (x: number, y: number) => void;
+  onUnlock?: () => void;
   avatarColor?: number;
   nameOverride?: string;
   senderTrusted?: boolean;
@@ -77,6 +79,7 @@ export function MessageRow({
       nameFor={nameFor}
       onToggleReaction={onToggleReaction}
       onJumpToReply={onJumpToReply}
+      onUnlock={onUnlock}
       replyTargetExists={message.replyTo ? messageIds.has(message.replyTo.id) : false}
       contextHandlers={handlers}
       highlighted={highlighted}

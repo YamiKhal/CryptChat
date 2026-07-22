@@ -74,7 +74,7 @@ export default function VerifyEmail() {
             </>
           )}
 
-          <Link to="/" className="btn-ghost w-full text-center t-base">
+          <Link to="/login" className="btn-ghost w-full text-center t-base">
             continue
           </Link>
         </div>

@@ -102,7 +102,7 @@ export function SettingRow({
     <div className="flex items-start justify-between gap-4 py-3.5">
       <div className="min-w-0 flex-1 space-y-1.5">
         <div className="flex items-center gap-1.5">
-          <span className="t-h3 font-medium text-foreground">{title}</span>
+          <span className="t-h4 font-medium text-foreground">{title}</span>
           {info && <InfoTip tip={info} details={infoDetails} title={title} />}
         </div>
         {description && <p className="t-base leading-snug text-muted">{description}</p>}

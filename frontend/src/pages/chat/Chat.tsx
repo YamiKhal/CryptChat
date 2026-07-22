@@ -209,9 +209,8 @@ export default function Chat() {
         <div className="border-b border-warn-line bg-warn-soft px-4 py-3 t-base text-warn">
           <p className="font-medium">Waiting for the channel key</p>
           <p className="mt-1 text-warn">
-            Nobody has sent it yet. A member who is online will pass it to you automatically — the
-            server cannot, because it has never held it. Messages sent meanwhile stay queued and
-            unreadable until the key arrives.
+            An online member will pass it to you automatically — the server never holds it. Until
+            then, messages stay queued.
           </p>
         </div>
       )}
@@ -234,6 +233,7 @@ export default function Chat() {
         onToggleReaction={composer.handleToggleReaction}
         onJumpToReply={composer.jumpToMessage}
         onOpenMenu={(message, x, y) => setMenu({ message, x, y })}
+        onUnlock={setUnlocking}
         bottomRef={bottomRef}
       />
 

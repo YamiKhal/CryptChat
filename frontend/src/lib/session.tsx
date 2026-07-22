@@ -24,6 +24,9 @@ import {
   forgetAccount,
   hasVault,
 } from '@/lib/vault';
+import { migrateLocalStorageToIndexedDb } from '@/lib/vault/storage';
+import { importBackup } from '@/lib/backup/exportImport';
+import type { BackupContainer } from '@/lib/backup/container';
 import {
   SessionState,
   SessionApi,
@@ -40,6 +43,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     account: null,
     token: null,
     vault: null,
+    needsImport: false,
   });
   const [accounts, setAccounts] = useState<AccountDescriptor[]>(() => listAccounts());
   const [recoveryPending, setRecoveryPending] = useState(false);
@@ -60,13 +64,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     (async () => {
+      // Carry any ciphertext an older build left in localStorage over to
+      // IndexedDB before the vault is read from its new home. One-time and idempotent.
+      await migrateLocalStorageToIndexedDb();
+
       const activeId = localStorage.getItem(ACTIVE_KEY);
       const account = activeId ? getAccount(activeId) : null;
 
       // Every path must settle the status, or the app hangs on the restoring
       // screen forever.
       if (!activeId || !account) {
-        if (!cancelled) setState({ status: 'anonymous', account: null, token: null, vault: null });
+        if (!cancelled)
+          setState({ status: 'anonymous', account: null, token: null, vault: null, needsImport: false });
         return;
       }
 
@@ -74,11 +83,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const vault = await Vault.resume(activeId);
       if (cancelled) return;
 
+      // Resume returns null both when the vault is merely locked (blob present,
+      // no tab key) and when this device has no vault at all. Only the latter
+      // needs an import, so distinguish them once, here.
+      const needsImport = vault ? false : !(await hasVault(activeId));
+      if (cancelled) return;
+
       setState({
         status: vault ? 'unlocked' : 'locked',
         account,
         token,
         vault,
+        needsImport,
       });
     })();
 
@@ -141,7 +157,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setAccounts(listAccounts());
       setRecoveryPhrase(recovery.phrase);
       setRecoveryPending(true);
-      setState({ status: 'unlocked', account, token: res.token, vault });
+      setState({ status: 'unlocked', account, token: res.token, vault, needsImport: false });
 
       return { recoveryPhrase: recovery.phrase };
     },
@@ -252,7 +268,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         );
         await api.putRecoveryBlob(token, resealed);
 
-        setState((s) => ({ ...s, status: 'unlocked', account, token, vault }));
+        setState((s) => ({ ...s, status: 'unlocked', account, token, vault, needsImport: false }));
       } finally {
         wipe(entropy);
       }
@@ -285,14 +301,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // account -- the server never had them to return. Import a key bundle
       // from the original device via Settings. Surfaced as `locked` rather
       // than pretending the login failed.
-      setState({ status: 'locked', account, token: res.token, vault: null });
+      setState({ status: 'locked', account, token: res.token, vault: null, needsImport: true });
       return;
     }
 
     const vault = await Vault.unlock(res.userId, password);
     if (remember) await vault.rememberForSession();
 
-    setState({ status: 'unlocked', account, token: res.token, vault });
+    setState({ status: 'unlocked', account, token: res.token, vault, needsImport: false });
   }, []);
 
   const unlock = useCallback(
@@ -312,7 +328,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
 
       touchAccount(state.account.userId);
-      setState((s) => ({ ...s, status: 'unlocked', token, vault }));
+      setState((s) => ({ ...s, status: 'unlocked', token, vault, needsImport: false }));
     },
     [state.account, state.token]
   );
@@ -364,17 +380,37 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       saveAccount(account);
       setAccounts(listAccounts());
 
-      setState((s) => ({ ...s, status: 'unlocked', account, vault }));
+      setState((s) => ({ ...s, status: 'unlocked', account, vault, needsImport: false }));
     },
     [state.account]
   );
+
+  /**
+   * Restore this device from a full backup file, then reload into the locked
+   * screen so the user unlocks with their password.
+   *
+   * This is the disaster path: "clear browsing data" wipes the account registry
+   * too, so the user lands here anonymous with an empty device. Restoring writes
+   * the account descriptor and the sealed vault/messages back, points the active
+   * pointer at it, and reloads -- the reload rebinds every consumer to the
+   * restored vault far more cheaply than rebuilding the session in place, exactly
+   * as the old key-file import did. The vault is still sealed under the
+   * backup-era password, so the unlock screen is where it actually opens.
+   */
+  const restoreFromBackup = useCallback(async (container: BackupContainer) => {
+    const account = await importBackup(container);
+    localStorage.setItem(ACTIVE_KEY, account.userId);
+    window.location.reload();
+  }, []);
 
   const lock = useCallback(() => {
     state.vault?.lock();
     // Decrypted images are held as object URLs outside the vault. Locking must
     // drop them too, or plaintext attachments outlive the key that opened them.
     clearImageCache();
-    setState((s) => ({ ...s, status: s.account ? 'locked' : 'anonymous', vault: null }));
+    // The vault blob is still on this device -- locking only drops the in-memory
+    // key -- so this is a needs-unlock state, never needs-import.
+    setState((s) => ({ ...s, status: s.account ? 'locked' : 'anonymous', vault: null, needsImport: false }));
   }, [state.vault]);
 
   const logout = useCallback(() => {
@@ -386,7 +422,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(ACTIVE_KEY);
     // The vault itself stays on disk -- logging out is not "destroy my keys".
     // Settings > remove account does that explicitly.
-    setState({ status: 'anonymous', account: null, token: null, vault: null });
+    setState({ status: 'anonymous', account: null, token: null, vault: null, needsImport: false });
   }, [state.vault, state.account]);
 
   const selectAccount = useCallback(
@@ -396,31 +432,34 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       state.vault?.lock();
       localStorage.setItem(ACTIVE_KEY, userId);
       const token = sessionStorage.getItem(tokenKey(userId));
-      Vault.resume(userId).then((vault) => {
-        setState({ status: vault ? 'unlocked' : 'locked', account, token, vault });
+      Vault.resume(userId).then(async (vault) => {
+        const needsImport = vault ? false : !(await hasVault(userId));
+        setState({ status: vault ? 'unlocked' : 'locked', account, token, vault, needsImport });
       });
     },
     [state.vault]
   );
 
   const removeAccount = useCallback(
-    (userId: string) => {
-      forgetAccount(userId);
+    async (userId: string) => {
       sessionStorage.removeItem(tokenKey(userId));
-      setAccounts(listAccounts());
+      // Flip UI to a safe state before the (async) ciphertext sweep, so the app
+      // is never showing an account whose vault is mid-deletion.
       if (state.account?.userId === userId) {
         localStorage.removeItem(ACTIVE_KEY);
-        setState({ status: 'anonymous', account: null, token: null, vault: null });
+        state.vault?.lock();
+        setState({ status: 'anonymous', account: null, token: null, vault: null, needsImport: false });
       }
+      await forgetAccount(userId);
+      setAccounts(listAccounts());
     },
-    [state.account]
+    [state.account, state.vault]
   );
 
   const value = useMemo<SessionApi>(
     () => ({
       ...state,
       accounts,
-      needsImport: state.status === 'locked' && !!state.account && !hasVault(state.account.userId),
       recoveryPending,
       recoveryPhrase,
       acknowledgeRecovery,
@@ -428,6 +467,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       login,
       unlock,
       importIdentity,
+      restoreFromBackup,
       recoverWithCode,
       syncRecoveryBlob,
       lock,
@@ -446,6 +486,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       login,
       unlock,
       importIdentity,
+      restoreFromBackup,
       recoverWithCode,
       syncRecoveryBlob,
       lock,

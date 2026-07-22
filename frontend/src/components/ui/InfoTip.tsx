@@ -85,11 +85,11 @@ export function InfoTip({
 
             {open && (
                 <span
-                    className="fixed inset-0 z-70 flex items-center justify-center bg-black/80 p-4 text-left font-normal tracking-normal normal-case"
+                    className="fixed inset-0 z-70 flex items-center justify-center bg-black p-4 text-left font-normal tracking-normal normal-case"
                     onClick={() => setOpen(false)}
                 >
                     <span
-                        className="border-border bg-surface animate-fade-in w-full max-w-xs space-y-3 rounded-lg border p-4 motion-reduce:animate-none"
+                        className="modal-panel max-w-xs space-y-3"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {title && (

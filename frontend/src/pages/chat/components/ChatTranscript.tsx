@@ -31,6 +31,7 @@ export function ChatTranscript({
   onToggleReaction,
   onJumpToReply,
   onOpenMenu,
+  onUnlock,
   bottomRef,
 }: {
   messages: StoredMessage[];
@@ -50,6 +51,7 @@ export function ChatTranscript({
   onToggleReaction: (message: StoredMessage, emoji: string) => void;
   onJumpToReply: (id: string) => void;
   onOpenMenu: (message: StoredMessage, x: number, y: number) => void;
+  onUnlock: (message: StoredMessage) => void;
   bottomRef: RefObject<HTMLDivElement>;
 }) {
   return (
@@ -192,6 +194,7 @@ export function ChatTranscript({
                 onToggleReaction={(emoji) => onToggleReaction(message, emoji)}
                 onJumpToReply={onJumpToReply}
                 onOpenMenu={(x, y) => onOpenMenu(message, x, y)}
+                onUnlock={message.locked ? () => onUnlock(message) : undefined}
                 avatarColor={
                   channel.incognito ? incognitoHue(channelId, message.senderId) : undefined
                 }

@@ -112,7 +112,7 @@ export default function SoundsTab({
             >
                 <SettingRow
                     title="Enable sounds"
-                    description="Master switch for every cue below."
+                    description="Master switch."
                     control={
                         <Toggle
                             checked={sound.enabled}
@@ -147,11 +147,11 @@ export default function SoundsTab({
 
             <SettingsSection
                 title="When to play"
-                description="Press ▶ to hear a cue, ⬆ to use your own file, and the switch to turn it on or off."
+                description="▶ preview · ⬆ your own file."
             >
                 <SoundRow
                     title="Message from another chat"
-                    description="A new message in a channel you do not have open."
+                    description="New message in another channel."
                     event="message-in"
                     checked={sound.messageReceived}
                     disabled={!sound.enabled}
@@ -162,7 +162,7 @@ export default function SoundsTab({
                 />
                 <SoundRow
                     title="Message in the open chat"
-                    description="Also chime for messages in the chat you are reading."
+                    description="Chime in the open chat too."
                     event="message-in-active"
                     checked={sound.messageInActiveChat}
                     disabled={!sound.enabled}
@@ -173,7 +173,7 @@ export default function SoundsTab({
                 />
                 <SoundRow
                     title="Message sent"
-                    description="A soft blip when your own message goes out."
+                    description="Blip when you send."
                     event="message-sent"
                     checked={sound.messageSent}
                     disabled={!sound.enabled}
@@ -184,7 +184,7 @@ export default function SoundsTab({
                 />
                 <SoundRow
                     title="Calls"
-                    description="Ring on incoming and outgoing calls. A custom file loops as the ringtone."
+                    description="Ring for calls. A custom file loops as the ringtone."
                     event="call-incoming"
                     checked={sound.calls}
                     disabled={!sound.enabled}
@@ -195,7 +195,7 @@ export default function SoundsTab({
                 />
                 <SoundRow
                     title="Keyboard clicks"
-                    description="A faint tick on each keystroke while typing."
+                    description="Tick on each keystroke."
                     event="typing"
                     checked={sound.typing}
                     disabled={!sound.enabled}

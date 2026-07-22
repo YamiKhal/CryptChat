@@ -1,15 +1,20 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { ReactNode } from "react";
 import Auth from "@/pages/Auth";
+import Landing from "@/pages/marketing/Landing";
+import Showcase from "@/pages/marketing/Showcase";
+import KnowledgeBase from "@/pages/marketing/KnowledgeBase";
 import AppShell from "@/components/layout/AppShell";
 import Settings from "@/pages/settings/Settings";
 import Recover from "@/pages/Recover";
 import VerifyEmail from "@/pages/VerifyEmail";
 import Subscribe from "@/pages/Subscribe";
-import { useSession } from "@/lib/session";
+import { useSession, useUnlockedSession } from "@/lib/session";
 import { RelayProvider } from "@/lib/relayContext";
 import { CallProvider } from "@/lib/callContext";
 import CallOverlay from "@/components/call/CallOverlay";
+import { AutoBackupProvider } from "@/lib/backup/AutoBackupContext";
+import { useBillingBadge } from "@/pages/settings/useBillingBadge";
 
 function Restoring() {
     return (
@@ -22,8 +27,27 @@ function Restoring() {
 function RequireUnlocked({ children }: { children: ReactNode }) {
     const { status } = useSession();
     if (status === "restoring") return <Restoring />;
-    if (status !== "unlocked") return <Navigate to="/" replace />;
+    if (status !== "unlocked") return <Navigate to="/login" replace />;
     return <>{children}</>;
+}
+
+/**
+ * Runs the premium silent-backup controller for the whole unlocked app. Premium
+ * status gates writing, but the provider mounts regardless so the Backup tab can
+ * explain what auto-backup is and offer the upgrade.
+ */
+function UnlockedProviders({ children }: { children: ReactNode }) {
+    const { account, token } = useUnlockedSession();
+    const { badge } = useBillingBadge(token);
+    return (
+        <AutoBackupProvider
+            userId={account.userId}
+            username={account.username}
+            premium={!!badge}
+        >
+            {children}
+        </AutoBackupProvider>
+    );
 }
 
 export default function App() {
@@ -33,8 +57,15 @@ export default function App() {
 
     const routes = (
         <Routes>
+            {/* Public marketing layer — reachable logged in or out. */}
+            <Route path="/" element={<Landing />} />
+            <Route path="/showcase" element={<Showcase />} />
+            <Route path="/kb" element={<KnowledgeBase />} />
+
+            {/* Login/register. An already-unlocked session skips straight into
+                the app, so the nav's Launch App button doubles as "Open App". */}
             <Route
-                path="/"
+                path="/login"
                 element={
                     status === "unlocked" && !recoveryPending ? (
                         <Navigate to="/channels" replace />
@@ -83,8 +114,10 @@ export default function App() {
         return (
             <RelayProvider>
                 <CallProvider>
-                    {routes}
-                    <CallOverlay />
+                    <UnlockedProviders>
+                        {routes}
+                        <CallOverlay />
+                    </UnlockedProviders>
                 </CallProvider>
             </RelayProvider>
         );

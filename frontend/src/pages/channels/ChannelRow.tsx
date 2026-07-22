@@ -45,13 +45,24 @@ export function ChannelRow({
     const request = Boolean(channel.request);
 
     return (
+        // Discord-style row: no card border, just a rounded fill that lights on
+        // hover. The active channel gets a solid tinted fill plus a pill on the
+        // left edge (the parent list is relative-positioned rail via px-2).
         <div
-            className={`hover:border-primary flex w-full cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors ${
+            className={`group relative flex w-full cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 transition-colors duration-150 ${
                 active
-                    ? "border-primary bg-primary-soft"
-                    : "border-border bg-surface"
+                    ? "bg-primary-soft"
+                    : "hover:bg-surface-raised"
             }`}
         >
+            <span
+                aria-hidden="true"
+                className={`absolute top-1/2 -left-2 h-0 w-1 -translate-y-1/2 rounded-r-full bg-primary transition-all duration-200 ${
+                    active
+                        ? "h-8"
+                        : "group-hover:h-4"
+                }`}
+            />
             <button
                 onPointerDownCapture={(e) => {
                     pointerType.current = e.pointerType;

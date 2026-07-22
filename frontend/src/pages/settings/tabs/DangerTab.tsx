@@ -1,10 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useSession } from "@/lib/session";
 import { AccountDescriptor } from "@/lib/vault";
-import {
-    SettingsSection,
-    SettingBlock,
-} from "@/components/settings/SettingsUI";
+import { SettingsSection, SettingRow } from "@/components/settings/SettingsUI";
 
 export default function DangerTab({
     account,
@@ -14,15 +11,15 @@ export default function DangerTab({
     const session = useSession();
     const navigate = useNavigate();
 
-    function handleForget() {
+    async function handleForget() {
         const ok = confirm(
             `Permanently delete "${account.username}" from this device?\n\n` +
                 "Private keys, channel keys, and all decrypted messages are erased. " +
-                "Without an exported key file this cannot be undone — the server does not have your keys.",
+                "Without an exported backup file this cannot be undone — the server does not have your keys.",
         );
         if (!ok) return;
-        session.removeAccount(account.userId);
-        navigate("/");
+        await session.removeAccount(account.userId);
+        navigate("/login");
     }
 
     return (
@@ -32,17 +29,26 @@ export default function DangerTab({
             info="Logging out keeps your keys; erasing deletes them."
             infoDetails="Log out keeps your private keys, channel keys, and decrypted messages on this device so you can unlock again. Erase removes them permanently — without an exported key file it cannot be undone, since the server does not hold your keys."
         >
-            <SettingBlock>
-                <button
-                    onClick={session.logout}
-                    className="btn-ghost w-full"
-                >
-                    Log out (keeps keys on this device)
-                </button>
-                <button onClick={handleForget} className="btn-danger w-full">
-                    Erase this identity from this device
-                </button>
-            </SettingBlock>
+            <SettingRow
+                title="Log out"
+                description="Keys stay on this device."
+                control={
+                    <button onClick={session.logout} className="btn-ghost">
+                        Log out
+                    </button>
+                }
+            />
+            <SettingRow
+                title="Erase identity"
+                description="Deletes keys and messages from this device."
+                info="Cannot be undone without a backup file."
+                infoDetails="Erase removes your private keys, channel keys, and decrypted messages from this device permanently. The server never holds your keys, so without an exported backup there is no way back."
+                control={
+                    <button onClick={handleForget} className="btn-danger">
+                        Erase
+                    </button>
+                }
+            />
         </SettingsSection>
     );
 }

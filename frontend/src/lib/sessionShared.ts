@@ -2,6 +2,7 @@ import { startAuthentication } from '@simplewebauthn/browser';
 import { api, AuthResponse, isTwoFactorChallenge } from '@/lib/api';
 import { EncryptedBundle } from '@/lib/crypto';
 import { Vault, AccountDescriptor } from '@/lib/vault';
+import type { BackupContainer } from '@/lib/backup/container';
 
 /**
  * Session state for multi-account use in one browser.
@@ -28,12 +29,19 @@ export interface SessionState {
   account: AccountDescriptor | null;
   token: string | null;
   vault: Vault | null;
+  /**
+   * True when the active account has no vault on this device (needs an import).
+   *
+   * Tracked in state rather than derived on render: the vault blob now lives in
+   * IndexedDB, so "is there a vault here" is an async query. It is resolved once
+   * at each point that produces a `locked` status and carried forward, so route
+   * guards can read it synchronously.
+   */
+  needsImport: boolean;
 }
 
 export interface SessionApi extends SessionState {
   accounts: AccountDescriptor[];
-  /** True when the active account has no vault on this device (needs an import). */
-  needsImport: boolean;
   /**
    * True between `register` and the user confirming they saved their recovery
    * code. While set, route guards must NOT redirect an unlocked session off the
@@ -57,8 +65,16 @@ export interface SessionApi extends SessionState {
   register(username: string, password: string, email?: string): Promise<{ recoveryPhrase: string }>;
   login(username: string, password: string, remember: boolean): Promise<void>;
   unlock(password: string, remember: boolean): Promise<void>;
-  /** Rebuild this device's vault from an exported key file. */
+  /** Rebuild this device's vault from an exported key file (legacy path). */
   importIdentity(bundle: EncryptedBundle, passphrase: string, password: string): Promise<void>;
+  /**
+   * Restore this whole device from a full backup file, then reload.
+   *
+   * The primary recovery path: unlike `importIdentity` (keys only), this brings
+   * back channels, contacts, profile, and message history too. The reload lands
+   * on the locked screen, where the backup-era password unlocks the vault.
+   */
+  restoreFromBackup(container: BackupContainer): Promise<void>;
   /**
    * Rebuild this device's vault from the server-held recovery blob.
    *
@@ -71,7 +87,7 @@ export interface SessionApi extends SessionState {
   lock(): void;
   logout(): void;
   selectAccount(userId: string): void;
-  removeAccount(userId: string): void;
+  removeAccount(userId: string): Promise<void>;
   /** Re-read vault-backed state after a mutation. */
   refresh(): void;
 }

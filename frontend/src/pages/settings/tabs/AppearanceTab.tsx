@@ -206,7 +206,7 @@ export default function AppearanceTab({
                 <SettingRow
                     title="Profile pictures"
                     description="Show avatars beside messages."
-                    info="Hide avatars to show names alone, a denser transcript."
+                    info="Hide them for a denser transcript."
                     control={
                         <Toggle
                             checked={!hideImages}
@@ -232,8 +232,8 @@ export default function AppearanceTab({
 
                 <SettingRow
                     title="Single column"
-                    description="Discord-style — every message on the left."
-                    info="Lay every message on the left, yours included, each under its own name."
+                    description="Every message on the left, Discord-style."
+                    info="Yours included, each under its own name."
                     infoDetails="By default your own messages sit on the right and everyone else's on the left. Single column lays them all on the left, each under its own name and picture, like Discord. Purely a local display choice."
                     control={
                         <Toggle
@@ -250,9 +250,9 @@ export default function AppearanceTab({
             {badge && (
                 <SettingsSection title="Supporter badge">
                     <SettingRow
-                        title="Show my crown to others"
-                        description="A supporter crown on your messages. Off by default."
-                        info="A personal flourish — not proof of payment, and never shown in incognito."
+                        title="Show my crown"
+                        description="Crown on your messages."
+                        info="Just cosmetic. Never shown in incognito."
                         infoDetails="When on, a supporter crown appears on your messages for others. It is a personal flourish, not proof of payment — anyone's client can display one — and it is never shown in incognito channels. Paid status is a detail about you, so sharing it is your choice."
                         control={
                             <Toggle
@@ -268,8 +268,8 @@ export default function AppearanceTab({
             <SettingsSection title="Links">
                 <SettingRow
                     title="Always preview links"
-                    description="Off by default. Prefix a link with ! to preview just that one."
-                    info="Turning this on asks the server to fetch every link you send."
+                    description="Prefix a link with ! to preview just that one."
+                    info="On means the server fetches every link you send."
                     infoDetails="Building a preview asks the server to fetch that URL, so the relay learns which link you sent — the one thing it otherwise never sees. The preview itself is encrypted and sent with your message, so people reading it never load anything and their IP stays private. Links always work as plain clickable text with this off."
                     control={
                         <Toggle

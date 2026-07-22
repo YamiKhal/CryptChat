@@ -1,4 +1,16 @@
 import { afterEach, vi } from 'vitest';
+// Installs a global `indexedDB` in both the jsdom and node test realms. The
+// vault stores its sealed blobs there now, so every test that unlocks a vault
+// needs a backing store; Node has none of its own.
+import 'fake-indexeddb/auto';
+import { resetDbForTests } from '@/lib/vault/db';
+
+// Unguarded (runs in node env too): the vault's IndexedDB persists across cases
+// within a file, so without a wipe a vault written in one test leaks into the
+// next. localStorage/sessionStorage get the same treatment in the DOM block.
+afterEach(async () => {
+  await resetDbForTests();
+});
 
 /**
  * NOTE on crypto tests and realms.

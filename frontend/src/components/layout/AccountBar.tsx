@@ -50,8 +50,8 @@ export default function AccountBar() {
         <button
           type="button"
           {...menu.handlers}
-          className="flex min-w-0 flex-1 items-center gap-3 rounded-lg py-1 pr-1 text-left
-                     transition-color"
+          className="hover:bg-surface-raised -ml-1 flex min-w-0 flex-1 items-center gap-3 rounded-lg
+                     px-1.5 py-1 text-left transition-colors"
           title="You — right-click for options"
         >
           <Avatar asset={profile.avatar} name={profile.displayName} size="md" />
@@ -72,7 +72,7 @@ export default function AccountBar() {
             up to mark it active, and a second click returns to the channels. */}
         <button
           onClick={() => navigate(onSettings ? '/channels' : '/settings')}
-          className={`flex-none rounded p-2 transition-colors ${
+          className={`flex-none rounded-lg p-2 transition-colors ${
             onSettings
               ? 'bg-primary-soft text-primary'
               : 'text-muted hover:bg-surface-raised hover:text-primary'

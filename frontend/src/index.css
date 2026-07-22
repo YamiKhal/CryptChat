@@ -91,6 +91,8 @@
     "gg sans", "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
 
   --animate-fade-in: fade-in 150ms ease-out;
+  --animate-pop: pop-in 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-slide-up: slide-up 240ms cubic-bezier(0.16, 1, 0.3, 1);
 
   @keyframes fade-in {
     from {
@@ -100,6 +102,30 @@
     to {
       opacity: 1;
       transform: translateY(0);
+    }
+  }
+
+  /* Menus / popovers: a quick settle from slightly small and high. */
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      transform: scale(0.96) translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  /* Modals / sheets: rise into place. */
+  @keyframes slide-up {
+    from {
+      opacity: 0;
+      transform: translateY(16px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: none;
     }
   }
 }
@@ -253,17 +279,19 @@
  * base tokens are restated here.
  */
 :root[data-theme="light"] {
-  --wallpaper-scrim: rgba(238, 242, 239, 0.55);
+  --wallpaper-scrim: rgba(232, 237, 233, 0.55);
 
-  /* surfaces, back to front */
-  --color-bg: #eef2ef;
-  --color-surface: #ffffff;
-  --color-surface-raised: #f3f7f4;
-  --color-border: #d2ddd5;
+  /* surfaces, back to front. Deliberately NOT pure white anywhere — every
+     surface carries a faint green-grey tint so the page reads as paper, not a
+     lightbox. The old #ffffff panels were blinding next to the dark theme. */
+  --color-bg: #dfe6e1;
+  --color-surface: #edf2ee;
+  --color-surface-raised: #f6f9f6;
+  --color-border: #c3cfc6;
 
-  /* text */
-  --color-foreground: #0e1a13;
-  --color-muted: #566b5e;
+  /* text — softened off-black; full #000-adjacent ink on tinted paper glares */
+  --color-foreground: #16231b;
+  --color-muted: #52665a;
 
   /* primary: dark green on light — green text reads, buttons take white text */
   --color-primary: #0e7a3c;
@@ -398,9 +426,22 @@
   .btn-primary,
   .btn-ghost,
   .btn-danger {
-    @apply inline-flex items-center justify-center gap-2 rounded px-4 py-2 font-medium
-           transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 font-medium
+           disabled:cursor-not-allowed disabled:opacity-50;
     font-size: var(--fs-base);
+    transition:
+      background-color 150ms,
+      border-color 150ms,
+      color 150ms,
+      transform 120ms ease-out;
+  }
+
+  /* Press feedback: a tiny sink. Disabled buttons stay still. */
+  .btn:active:not(:disabled),
+  .btn-primary:active:not(:disabled),
+  .btn-ghost:active:not(:disabled),
+  .btn-danger:active:not(:disabled) {
+    transform: scale(0.97);
   }
 
   .btn-primary {
@@ -417,7 +458,7 @@
   }
 
   .field {
-    @apply w-full rounded border border-border bg-surface-raised px-3 py-2 outline-none
+    @apply w-full rounded-lg border border-border bg-surface-raised px-3 py-2 outline-none
            transition-colors focus:border-primary;
     font-size: var(--fs-base);
   }
@@ -431,12 +472,74 @@
   }
 
   .card {
-    @apply rounded-lg border border-border bg-surface p-4;
+    @apply rounded-xl border border-border bg-surface p-4;
   }
 
   .tag {
     @apply inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-medium uppercase
            tracking-wider;
     font-size: var(--fs-small);
+  }
+
+  /* ---- MENUS & POPOVERS -------------------------------------------------
+     ONE look for every floating panel: the context menu, the composer's tools
+     popover, the emoji picker frame, dropdowns. Solid raised surface, soft
+     corners, pop animation. If a floating panel doesn't use these classes,
+     that's a bug in the making — this is how the menus stay consistent. */
+  .menu-panel {
+    @apply rounded-xl border border-border bg-surface-raised p-1.5 shadow-xl;
+    animation: var(--animate-pop);
+    transform-origin: top;
+  }
+
+  .menu-item {
+    @apply flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left
+           text-foreground transition-colors;
+    font-size: var(--fs-base);
+  }
+  .menu-item:hover:not(:disabled) {
+    @apply bg-primary-soft text-primary;
+  }
+  .menu-item:disabled {
+    @apply cursor-not-allowed text-muted;
+  }
+
+  .menu-item-danger {
+    @apply text-error;
+  }
+  .menu-item-danger:hover:not(:disabled) {
+    @apply bg-error-soft text-error;
+  }
+
+  /* Hairline between menu groups. */
+  .menu-sep {
+    @apply my-1 border-t border-border;
+  }
+
+  /* ---- MODALS ------------------------------------------------------------
+     Same deal as menus: one backdrop, one panel, used by every dialog. The
+     backdrop is SOLID black (rule A — a translucent wash would let a video
+     wallpaper bleed through); the panel rises in. */
+  .modal-backdrop {
+    @apply fixed inset-0 z-50 flex items-center justify-center bg-black p-4;
+  }
+
+  .modal-panel {
+    @apply w-full rounded-xl border border-border bg-surface p-5;
+    animation: var(--animate-slide-up);
+  }
+}
+
+/* Motion accessibility: entrance animations and press feedback collapse. */
+@media (prefers-reduced-motion: reduce) {
+  .menu-panel,
+  .modal-panel {
+    animation: none;
+  }
+  .btn:active:not(:disabled),
+  .btn-primary:active:not(:disabled),
+  .btn-ghost:active:not(:disabled),
+  .btn-danger:active:not(:disabled) {
+    transform: none;
   }
 }

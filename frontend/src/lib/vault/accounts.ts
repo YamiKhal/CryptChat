@@ -1,5 +1,16 @@
 import { AccountDescriptor } from '@/lib/vault/types';
-import { NS, ACCOUNT_INDEX, accountKey, vaultKeyName, sessionKeyName, readJson } from '@/lib/vault/storage';
+import {
+  ACCOUNT_INDEX,
+  accountKey,
+  vaultKeyName,
+  sessionKeyName,
+  backupHandleKey,
+  readJson,
+  getSealed,
+  delSealed,
+  messageKeys,
+} from '@/lib/vault/storage';
+import { dbDelete } from '@/lib/vault/db';
 
 export function listAccounts(): AccountDescriptor[] {
   const ids = readJson<string[]>(localStorage, ACCOUNT_INDEX, []);
@@ -20,9 +31,13 @@ export function getAccount(userId: string): AccountDescriptor | null {
  * private keys were never on the server to send back. That state needs an
  * import prompt, not a password prompt -- no password can unlock a vault that
  * does not exist here.
+ *
+ * Async now that the vault blob lives in IndexedDB: callers that need it in
+ * synchronous render (session's `needsImport`) resolve it once at login and
+ * carry the answer in session state rather than querying here per render.
  */
-export function hasVault(userId: string): boolean {
-  return localStorage.getItem(vaultKeyName(userId)) !== null;
+export async function hasVault(userId: string): Promise<boolean> {
+  return (await getSealed(vaultKeyName(userId))) !== null;
 }
 
 export function saveAccount(account: AccountDescriptor): void {
@@ -38,17 +53,24 @@ export function touchAccount(userId: string): void {
   if (account) saveAccount({ ...account, lastUsedAt: new Date().toISOString() });
 }
 
-/** Removes the account, its vault, and every message namespace it owns. */
-export function forgetAccount(userId: string): void {
+/**
+ * Removes the account, its vault, and every message namespace it owns.
+ *
+ * The plaintext registry (localStorage) is cleared synchronously first, so the
+ * account is gone from the switcher immediately; the sealed blobs (IndexedDB)
+ * are then swept. Awaiting the whole thing lets a caller know the ciphertext is
+ * actually gone -- which "erase my keys" in the danger zone must guarantee.
+ */
+export async function forgetAccount(userId: string): Promise<void> {
   localStorage.removeItem(accountKey(userId));
-  localStorage.removeItem(vaultKeyName(userId));
   sessionStorage.removeItem(sessionKeyName(userId));
-
-  const prefix = `${NS}:msgs:${userId}:`;
-  for (const key of Object.keys(localStorage)) {
-    if (key.startsWith(prefix)) localStorage.removeItem(key);
-  }
 
   const ids = readJson<string[]>(localStorage, ACCOUNT_INDEX, []);
   localStorage.setItem(ACCOUNT_INDEX, JSON.stringify(ids.filter((id) => id !== userId)));
+
+  await delSealed(vaultKeyName(userId));
+  for (const key of await messageKeys(userId)) await delSealed(key);
+  // The saved backup file handle is per-account too; drop it so a later account
+  // with a reused id can never inherit a stranger's disk target.
+  await dbDelete(backupHandleKey(userId));
 }

@@ -126,19 +126,43 @@ export function Body({ text }: { text: string }) {
 /**
  * A password-locked message the recipient has not opened yet.
  *
- * Just a placeholder and the optional hint -- unlocking is a context-menu action
- * (right-click / long-press) so the code is entered in a dedicated prompt, and
- * the plaintext only ever lands in the unlocking user's own vault.
+ * The whole body is the unlock button — tap it and the password prompt opens
+ * (the context menu still offers Unlock too). Minimal chrome: a lock, one word,
+ * the hint if there is one. The plaintext only ever lands in the unlocking
+ * user's own vault.
  */
-export function LockedBody({ hint }: { hint?: string }) {
+export function LockedBody({
+  hint,
+  onUnlock,
+}: {
+  hint?: string;
+  onUnlock?: () => void;
+}) {
   return (
-    <div className="space-y-1">
-      <p className="flex items-center gap-1.5 t-base text-muted">
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onUnlock?.();
+      }}
+      disabled={!onUnlock}
+      className="group/lock -mx-0.5 flex items-center gap-2 rounded-md px-0.5 py-0.5 text-left
+                 disabled:cursor-default"
+      title={onUnlock ? "Unlock this message" : undefined}
+    >
+      <span
+        className="grid size-7 flex-none place-items-center rounded-full bg-surface text-muted
+                   transition-colors group-hover/lock:bg-primary-soft group-hover/lock:text-primary"
+      >
         <LockKeyhole size={13} aria-hidden="true" />
-        Password-protected — open the menu to unlock
-      </p>
-      {hint && <p className="t-small italic text-muted">hint: {hint}</p>}
-    </div>
+      </span>
+      <span className="min-w-0">
+        <span className="t-base block font-medium text-foreground">Locked</span>
+        <span className="t-small block text-muted">
+          {hint ? hint : onUnlock ? "tap to unlock" : "locked message"}
+        </span>
+      </span>
+    </button>
   );
 }
 

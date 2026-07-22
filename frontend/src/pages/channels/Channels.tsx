@@ -269,9 +269,9 @@ export default function Channels() {
 
     return (
         <div className="flex h-full flex-col">
-            <div className="flex-1 space-y-3 overflow-y-auto p-3">
-                <div className="flex items-center justify-between px-1">
-                    <p className="t-base text-muted tracking-wider uppercase">
+            <div className="flex-1 space-y-0.5 overflow-y-auto px-2 py-2">
+                <div className="mb-1 flex items-center justify-between px-2 pt-1">
+                    <p className="t-small text-muted font-semibold tracking-wider uppercase">
                         channels
                     </p>
                     <button
@@ -280,7 +280,7 @@ export default function Channels() {
                             setNotice("");
                             setShowNew(true);
                         }}
-                        className="text-muted hover:bg-surface-raised hover:text-primary rounded p-1 transition-colors"
+                        className="text-muted hover:bg-surface-raised hover:text-primary rounded-lg p-1.5 transition-colors"
                         title="New channel"
                         aria-label="New channel"
                     >
@@ -289,18 +289,18 @@ export default function Channels() {
                 </div>
 
                 {error && !showNew && (
-                    <p className="border-error-line bg-error-soft t-base text-error rounded border p-2">
+                    <p className="border-error-line bg-error-soft t-base text-error mb-2 rounded-lg border p-2.5">
                         {error}
                     </p>
                 )}
                 {notice && (
-                    <p className="border-info-line bg-info-soft t-base text-info rounded border p-2">
+                    <p className="border-info-line bg-info-soft t-base text-info mb-2 rounded-lg border p-2.5">
                         {notice}
                     </p>
                 )}
 
                 {channels.length === 0 && (
-                    <p className="t-base text-muted px-1">
+                    <p className="t-base text-muted px-2 py-1">
                         No channels yet. Create one or join with a code.
                     </p>
                 )}

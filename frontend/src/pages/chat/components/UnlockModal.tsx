@@ -38,11 +38,11 @@ export function UnlockModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black p-4"
+      className="modal-backdrop"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-xs space-y-3 rounded-lg border border-border bg-surface p-4"
+        className="modal-panel max-w-xs space-y-3"
         onClick={(e) => e.stopPropagation()}
       >
         <p className="flex items-center gap-1.5 t-base text-muted">

@@ -2,14 +2,21 @@ import { Bytes, wipe, base64UrlToBytes, bytesToBase64Url, BinaryAsset } from '@/
 import { applyReaction } from '@/lib/limits';
 import {
   Identity,
-  Sealed,
   sealWithKey,
   openWithKey,
   openWithPassword,
   deriveVaultKey,
 } from '@/lib/crypto';
-import { readJson, vaultKeyName, messagesKeyName, sessionKeyName } from '@/lib/vault/storage';
+import {
+  getSealed,
+  putSealed,
+  delSealed,
+  vaultKeyName,
+  messagesKeyName,
+  sessionKeyName,
+} from '@/lib/vault/storage';
 import { getAccount } from '@/lib/vault/accounts';
+import { emitVaultChange } from '@/lib/vault/events';
 import {
   Contact,
   Preferences,
@@ -42,7 +49,7 @@ export class Vault {
     const account = getAccount(userId);
     if (!account) throw new Error('no such account on this device');
 
-    const sealed = readJson<Sealed | null>(localStorage, vaultKeyName(userId), null);
+    const sealed = await getSealed(vaultKeyName(userId));
     if (!sealed) throw new Error('vault missing on this device');
 
     const key = await deriveVaultKey(password, account.vaultSalt);
@@ -71,7 +78,7 @@ export class Vault {
     const stashed = sessionStorage.getItem(sessionKeyName(userId));
     if (!stashed) return null;
 
-    const sealed = readJson<Sealed | null>(localStorage, vaultKeyName(userId), null);
+    const sealed = await getSealed(vaultKeyName(userId));
     if (!sealed) return null;
 
     try {
@@ -95,7 +102,8 @@ export class Vault {
 
   private async flush(): Promise<void> {
     const sealed = await sealWithKey(JSON.stringify(this.data), this.key);
-    localStorage.setItem(vaultKeyName(this.userId), JSON.stringify(sealed));
+    await putSealed(vaultKeyName(this.userId), sealed);
+    emitVaultChange(this.userId);
   }
 
   snapshot(): VaultData {
@@ -142,7 +150,7 @@ export class Vault {
 
   async removeChannel(channelId: string): Promise<void> {
     delete this.data.channels[channelId];
-    localStorage.removeItem(messagesKeyName(this.userId, channelId));
+    await delSealed(messagesKeyName(this.userId, channelId));
     await this.flush();
   }
 
@@ -253,7 +261,7 @@ export class Vault {
   /* messages -- kept per channel so a busy channel does not rewrite the vault */
 
   async loadMessages(channelId: string): Promise<StoredMessage[]> {
-    const sealed = readJson<Sealed | null>(localStorage, messagesKeyName(this.userId, channelId), null);
+    const sealed = await getSealed(messagesKeyName(this.userId, channelId));
     if (!sealed) return [];
     try {
       return JSON.parse(await openWithKey(sealed, this.key)) as StoredMessage[];
@@ -264,7 +272,8 @@ export class Vault {
 
   async saveMessages(channelId: string, messages: StoredMessage[]): Promise<void> {
     const sealed = await sealWithKey(JSON.stringify(messages), this.key);
-    localStorage.setItem(messagesKeyName(this.userId, channelId), JSON.stringify(sealed));
+    await putSealed(messagesKeyName(this.userId, channelId), sealed);
+    emitVaultChange(this.userId);
   }
 
   async appendMessage(message: StoredMessage): Promise<StoredMessage[]> {
@@ -436,6 +445,6 @@ export class Vault {
   }
 
   async clearMessages(channelId: string): Promise<void> {
-    localStorage.removeItem(messagesKeyName(this.userId, channelId));
+    await delSealed(messagesKeyName(this.userId, channelId));
   }
 }

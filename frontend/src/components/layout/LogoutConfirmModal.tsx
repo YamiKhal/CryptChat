@@ -26,14 +26,14 @@ export function LogoutConfirmModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black p-4"
+      className="modal-backdrop"
       onClick={onClose}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="logout-title"
-        className="w-full max-w-sm space-y-4 rounded-lg border border-border bg-surface p-5"
+        className="modal-panel max-w-sm space-y-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-3">

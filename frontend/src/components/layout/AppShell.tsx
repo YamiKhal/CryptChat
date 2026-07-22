@@ -25,8 +25,10 @@ export default function AppShell() {
     return (
         <div className="h-full">
             <div className="flex h-full">
+                {/* bg-surface: the column reads as its own layer, Discord-style,
+                    against the bg-bg chat pane. */}
                 <aside
-                    className={`border-border w-full flex-col border-r lg:w-85 lg:shrink-0 ${
+                    className={`border-border bg-surface w-full flex-col border-r lg:w-85 lg:shrink-0 ${
                         channelId ? "hidden lg:flex" : "flex"
                     } ${sidebarHidden ? "lg:hidden" : "lg:flex"}`}
                 >
@@ -36,7 +38,7 @@ export default function AppShell() {
                         </span>
                         <button
                             onClick={() => toggleSidebar(true)}
-                            className="text-muted hover:bg-surface-raised hover:text-primary rounded p-1.5 transition-colors"
+                            className="text-muted hover:bg-surface-raised hover:text-primary rounded-lg p-1.5 transition-colors"
                             title="Hide channel panel"
                             aria-label="Hide channel panel"
                         >
@@ -49,10 +51,10 @@ export default function AppShell() {
                 </aside>
 
                 {sidebarHidden && (
-                    <div className="border-border hidden w-10 shrink-0 flex-col items-center border-r py-2 lg:flex">
+                    <div className="border-border bg-surface hidden w-10 shrink-0 flex-col items-center border-r py-2 lg:flex">
                         <button
                             onClick={() => toggleSidebar(false)}
-                            className="text-muted hover:bg-surface-raised hover:text-primary rounded p-1.5 transition-colors"
+                            className="text-muted hover:bg-surface-raised hover:text-primary rounded-lg p-1.5 transition-colors"
                             title="Show channel panel"
                             aria-label="Show channel panel"
                         >
@@ -74,14 +76,18 @@ export default function AppShell() {
                         </div>
                     ) : (
                         <div className="grid h-full place-items-center p-6 text-center">
-                            <div className="text-muted space-y-3">
-                                <MessagesSquare
-                                    size={48}
-                                    className="mx-auto"
-                                    aria-hidden
-                                />
-                                <p className="t-h4">No channel selected</p>
-                                <p className="t-base">
+                            <div className="animate-fade-in space-y-4">
+                                <div className="border-border bg-surface mx-auto grid size-20 place-items-center rounded-2xl border">
+                                    <MessagesSquare
+                                        size={36}
+                                        className="text-muted"
+                                        aria-hidden
+                                    />
+                                </div>
+                                <p className="t-h4 text-foreground font-semibold">
+                                    No channel selected
+                                </p>
+                                <p className="t-base text-muted">
                                     Pick a channel on the left to start reading
                                 </p>
                             </div>

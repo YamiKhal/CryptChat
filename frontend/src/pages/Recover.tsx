@@ -145,7 +145,7 @@ export default function Recover() {
                         </button>
 
                         <Link
-                            to="/"
+                            to="/login"
                             className="t-base text-muted hover:text-foreground block w-full text-center"
                         >
                             Back
@@ -161,7 +161,7 @@ export default function Recover() {
                             minutes. It expires in 30 minutes.
                         </p>
                         <Link
-                            to="/"
+                            to="/login"
                             className="btn-ghost t-base w-full text-center"
                         >
                             Back
