@@ -11,13 +11,6 @@ import {
 } from "./components/visuals";
 import { SHOWCASE } from "./content";
 
-/**
- * A walked product tour: four alternating panels, each pairing the copy from
- * content.ts with a live UI mockup, all scroll-revealed. Panels flip sides on
- * wide screens; on mobile they stack text-first. No login needed.
- */
-
-// Panel index -> its visual. Order matches SHOWCASE in content.ts.
 const VISUALS: ReactNode[] = [
     <KeyCard key="k" />,
     <ChatMockup key="c" />,
@@ -28,18 +21,23 @@ const VISUALS: ReactNode[] = [
 export default function Showcase() {
     return (
         <MarketingLayout>
-            <section className="border-b border-border">
+            <section className="border-border border-b">
                 <div className="mx-auto max-w-3xl px-4 pt-20 pb-16 text-center sm:px-6 lg:pt-28">
-                    <h1 data-reveal className="t-display text-balance text-foreground">
-                        See exactly what happens to a message
+                    <h1
+                        data-reveal
+                        className="t-display text-foreground text-balance"
+                    >
+                        Feature Showcase
                     </h1>
                     <p
                         data-reveal
-                        style={{ "--reveal-delay": "100ms" } as React.CSSProperties}
-                        className="t-lead mx-auto mt-5 max-w-xl text-muted"
+                        style={
+                            { "--reveal-delay": "100ms" } as React.CSSProperties
+                        }
+                        className="t-lead text-muted mx-auto mt-5 max-w-xl"
                     >
-                        From the keypair on your device to the ciphertext on the
-                        wire. No magic, no plaintext, no server that can read you.
+                        All the tools for secured messaging for you and your
+                        pals
                     </p>
                 </div>
             </section>
@@ -54,21 +52,23 @@ export default function Showcase() {
                             data-reveal
                             className={i % 2 === 1 ? "lg:order-2" : ""}
                         >
-                            <p className="t-small font-semibold tracking-wider text-primary uppercase">
-                                {panel.kicker}
-                            </p>
-                            <h2 className="t-display-2 mt-2 text-foreground">
+                            <h2 className="t-display-2 text-foreground mt-2">
                                 {panel.title}
                             </h2>
-                            <p className="t-lead mt-4 text-muted">{panel.body}</p>
+                            <p className="t-lead text-muted mt-4">
+                                {panel.body}
+                            </p>
                             <ul className="mt-6 space-y-2.5">
                                 {panel.points.map((p) => (
                                     <li
                                         key={p}
-                                        className="t-base flex items-start gap-2.5 text-foreground"
+                                        className="t-base text-foreground flex items-start gap-2.5"
                                     >
-                                        <span className="mt-0.5 inline-flex rounded-md border border-primary-line bg-primary-soft p-1 text-primary">
-                                            <Check size={12} aria-hidden="true" />
+                                        <span className="border-primary-line bg-primary-soft text-primary mt-0.5 inline-flex rounded-md border p-1">
+                                            <Check
+                                                size={12}
+                                                aria-hidden="true"
+                                            />
                                         </span>
                                         {p}
                                     </li>
@@ -78,7 +78,11 @@ export default function Showcase() {
 
                         <div
                             data-reveal
-                            style={{ "--reveal-delay": "140ms" } as React.CSSProperties}
+                            style={
+                                {
+                                    "--reveal-delay": "140ms",
+                                } as React.CSSProperties
+                            }
                             className={i % 2 === 1 ? "lg:order-1" : ""}
                         >
                             {VISUALS[i] ?? <TerminalCard />}
@@ -87,7 +91,7 @@ export default function Showcase() {
                 ))}
             </div>
 
-            <section className="border-t border-border bg-surface">
+            <section className="border-border bg-surface border-t">
                 <div className="mx-auto flex max-w-6xl flex-col items-start gap-6 px-4 py-16 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
                     <h2 data-reveal className="t-display-2 text-foreground">
                         Ready when you are.

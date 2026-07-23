@@ -14,125 +14,123 @@
 
 /* ---- display type: bigger than the app's t-h1, hero-only ---------------- */
 .t-display {
-  font-size: clamp(2.25rem, 1.4rem + 4.2vw, 4.5rem);
-  line-height: 1.03;
-  letter-spacing: -0.03em;
-  font-weight: 800;
+    font-size: clamp(2.25rem, 1.4rem + 4.2vw, 4.5rem);
+    line-height: 1.03;
+    letter-spacing: -0.03em;
+    font-weight: 800;
 }
 
 .t-display-2 {
-  font-size: clamp(1.6rem, 1.2rem + 2vw, 2.6rem);
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-  font-weight: 800;
+    font-size: clamp(1.6rem, 1.2rem + 2vw, 2.6rem);
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    font-weight: 800;
 }
 
 /* ---- oversized pill buttons for hero / CTA bands ------------------------ */
 .btn-hero {
-  border-radius: 9999px;
-  padding: 0.875rem 2.1rem;
-  font-size: var(--fs-lead);
-  font-weight: 600;
-  transition:
-    transform 180ms cubic-bezier(0.16, 1, 0.3, 1),
-    background-color 150ms,
-    border-color 150ms,
-    color 150ms,
-    box-shadow 180ms;
+    border-radius: 9999px;
+    padding: 0.875rem 2.1rem;
+    font-size: var(--fs-lead);
+    font-weight: 600;
+    transition:
+        transform 180ms cubic-bezier(0.16, 1, 0.3, 1),
+        background-color 150ms,
+        border-color 150ms,
+        color 150ms,
+        box-shadow 180ms;
 }
 .btn-hero:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 24px -12px var(--color-primary);
+    transform: translateY(-2px);
 }
 
 /* ---- scroll reveal ------------------------------------------------------ */
 [data-reveal] {
-  opacity: 0;
-  transform: translateY(26px);
-  transition:
-    opacity 650ms cubic-bezier(0.16, 1, 0.3, 1),
-    transform 650ms cubic-bezier(0.16, 1, 0.3, 1);
-  transition-delay: var(--reveal-delay, 0ms);
+    opacity: 0;
+    transform: translateY(26px);
+    transition:
+        opacity 650ms cubic-bezier(0.16, 1, 0.3, 1),
+        transform 650ms cubic-bezier(0.16, 1, 0.3, 1);
+    transition-delay: var(--reveal-delay, 0ms);
 }
 [data-reveal].is-visible {
-  opacity: 1;
-  transform: none;
+    opacity: 1;
+    transform: none;
 }
 
 /* ---- floating decorative tiles ------------------------------------------ */
 @keyframes mk-float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-12px);
-  }
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-12px);
+    }
 }
 .mk-float {
-  animation: mk-float 5.5s ease-in-out infinite;
+    animation: mk-float 5.5s ease-in-out infinite;
 }
 .mk-float-alt {
-  animation: mk-float 6.5s ease-in-out infinite;
-  animation-delay: -3s;
+    animation: mk-float 6.5s ease-in-out infinite;
+    animation-delay: -3s;
 }
 
 /* ---- marquee ticker ----------------------------------------------------- */
 .mk-marquee {
-  overflow: hidden;
+    overflow: hidden;
 }
 .mk-marquee-track {
-  display: flex;
-  width: max-content;
-  animation: mk-marquee 26s linear infinite;
+    display: flex;
+    width: max-content;
+    animation: mk-marquee 26s linear infinite;
 }
 @keyframes mk-marquee {
-  to {
-    transform: translateX(-50%);
-  }
+    to {
+        transform: translateX(-50%);
+    }
 }
 
 /* ---- terminal caret ----------------------------------------------------- */
 @keyframes mk-caret {
-  50% {
-    opacity: 0;
-  }
+    50% {
+        opacity: 0;
+    }
 }
 .mk-caret {
-  animation: mk-caret 1s steps(1) infinite;
+    animation: mk-caret 1s steps(1) infinite;
 }
 
 /* ---- hover lift for cards ----------------------------------------------- */
 .mk-lift {
-  transition:
-    transform 250ms cubic-bezier(0.16, 1, 0.3, 1),
-    border-color 200ms,
-    box-shadow 250ms;
+    transition:
+        transform 250ms cubic-bezier(0.16, 1, 0.3, 1),
+        border-color 200ms,
+        box-shadow 250ms;
 }
 .mk-lift:hover {
-  transform: translateY(-6px);
-  box-shadow: 0 18px 32px -20px var(--color-primary);
+    transform: translateY(-6px);
 }
 
 /* ---- accessibility: motion off means off -------------------------------- */
 @media (prefers-reduced-motion: reduce) {
-  [data-reveal] {
-    opacity: 1;
-    transform: none;
-    transition: none;
-  }
-  .mk-float,
-  .mk-float-alt,
-  .mk-marquee-track,
-  .mk-caret {
-    animation: none;
-  }
-  .mk-lift,
-  .btn-hero {
-    transition: none;
-  }
-  .mk-lift:hover,
-  .btn-hero:hover {
-    transform: none;
-  }
+    [data-reveal] {
+        opacity: 1;
+        transform: none;
+        transition: none;
+    }
+    .mk-float,
+    .mk-float-alt,
+    .mk-marquee-track,
+    .mk-caret {
+        animation: none;
+    }
+    .mk-lift,
+    .btn-hero {
+        transition: none;
+    }
+    .mk-lift:hover,
+    .btn-hero:hover {
+        transform: none;
+    }
 }

@@ -10,14 +10,14 @@ import { BRAND, TAGLINE } from "../content";
 export default function MarketingFooter() {
     const year = new Date().getFullYear();
     return (
-        <footer className="border-t border-border bg-surface">
+        <footer className="border-border bg-surface border-t">
             <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 lg:grid-cols-[1fr_auto_auto] lg:gap-20">
                 <div>
-                    <p className="flex items-center gap-2 font-bold tracking-tight text-primary">
+                    <p className="text-primary flex items-center gap-2 font-bold tracking-tight">
                         <ShieldCheck size={26} aria-hidden="true" />
                         <span className="t-h2">{BRAND}</span>
                     </p>
-                    <p className="t-base mt-2 text-muted">{TAGLINE}</p>
+                    <p className="t-base text-muted mt-2">{TAGLINE}</p>
                     <Link
                         to="/login"
                         className="btn-primary mt-6 inline-flex rounded-full px-6 font-semibold"
@@ -27,44 +27,44 @@ export default function MarketingFooter() {
                 </div>
 
                 <nav className="space-y-2.5">
-                    <p className="t-small font-semibold tracking-wider text-muted uppercase">
+                    <p className="t-small text-muted font-semibold tracking-wider uppercase">
                         Product
                     </p>
                     <Link
                         to="/showcase"
-                        className="t-base block text-foreground hover:text-primary"
+                        className="t-base text-foreground hover:text-primary block"
                     >
                         Showcase
                     </Link>
                     <Link
                         to="/kb"
-                        className="t-base block text-foreground hover:text-primary"
+                        className="t-base text-foreground hover:text-primary block"
                     >
                         Knowledge Base
                     </Link>
                 </nav>
 
                 <nav className="space-y-2.5">
-                    <p className="t-small font-semibold tracking-wider text-muted uppercase">
+                    <p className="t-small text-muted font-semibold tracking-wider uppercase">
                         App
                     </p>
                     <Link
                         to="/login"
-                        className="t-base block text-foreground hover:text-primary"
+                        className="t-base text-foreground hover:text-primary block"
                     >
                         Log in
                     </Link>
                     <Link
                         to="/recover"
-                        className="t-base block text-foreground hover:text-primary"
+                        className="t-base text-foreground hover:text-primary block"
                     >
                         Recover account
                     </Link>
                 </nav>
             </div>
-            <div className="border-t border-border">
-                <p className="t-small mx-auto max-w-6xl px-4 py-5 text-muted sm:px-6">
-                    © {year} {BRAND}. Your keys, your account.
+            <div className="border-border border-t">
+                <p className="t-small text-muted mx-auto max-w-6xl px-4 py-5 sm:px-6">
+                    © {year} {BRAND}. For your privacy.
                 </p>
             </div>
         </footer>

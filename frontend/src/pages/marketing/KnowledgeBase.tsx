@@ -5,28 +5,22 @@ import MarketingLayout from "./components/MarketingLayout";
 import { Icon } from "./components/icons";
 import { KB } from "./content";
 
-/**
- * Public knowledge base — the questions people ask before trusting an app with
- * private messages, answered plainly, no login. Grouped sections of animated
- * accordions: the open/close is a grid-template-rows transition (0fr -> 1fr),
- * which animates height smoothly without measuring content. One open at a time
- * per section keeps the page tidy.
- */
 export default function KnowledgeBase() {
     return (
         <MarketingLayout>
-            <section className="border-b border-border">
+            <section className="border-border border-b">
                 <div className="mx-auto max-w-3xl px-4 pt-20 pb-16 text-center sm:px-6 lg:pt-28">
                     <h1 data-reveal className="t-display text-foreground">
                         Knowledge base
                     </h1>
                     <p
                         data-reveal
-                        style={{ "--reveal-delay": "100ms" } as React.CSSProperties}
-                        className="t-lead mx-auto mt-5 max-w-xl text-muted"
+                        style={
+                            { "--reveal-delay": "100ms" } as React.CSSProperties
+                        }
+                        className="t-lead text-muted mx-auto mt-5 max-w-xl"
                     >
-                        Straight answers about accounts, encryption, and your
-                        data. Read anything here before you sign in.
+                        Some of your questions answered
                     </p>
                 </div>
             </section>
@@ -42,14 +36,14 @@ export default function KnowledgeBase() {
                 ))}
             </div>
 
-            <section className="border-t border-border bg-surface">
+            <section className="border-border bg-surface border-t">
                 <div className="mx-auto flex max-w-3xl flex-col items-start gap-5 px-4 py-16 sm:px-6">
                     <h2 data-reveal className="t-display-2 text-foreground">
                         Still have a question?
                     </h2>
                     <p className="t-lead text-muted">
                         The fastest way to understand CryptChat is to make an
-                        account — it takes a moment and nothing leaves your
+                        account. It takes a moment and nothing leaves your
                         device unencrypted.
                     </p>
                     <Link to="/login" className="btn-primary btn-hero">
@@ -77,10 +71,10 @@ function KbGroup({
     return (
         <section data-reveal>
             <div className="mb-5 flex items-center gap-3">
-                <span className="inline-flex rounded-xl border border-primary-line bg-primary-soft p-2.5 text-primary">
+                <span className="border-primary-line bg-primary-soft text-primary inline-flex rounded-xl border p-2.5">
                     <Icon name={icon} size={20} />
                 </span>
-                <h2 className="t-h2 font-bold tracking-tight text-foreground">
+                <h2 className="t-h2 text-foreground font-bold tracking-tight">
                     {title}
                 </h2>
             </div>
@@ -90,7 +84,7 @@ function KbGroup({
                     return (
                         <div
                             key={a.q}
-                            className={`overflow-hidden rounded-2xl border bg-surface transition-colors ${
+                            className={`bg-surface overflow-hidden rounded-2xl border transition-colors ${
                                 isOpen ? "border-primary-line" : "border-border"
                             }`}
                         >
@@ -98,14 +92,14 @@ function KbGroup({
                                 type="button"
                                 onClick={() => setOpen(isOpen ? null : i)}
                                 aria-expanded={isOpen}
-                                className="t-base flex w-full items-center justify-between gap-3 px-5 py-4 text-left font-semibold text-foreground hover:text-primary"
+                                className="t-base text-foreground hover:text-primary flex w-full items-center justify-between gap-3 px-5 py-4 text-left font-semibold"
                             >
                                 {a.q}
                                 <ChevronDown
                                     size={18}
                                     aria-hidden="true"
-                                    className={`shrink-0 text-muted transition-transform duration-300 ${
-                                        isOpen ? "rotate-180 text-primary" : ""
+                                    className={`text-muted shrink-0 transition-transform duration-300 ${
+                                        isOpen ? "text-primary rotate-180" : ""
                                     }`}
                                 />
                             </button>
@@ -116,7 +110,7 @@ function KbGroup({
                                 }}
                             >
                                 <div className="overflow-hidden">
-                                    <p className="t-base px-5 pb-4 text-muted">
+                                    <p className="t-base text-muted px-5 pb-4">
                                         {a.a}
                                     </p>
                                 </div>

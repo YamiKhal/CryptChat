@@ -1,12 +1,3 @@
-/**
- * Copy + data for the public marketing pages (Landing, Showcase, KnowledgeBase).
- *
- * Kept out of the page components so each page stays a thin layout over data and
- * well under the file-size ceiling. Every string here is user-facing marketing
- * copy: terse, concrete, no fluff. Icons are lucide-react names, resolved to
- * components in the page that renders them.
- */
-
 export type IconName =
     | "ShieldCheck"
     | "Flame"
@@ -22,23 +13,22 @@ export type IconName =
 /** The three-word identity shown in the hero and the browser tab. */
 export const BRAND = "CryptChat";
 export const TAGLINE = "end-to-end encrypted chat";
-export const HERO_LINE = "Messages that answer to you. Nobody else.";
+export const HERO_LINE = "Your own chats, stored on your device.";
 export const HERO_SUB =
-    "Encrypted on your device, sealed in a vault only your password opens. No plaintext ever leaves. No server ever reads it.";
+    "Chats encrypted on your device, sealed in a vault only your password opens. No plaintext ever leaves. No server ever reads it.";
 
-/** Ticker strip under the hero — short claims, looped forever. */
+/** Ticker strip under the hero. short claims, looped forever. */
 export const MARQUEE = [
     "End-to-end encrypted",
     "Burn on read",
     "Passphrase locks",
     "Local vault",
     "Encrypted calls",
-    "Your keys, your account",
-    "No plaintext, ever",
+    "Keyed accounts",
     "Sealed backups",
 ];
 
-/** Landing feature grid — the load-bearing claims, one line each. */
+/** Landing feature grid. the load-bearing claims, one line each. */
 export interface Feature {
     icon: IconName;
     title: string;
@@ -54,7 +44,7 @@ export const FEATURES: Feature[] = [
     {
         icon: "Flame",
         title: "Burn on read",
-        body: "Send a message that self-destructs. It leaves both sides the moment it is seen — no copy, no trace.",
+        body: "Send a message that self-destructs. It leaves both sides the moment it is seen.",
     },
     {
         icon: "Lock",
@@ -68,7 +58,7 @@ export const FEATURES: Feature[] = [
     },
     {
         icon: "KeyRound",
-        title: "Your keys, your account",
+        title: "Your security",
         body: "A recovery phrase you hold is the only way back in. Lose the password, keep the phrase.",
     },
     {
@@ -78,7 +68,7 @@ export const FEATURES: Feature[] = [
     },
 ];
 
-/** Showcase — a walked product tour. Each panel alternates side on the page. */
+/** Showcase. a walked product tour. Each panel alternates side on the page. */
 export interface ShowcasePanel {
     kicker: string;
     title: string;
@@ -88,7 +78,7 @@ export interface ShowcasePanel {
 
 export const SHOWCASE: ShowcasePanel[] = [
     {
-        kicker: "01 · Identity",
+        kicker: "Identity",
         title: "An account only you can open",
         body: "Sign up and a keypair is generated on your device. Your password seals it; a recovery phrase is your one backup key. Nothing about your identity sits readable on a server.",
         points: [
@@ -98,7 +88,7 @@ export const SHOWCASE: ShowcasePanel[] = [
         ],
     },
     {
-        kicker: "02 · Conversations",
+        kicker: "Conversations",
         title: "Channels that carry ciphertext",
         body: "Start a channel with a code, invite who you trust. Messages encrypt before they send and decrypt only on the far end. The relay is a courier that never opens the envelope.",
         points: [
@@ -108,7 +98,7 @@ export const SHOWCASE: ShowcasePanel[] = [
         ],
     },
     {
-        kicker: "03 · Control",
+        kicker: "Control",
         title: "Messages with an expiry",
         body: "Not everything should live forever. Burn a message so it vanishes on read, or lock one behind a passphrase so only the right person opens it.",
         points: [
@@ -118,7 +108,7 @@ export const SHOWCASE: ShowcasePanel[] = [
         ],
     },
     {
-        kicker: "04 · Yours",
+        kicker: "Yours",
         title: "Portable, themeable, offline-safe",
         body: "Export your whole vault as one sealed file and carry it anywhere. Make it yours with themes and a custom accent. Your data is a file you own, not a row in someone's table.",
         points: [
@@ -129,7 +119,7 @@ export const SHOWCASE: ShowcasePanel[] = [
     },
 ];
 
-/** Knowledge base — grouped articles. Bodies are short, plain answers. */
+/** Knowledge base. grouped articles. Bodies are short, plain answers. */
 export interface KbArticle {
     q: string;
     a: string;
@@ -148,11 +138,11 @@ export const KB: KbSection[] = [
         articles: [
             {
                 q: "How do I create an account?",
-                a: "Open the app and register with a username and password. A keypair is generated on your device and sealed under your password. Write down the recovery phrase you are shown — it is the only way back in if you forget the password.",
+                a: "Open the app and register with a username and password. A keypair is generated on your device and sealed under your password. Write down the recovery phrase you are shown. it is the only way back in if you forget the password.",
             },
             {
                 q: "What is the recovery phrase for?",
-                a: "It is a backup key held only by you. If you lose your password, the phrase unlocks your account. If you lose both, no one — including us — can recover the vault. That is the point.",
+                a: "It is a backup key held only by you. If you lose your password, the phrase unlocks your account. If you lose both, no one. including us. can recover the vault. That is the point.",
             },
             {
                 q: "Can I use CryptChat on more than one device?",
@@ -184,7 +174,7 @@ export const KB: KbSection[] = [
         articles: [
             {
                 q: "How does burn-on-read work?",
-                a: "Compose a burn message and it self-destructs the moment it is read. It is removed from both sides — there is no saved copy to recover.",
+                a: "Compose a burn message and it self-destructs the moment it is read. It is removed from both sides. there is no saved copy to recover.",
             },
             {
                 q: "Can I edit or delete a message after sending?",

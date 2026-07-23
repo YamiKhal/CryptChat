@@ -13,11 +13,10 @@ import { Flame, KeyRound, Lock, ShieldCheck, Terminal } from "lucide-react";
  * ------------------------------------------------------------------------- */
 
 const SCRIPT = [
-    "$ cryptchat unlock",
-    "> vault opened · keys never left this device",
-    "> channel #quiet-room joined",
-    "→ message encrypted · sent",
-    "✓ burn-on-read armed",
+    "$ relay connected",
+    "> channel opened - decryption completed",
+    "> sending message...",
+    "✓ encrypted message was sent",
 ];
 
 function useTypedLines(lines: string[]) {
@@ -66,23 +65,28 @@ function useTypedLines(lines: string[]) {
 export function TerminalCard() {
     const pos = useTypedLines(SCRIPT);
     return (
-        <div className="overflow-hidden rounded-2xl border border-border bg-surface text-left shadow-xl">
-            <div className="flex items-center gap-2 border-b border-border bg-surface-raised px-4 py-3 text-muted">
-                <span className="size-2.5 rounded-full bg-error" />
-                <span className="size-2.5 rounded-full bg-warn" />
-                <span className="size-2.5 rounded-full bg-ok" />
+        <div className="border-border bg-surface overflow-hidden rounded-2xl border text-left">
+            <div className="border-border bg-surface-raised text-muted flex items-center gap-2 border-b px-4 py-3">
+                <span className="bg-error size-2.5 rounded-full" />
+                <span className="bg-warn size-2.5 rounded-full" />
+                <span className="bg-ok size-2.5 rounded-full" />
                 <Terminal size={14} className="ml-2" aria-hidden="true" />
-                <span className="t-small font-medium">cryptchat — session</span>
+                <span className="t-small font-medium">how-it-works</span>
             </div>
             {/* Fixed min-height so the loop never shifts layout. */}
-            <div className="min-h-44 space-y-2.5 p-5 font-mono">
+            <div className="min-h-40 space-y-2.5 p-5 font-mono">
                 {SCRIPT.map((text, i) => {
                     if (i > pos.line) return null;
-                    const shown = i === pos.line ? text.slice(0, pos.chars) : text;
-                    const accent = text.startsWith("$") || text.startsWith("→");
+                    const shown =
+                        i === pos.line ? text.slice(0, pos.chars) : text;
+                    const accent = text.startsWith("$") || text.startsWith("✓");
                     return (
                         <div key={i} className="t-base">
-                            <span className={accent ? "text-primary" : "text-muted"}>
+                            <span
+                                className={
+                                    accent ? "text-primary" : "text-muted"
+                                }
+                            >
                                 {shown}
                             </span>
                             {i === pos.line && (
@@ -110,10 +114,10 @@ function Bubble({
     return (
         <div className={`flex ${self ? "justify-end" : "justify-start"}`}>
             <div
-                className={`max-w-[80%] rounded-2xl border px-3.5 py-2 t-base ${
+                className={`t-base max-w-[80%] rounded-2xl border px-3.5 py-2 ${
                     self
-                        ? "rounded-br-sm border-primary-line bg-primary-soft text-foreground"
-                        : "rounded-bl-sm border-border bg-surface-raised text-foreground"
+                        ? "border-primary-line bg-primary-soft text-foreground rounded-br-sm"
+                        : "border-border bg-surface-raised text-foreground rounded-bl-sm"
                 }`}
             >
                 {children}
@@ -124,31 +128,32 @@ function Bubble({
 
 export function ChatMockup() {
     return (
-        <div className="rounded-2xl border border-border bg-surface p-4 shadow-xl">
-            <div className="mb-3 flex items-center gap-2 border-b border-border pb-3">
-                <span className="grid size-7 place-items-center rounded-full bg-primary-soft text-primary">
+        <div className="border-border bg-surface rounded-2xl border p-4 shadow-xl">
+            <div className="border-border mb-3 flex items-center gap-2 border-b pb-3">
+                <span className="bg-primary-soft text-primary grid size-7 place-items-center rounded-full">
                     <ShieldCheck size={14} aria-hidden="true" />
                 </span>
-                <span className="t-base font-semibold text-foreground">
-                    #quiet-room
-                </span>
-                <span className="tag ml-auto border border-ok-line bg-ok-soft text-ok">
-                    e2e
+                <span className="t-base text-foreground font-semibold">
+                    GroupChat
                 </span>
             </div>
             <div className="space-y-2.5">
-                <Bubble>hey — new place, who can read this?</Bubble>
-                <Bubble self>just us. keys never left our devices.</Bubble>
+                <Bubble>OH wow, new place. Who can read this?</Bubble>
+                <Bubble self>just us... everything stored local.</Bubble>
                 <Bubble>
-                    <span className="flex items-center gap-1.5 text-muted">
+                    <span className="text-muted flex items-center gap-1.5">
                         <Lock size={13} aria-hidden="true" />
-                        locked message · passphrase required
+                        Passphrase required
                     </span>
                 </Bubble>
                 <Bubble self>
                     <span className="flex items-center gap-1.5">
-                        <Flame size={13} className="text-warn" aria-hidden="true" />
-                        this one burns when you read it
+                        <Flame
+                            size={13}
+                            className="text-warn"
+                            aria-hidden="true"
+                        />
+                        You are lucky if you reading this, it's gonna go in 5.
                     </span>
                 </Bubble>
             </div>
@@ -162,15 +167,15 @@ export function ChatMockup() {
 
 export function BurnMockup() {
     return (
-        <div className="space-y-3 rounded-2xl border border-border bg-surface p-5 shadow-xl">
-            <div className="flex items-center gap-2 t-small font-semibold tracking-wider text-warn uppercase">
+        <div className="border-border bg-surface space-y-3 rounded-2xl border p-5 shadow-xl">
+            <div className="t-small text-warn flex items-center gap-2 font-semibold tracking-wider uppercase">
                 <Flame size={14} aria-hidden="true" />
                 burn on read
             </div>
-            <div className="rounded-2xl rounded-bl-sm border border-warn-line bg-warn-soft px-3.5 py-2 t-base text-foreground">
+            <div className="border-warn-line bg-warn-soft t-base text-foreground rounded-2xl rounded-bl-sm border px-3.5 py-2">
                 the meeting moved to friday. memorise it.
             </div>
-            <div className="rounded-2xl rounded-bl-sm border border-border bg-surface-raised px-3.5 py-2 t-base text-muted line-through">
+            <div className="border-border bg-surface-raised t-base text-muted rounded-2xl rounded-bl-sm border px-3.5 py-2 line-through">
                 read once · destroyed on both sides
             </div>
             <p className="t-small text-muted">
@@ -188,8 +193,8 @@ const PHRASE = ["ember", "vault", "quiet", "orbit", "cedar", "night"];
 
 export function KeyCard() {
     return (
-        <div className="space-y-4 rounded-2xl border border-border bg-surface p-5 shadow-xl">
-            <div className="flex items-center gap-2 t-small font-semibold tracking-wider text-primary uppercase">
+        <div className="border-border bg-surface space-y-4 rounded-2xl border p-5 shadow-xl">
+            <div className="t-small text-primary flex items-center gap-2 font-semibold tracking-wider uppercase">
                 <KeyRound size={14} aria-hidden="true" />
                 your recovery phrase
             </div>
@@ -197,13 +202,13 @@ export function KeyCard() {
                 {PHRASE.map((w, i) => (
                     <span
                         key={w}
-                        className="rounded-lg border border-primary-line bg-primary-soft px-2.5 py-1 t-base font-mono text-foreground"
+                        className="border-primary-line bg-primary-soft t-base text-foreground rounded-lg border px-2.5 py-1 font-mono"
                     >
-                        <span className="mr-1.5 text-muted">{i + 1}</span>
+                        <span className="text-muted mr-1.5">{i + 1}</span>
                         {w}
                     </span>
                 ))}
-                <span className="rounded-lg border border-border bg-surface-raised px-2.5 py-1 t-base text-muted">
+                <span className="border-border bg-surface-raised t-base text-muted rounded-lg border px-2.5 py-1">
                     + 6 more
                 </span>
             </div>
@@ -222,33 +227,37 @@ const ACCENTS = ["#34c07a", "#45c3d6", "#7cb0ef", "#e2b566", "#f16d6b"];
 
 export function ThemeSwatches() {
     return (
-        <div className="space-y-4 rounded-2xl border border-border bg-surface p-5 shadow-xl">
-            <div className="t-small font-semibold tracking-wider text-primary uppercase">
+        <div className="border-border bg-surface space-y-4 rounded-2xl border p-5 shadow-xl">
+            <div className="t-small text-primary font-semibold tracking-wider uppercase">
                 make it yours
             </div>
             <div className="flex gap-3">
                 {ACCENTS.map((c) => (
                     <span
                         key={c}
-                        className="size-9 rounded-full border-2 border-border"
+                        className="border-border size-9 rounded-full border-2"
                         style={{ backgroundColor: c }}
                     />
                 ))}
             </div>
             <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-xl border border-border bg-surface-raised p-3">
-                    <p className="t-small font-semibold text-foreground">dark</p>
-                    <div className="mt-2 h-1.5 w-3/4 rounded-full bg-primary" />
-                    <div className="mt-1.5 h-1.5 w-1/2 rounded-full bg-border" />
+                <div className="border-border bg-surface-raised rounded-xl border p-3">
+                    <p className="t-small text-foreground font-semibold">
+                        dark
+                    </p>
+                    <div className="bg-primary mt-2 h-1.5 w-3/4 rounded-full" />
+                    <div className="bg-border mt-1.5 h-1.5 w-1/2 rounded-full" />
                 </div>
-                <div className="rounded-xl border border-primary-line bg-primary-soft p-3">
-                    <p className="t-small font-semibold text-foreground">custom</p>
-                    <div className="mt-2 h-1.5 w-3/4 rounded-full bg-secondary" />
-                    <div className="mt-1.5 h-1.5 w-1/2 rounded-full bg-border" />
+                <div className="border-primary-line bg-primary-soft rounded-xl border p-3">
+                    <p className="t-small text-foreground font-semibold">
+                        custom
+                    </p>
+                    <div className="bg-secondary mt-2 h-1.5 w-3/4 rounded-full" />
+                    <div className="bg-border mt-1.5 h-1.5 w-1/2 rounded-full" />
                 </div>
             </div>
             <p className="t-small text-muted">
-                Light, dark, and a custom accent — your vault, your look.
+                Light, dark or a custom accent.
             </p>
         </div>
     );

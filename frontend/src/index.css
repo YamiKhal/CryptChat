@@ -43,136 +43,184 @@
  * reach for an opacity modifier in a component.
  */
 @theme {
-  /* ---- surfaces, back to front -------------------------------------- */
-  --color-bg: #0c1210; /* app background (darkest)   */
-  --color-surface: #121a16; /* panels, cards, headers     */
-  --color-surface-raised: #19221d; /* inputs, others' bubbles    */
-  --color-border: #29342d; /* hairlines between surfaces  */
+    /* ---- surfaces, back to front -------------------------------------- */
+    --color-bg: #0c1210; /* app background (darkest)   */
+    --color-surface: #121a16; /* panels, cards, headers     */
+    --color-surface-raised: #19221d; /* inputs, others' bubbles    */
+    --color-border: #29342d; /* hairlines between surfaces  */
 
-  /* ---- text --------------------------------------------------------- */
-  --color-foreground: #e4ece6; /* primary text (near-white)  */
-  --color-muted: #93a89b; /* secondary / subtle text    */
+    /* ---- text --------------------------------------------------------- */
+    --color-foreground: #e4ece6; /* primary text (near-white)  */
+    --color-muted: #93a89b; /* secondary / subtle text    */
 
-  /* ---- primary accent: terminal green ------------------------------- *
+    /* ---- primary accent: terminal green ------------------------------- *
    * Bright on a dark app, so it doubles as readable green TEXT and as a
    * button fill whose own text is dark (--color-primary-foreground). */
-  --color-primary: #34c07a;
-  --color-primary-strong: #45cf88; /* hover / active            */
-  --color-primary-foreground: #06140c; /* text ON a primary fill    */
+    --color-primary: #34c07a;
+    --color-primary-strong: #45cf88; /* hover / active            */
+    --color-primary-foreground: #06140c; /* text ON a primary fill    */
 
-  --color-primary-soft: color-mix(in srgb, var(--color-primary) 15%, var(--color-bg));
-  --color-primary-line: color-mix(in srgb, var(--color-primary) 42%, var(--color-bg));
+    --color-primary-soft: color-mix(
+        in srgb,
+        var(--color-primary) 15%,
+        var(--color-bg)
+    );
+    --color-primary-line: color-mix(
+        in srgb,
+        var(--color-primary) 42%,
+        var(--color-bg)
+    );
 
-  /* ---- secondary accent: cyan --------------------------------------- */
-  --color-secondary: #45c3d6;
-  --color-secondary-foreground: #04161b;
-  --color-secondary-soft: color-mix(in srgb, var(--color-secondary) 15%, var(--color-bg));
-  --color-secondary-line: color-mix(in srgb, var(--color-secondary) 42%, var(--color-bg));
+    /* ---- secondary accent: cyan --------------------------------------- */
+    --color-secondary: #45c3d6;
+    --color-secondary-foreground: #04161b;
+    --color-secondary-soft: color-mix(
+        in srgb,
+        var(--color-secondary) 15%,
+        var(--color-bg)
+    );
+    --color-secondary-line: color-mix(
+        in srgb,
+        var(--color-secondary) 42%,
+        var(--color-bg)
+    );
 
-  /* ---- status: error / warn / info ---------------------------------- */
-  --color-error: #f16d6b;
-  --color-error-soft: color-mix(in srgb, var(--color-error) 15%, var(--color-bg));
-  --color-error-line: color-mix(in srgb, var(--color-error) 42%, var(--color-bg));
+    /* ---- status: error / warn / info ---------------------------------- */
+    --color-error: #f16d6b;
+    --color-error-soft: color-mix(
+        in srgb,
+        var(--color-error) 15%,
+        var(--color-bg)
+    );
+    --color-error-line: color-mix(
+        in srgb,
+        var(--color-error) 42%,
+        var(--color-bg)
+    );
 
-  --color-warn: #e2b566;
-  --color-warn-soft: color-mix(in srgb, var(--color-warn) 15%, var(--color-bg));
-  --color-warn-line: color-mix(in srgb, var(--color-warn) 42%, var(--color-bg));
+    --color-warn: #e2b566;
+    --color-warn-soft: color-mix(
+        in srgb,
+        var(--color-warn) 15%,
+        var(--color-bg)
+    );
+    --color-warn-line: color-mix(
+        in srgb,
+        var(--color-warn) 42%,
+        var(--color-bg)
+    );
 
-  --color-info: #7cb0ef;
-  --color-info-soft: color-mix(in srgb, var(--color-info) 15%, var(--color-bg));
-  --color-info-line: color-mix(in srgb, var(--color-info) 42%, var(--color-bg));
+    --color-info: #7cb0ef;
+    --color-info-soft: color-mix(
+        in srgb,
+        var(--color-info) 15%,
+        var(--color-bg)
+    );
+    --color-info-line: color-mix(
+        in srgb,
+        var(--color-info) 42%,
+        var(--color-bg)
+    );
 
-  /* ---- success (green family, kept distinct from primary) ----------- */
-  --color-ok: #4dc98a;
-  --color-ok-soft: color-mix(in srgb, var(--color-ok) 15%, var(--color-bg));
-  --color-ok-line: color-mix(in srgb, var(--color-ok) 42%, var(--color-bg));
+    /* ---- success (green family, kept distinct from primary) ----------- */
+    --color-ok: #4dc98a;
+    --color-ok-soft: color-mix(in srgb, var(--color-ok) 15%, var(--color-bg));
+    --color-ok-line: color-mix(in srgb, var(--color-ok) 42%, var(--color-bg));
 
-  --font-mono:
-    "gg sans", "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --font-mono:
+        "gg sans", "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
 
-  --animate-fade-in: fade-in 150ms ease-out;
-  --animate-pop: pop-in 160ms cubic-bezier(0.16, 1, 0.3, 1);
-  --animate-slide-up: slide-up 240ms cubic-bezier(0.16, 1, 0.3, 1);
+    --animate-fade-in: fade-in 150ms ease-out;
+    --animate-pop: pop-in 160ms cubic-bezier(0.16, 1, 0.3, 1);
+    --animate-slide-up: slide-up 240ms cubic-bezier(0.16, 1, 0.3, 1);
 
-  @keyframes fade-in {
-    from {
-      opacity: 0;
-      transform: translateY(4px);
+    @keyframes fade-in {
+        from {
+            opacity: 0;
+            transform: translateY(4px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
     }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
 
-  /* Menus / popovers: a quick settle from slightly small and high. */
-  @keyframes pop-in {
-    from {
-      opacity: 0;
-      transform: scale(0.96) translateY(-4px);
+    /* Menus / popovers: a quick settle from slightly small and high. */
+    @keyframes pop-in {
+        from {
+            opacity: 0;
+            transform: scale(0.96) translateY(-4px);
+        }
+        to {
+            opacity: 1;
+            transform: none;
+        }
     }
-    to {
-      opacity: 1;
-      transform: none;
-    }
-  }
 
-  /* Modals / sheets: rise into place. */
-  @keyframes slide-up {
-    from {
-      opacity: 0;
-      transform: translateY(16px) scale(0.98);
+    /* Modals / sheets: rise into place. */
+    @keyframes slide-up {
+        from {
+            opacity: 0;
+            transform: translateY(16px) scale(0.98);
+        }
+        to {
+            opacity: 1;
+            transform: none;
+        }
     }
-    to {
-      opacity: 1;
-      transform: none;
-    }
-  }
 }
 
 /**
  * Runtime-only vars (not colour utilities).
  */
 :root {
-  /* Wallpaper scrim: a wash laid over the user's wallpaper image, behind message
+    /* Wallpaper scrim: a wash laid over the user's wallpaper image, behind message
      content, so bubbles stay legible over a busy photo. This is the ONE place
      translucency is intentional — it is dimming a photo, not tinting the UI. It
      tracks light/dark, not the custom palette, so it always dims the readable way. */
-  --wallpaper-scrim: rgba(7, 10, 8, 0.62);
+    --wallpaper-scrim: rgba(7, 10, 8, 0.62);
 
-  /* Message-bubble fills + borders. SOLID by default (Rule A): your own bubble
+    /* Message-bubble fills + borders. SOLID by default (Rule A): your own bubble
      is a solid green-tinted panel, others' is the raised surface. Both are built
      with color-mix against opaque surfaces, so they stay opaque and follow the
      accent — including a premium custom accent. A custom theme overrides these as
      inline --bubble-* vars, which win. The bubble reads them directly. */
-  --bubble-self-bg: color-mix(in srgb, var(--color-primary) 20%, var(--color-surface));
-  --bubble-self-border: color-mix(in srgb, var(--color-primary) 45%, var(--color-surface));
-  --bubble-other-bg: var(--color-surface-raised);
-  --bubble-other-border: var(--color-border);
+    --bubble-self-bg: color-mix(
+        in srgb,
+        var(--color-primary) 20%,
+        var(--color-surface)
+    );
+    --bubble-self-border: color-mix(
+        in srgb,
+        var(--color-primary) 45%,
+        var(--color-surface)
+    );
+    --bubble-other-bg: var(--color-surface-raised);
+    --bubble-other-border: var(--color-border);
 
-  /* Chat text scale (Settings > Chat). Mobile baseline; the desktop block below
+    /* Chat text scale (Settings > Chat). Mobile baseline; the desktop block below
      scales each preset up. `--chat-body` sizes message text, `--chat-name` /
      `--chat-time` the header, `--chat-avatar` the picture box. Default is the
      'normal' preset, so a transcript with no data-chat-size still resolves. */
-  --chat-body: 14px;
-  --chat-name: 12px;
-  --chat-time: 10px;
-  --chat-avatar: 24px;
+    --chat-body: 14px;
+    --chat-name: 12px;
+    --chat-time: 10px;
+    --chat-avatar: 24px;
 
-  /* ONE type scale for the whole app (everything EXCEPT chat message text,
+    /* ONE type scale for the whole app (everything EXCEPT chat message text,
      which stays user-customisable via --chat-* above). Seven tiers, biggest to
      smallest: h1 > h2 > h3 > h4 > lead > base > small. Each is a clamp() so the
      rendered size is genuinely different on phone, tablet and desktop — the min
      is the phone size, the max the desktop size, and it scales fluidly with the
      viewport in between. Never hardcode a text-[13px] or a bare text-sm again;
      reach for .t-h1 … .t-small. */
-  --fs-h1: clamp(1.5rem, 1.28rem + 1.1vw, 1.75rem); /* 24 -> 28 */
-  --fs-h2: clamp(1.125rem, 1.02rem + 0.5vw, 1.375rem); /* 18 -> 22 */
-  --fs-h3: clamp(1rem, 0.95rem + 0.25vw, 1.125rem); /* 16 -> 18 */
-  --fs-h4: clamp(0.9375rem, 0.9rem + 0.18vw, 1rem); /* 15 -> 16 */
-  --fs-lead: clamp(0.875rem, 0.85rem + 0.15vw, 0.9375rem); /* 14 -> 15 */
-  --fs-base: clamp(0.8125rem, 0.79rem + 0.12vw, 0.875rem); /* 13 -> 14 */
-  --fs-small: clamp(0.6875rem, 0.67rem + 0.1vw, 0.75rem); /* 11 -> 12 */
+    --fs-h1: clamp(1.5rem, 1.28rem + 1.1vw, 1.75rem); /* 24 -> 28 */
+    --fs-h2: clamp(1.125rem, 1.02rem + 0.5vw, 1.375rem); /* 18 -> 22 */
+    --fs-h3: clamp(1rem, 0.95rem + 0.25vw, 1.125rem); /* 16 -> 18 */
+    --fs-h4: clamp(0.9375rem, 0.9rem + 0.18vw, 1rem); /* 15 -> 16 */
+    --fs-lead: clamp(0.875rem, 0.85rem + 0.15vw, 0.9375rem); /* 14 -> 15 */
+    --fs-base: clamp(0.8125rem, 0.79rem + 0.12vw, 0.875rem); /* 13 -> 14 */
+    --fs-small: clamp(0.6875rem, 0.67rem + 0.1vw, 0.75rem); /* 11 -> 12 */
 }
 
 /* "No bubbles" chat option (Settings > Appearance > Messages). Overrides the
@@ -182,10 +230,10 @@
    applied higher up on :root. Only paint changes — the bubble box still lays out
    exactly as before, keeping spacing and alignment consistent. */
 [data-chat-bubbles="hidden"] {
-  --bubble-self-bg: transparent;
-  --bubble-self-border: transparent;
-  --bubble-other-bg: transparent;
-  --bubble-other-border: transparent;
+    --bubble-self-bg: transparent;
+    --bubble-self-border: transparent;
+    --bubble-other-bg: transparent;
+    --bubble-other-border: transparent;
 }
 
 /* With the bubble invisible, its padding is just dead space. Collapse top/bottom
@@ -194,10 +242,10 @@
    name instead of sitting indented where the bubble fill used to be. Attribute-
    descendant selector outranks the utility p-* at any breakpoint. */
 [data-chat-bubbles="hidden"] [data-bubble] {
-  padding-top: 0;
-  padding-bottom: 0;
-  padding-left: 0.25rem;
-  padding-right: 0.25rem;
+    padding-top: 0;
+    padding-bottom: 0;
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
 }
 
 /* A grouped row's avatar slot is an empty spacer that still reserves the avatar
@@ -207,65 +255,65 @@
    indent, is untouched). !important overrides the element's inline height; scoped
    to this mode so the bubbled view keeps its avatar-height floor unchanged. */
 [data-chat-bubbles="hidden"] [data-av-spacer] {
-  height: 0 !important;
+    height: 0 !important;
 }
 
 [data-chat-size="tiny"] {
-  --chat-body: 11px;
-  --chat-name: 10px;
-  --chat-time: 9px;
-  --chat-avatar: 18px;
+    --chat-body: 11px;
+    --chat-name: 10px;
+    --chat-time: 9px;
+    --chat-avatar: 18px;
 }
 [data-chat-size="small"] {
-  --chat-body: 12.5px;
-  --chat-name: 11px;
-  --chat-time: 10px;
-  --chat-avatar: 21px;
+    --chat-body: 12.5px;
+    --chat-name: 11px;
+    --chat-time: 10px;
+    --chat-avatar: 21px;
 }
 [data-chat-size="normal"] {
-  --chat-body: 14px;
-  --chat-name: 12px;
-  --chat-time: 10px;
-  --chat-avatar: 24px;
+    --chat-body: 14px;
+    --chat-name: 12px;
+    --chat-time: 10px;
+    --chat-avatar: 24px;
 }
 [data-chat-size="large"] {
-  --chat-body: 16px;
-  --chat-name: 13px;
-  --chat-time: 11px;
-  --chat-avatar: 28px;
+    --chat-body: 16px;
+    --chat-name: 13px;
+    --chat-time: 11px;
+    --chat-avatar: 28px;
 }
 
 @media (min-width: 1024px) {
-  :root {
-    --chat-body: 15px;
-    --chat-name: 14px;
-    --chat-time: 11px;
-    --chat-avatar: 36px;
-  }
-  [data-chat-size="tiny"] {
-    --chat-body: 12px;
-    --chat-name: 11px;
-    --chat-time: 10px;
-    --chat-avatar: 26px;
-  }
-  [data-chat-size="small"] {
-    --chat-body: 13.5px;
-    --chat-name: 12px;
-    --chat-time: 10px;
-    --chat-avatar: 31px;
-  }
-  [data-chat-size="normal"] {
-    --chat-body: 15px;
-    --chat-name: 14px;
-    --chat-time: 11px;
-    --chat-avatar: 36px;
-  }
-  [data-chat-size="large"] {
-    --chat-body: 18px;
-    --chat-name: 15px;
-    --chat-time: 12px;
-    --chat-avatar: 42px;
-  }
+    :root {
+        --chat-body: 15px;
+        --chat-name: 14px;
+        --chat-time: 11px;
+        --chat-avatar: 36px;
+    }
+    [data-chat-size="tiny"] {
+        --chat-body: 12px;
+        --chat-name: 11px;
+        --chat-time: 10px;
+        --chat-avatar: 26px;
+    }
+    [data-chat-size="small"] {
+        --chat-body: 13.5px;
+        --chat-name: 12px;
+        --chat-time: 10px;
+        --chat-avatar: 31px;
+    }
+    [data-chat-size="normal"] {
+        --chat-body: 15px;
+        --chat-name: 14px;
+        --chat-time: 11px;
+        --chat-avatar: 36px;
+    }
+    [data-chat-size="large"] {
+        --chat-body: 18px;
+        --chat-name: 15px;
+        --chat-time: 12px;
+        --chat-avatar: 42px;
+    }
 }
 
 /**
@@ -282,59 +330,59 @@
  * base tokens are restated here.
  */
 :root[data-theme="light"] {
-  --wallpaper-scrim: rgba(232, 237, 233, 0.55);
+    --wallpaper-scrim: rgba(232, 237, 233, 0.55);
 
-  /* surfaces, back to front. Deliberately NOT pure white anywhere — every
+    /* surfaces, back to front. Deliberately NOT pure white anywhere — every
      surface carries a faint green-grey tint so the page reads as paper, not a
      lightbox. The old #ffffff panels were blinding next to the dark theme. */
-  --color-bg: #dfe6e1;
-  --color-surface: #edf2ee;
-  --color-surface-raised: #f6f9f6;
-  --color-border: #c3cfc6;
+    --color-bg: #dfe6e1;
+    --color-surface: #edf2ee;
+    --color-surface-raised: #f6f9f6;
+    --color-border: #c3cfc6;
 
-  /* text — softened off-black; full #000-adjacent ink on tinted paper glares */
-  --color-foreground: #16231b;
-  --color-muted: #52665a;
+    /* text — softened off-black; full #000-adjacent ink on tinted paper glares */
+    --color-foreground: #16231b;
+    --color-muted: #52665a;
 
-  /* primary: dark green on light — green text reads, buttons take white text */
-  --color-primary: #0e7a3c;
-  --color-primary-strong: #0a6431;
-  --color-primary-foreground: #ffffff;
+    /* primary: dark green on light — green text reads, buttons take white text */
+    --color-primary: #0e7a3c;
+    --color-primary-strong: #0a6431;
+    --color-primary-foreground: #ffffff;
 
-  --color-secondary: #0784a8;
-  --color-secondary-foreground: #ffffff;
+    --color-secondary: #0784a8;
+    --color-secondary-foreground: #ffffff;
 
-  /* status, darkened for contrast on a light surface */
-  --color-error: #cc2b2b;
-  --color-warn: #8a5b00;
-  --color-info: #1f5fc2;
-  --color-ok: #0e7a3c;
+    /* status, darkened for contrast on a light surface */
+    --color-error: #cc2b2b;
+    --color-warn: #8a5b00;
+    --color-info: #1f5fc2;
+    --color-ok: #0e7a3c;
 }
 
 @layer base {
-  html,
-  body,
-  #root {
-    height: 100%;
-  }
+    html,
+    body,
+    #root {
+        height: 100%;
+    }
 
-  body {
-    @apply bg-bg text-foreground font-mono antialiased;
-  }
+    body {
+        @apply bg-bg text-foreground font-mono antialiased;
+    }
 
-  /* Solid selection — a tinted panel colour, not a translucent wash. */
-  ::selection {
-    @apply bg-primary-line text-foreground;
-  }
+    /* Solid selection — a tinted panel colour, not a translucent wash. */
+    ::selection {
+        @apply bg-primary-line text-foreground;
+    }
 
-  /* Focus must stay visible: this app asks people to retype channel codes and
+    /* Focus must stay visible: this app asks people to retype channel codes and
      passphrases, and keyboard users need to see where they are. Solid accent. */
-  :focus-visible {
-    outline: 2px solid var(--color-primary);
-    outline-offset: 2px;
-  }
+    :focus-visible {
+        outline: 2px solid var(--color-primary);
+        outline-offset: 2px;
+    }
 
-  /* Scrollbars: a floating pill, no visible track.
+    /* Scrollbars: a floating pill, no visible track.
    *
    * The two engines are styled separately and each ignores the other's rules, so
    * together they cover every browser (Firefox + the CSS standard via the first
@@ -347,202 +395,218 @@
    * looks identical and clean in every engine. Only the track is transparent (a
    * bare edge gutter); the thumb itself stays a solid colour, so the UI's
    * no-translucency rule still holds for anything that reads as a surface. */
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: var(--color-border) transparent;
-  }
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: var(--color-border) transparent;
+    }
 
-  ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
-  }
+    ::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+    }
 
-  ::-webkit-scrollbar-track,
-  ::-webkit-scrollbar-track-piece,
-  ::-webkit-scrollbar-corner {
-    background: transparent;
-  }
+    ::-webkit-scrollbar-track,
+    ::-webkit-scrollbar-track-piece,
+    ::-webkit-scrollbar-corner {
+        background: transparent;
+    }
 
-  /* The thumb is a solid pill floated inside the 10px lane by a transparent
+    /* The thumb is a solid pill floated inside the 10px lane by a transparent
      border (clipped to the padding box), so it never touches the content edge and
      keeps an even shape end to end. */
-  ::-webkit-scrollbar-thumb {
-    @apply bg-border;
-    border: 2px solid transparent;
-    border-radius: 9999px;
-    background-clip: padding-box;
-  }
+    ::-webkit-scrollbar-thumb {
+        @apply bg-border;
+        border: 2px solid transparent;
+        border-radius: 9999px;
+        background-clip: padding-box;
+    }
 
-  ::-webkit-scrollbar-thumb:hover {
-    @apply bg-primary-line;
-  }
+    ::-webkit-scrollbar-thumb:hover {
+        @apply bg-primary-line;
+    }
 
-  input,
-  textarea {
-    @apply bg-surface-raised text-foreground placeholder:text-muted;
-  }
+    input,
+    textarea {
+        @apply bg-surface-raised text-foreground placeholder:text-muted;
+    }
 
-  /* Pointer on anything clickable. Covers buttons, links, role="button",
+    /* Pointer on anything clickable. Covers buttons, links, role="button",
      labels, selects, summary, and any element opting in via [role] or
      the tabindex/onclick escape hatches. Disabled controls keep the
      not-allowed cursor (see .btn:disabled etc.). */
-  a[href],
-  button,
-  label,
-  select,
-  summary,
-  [role="button"],
-  [role="link"],
-  [role="tab"],
-  [role="menuitem"],
-  [role="option"],
-  [role="switch"],
-  [role="checkbox"],
-  [role="radio"] {
-    cursor: pointer;
-  }
+    a[href],
+    button,
+    label,
+    select,
+    summary,
+    [role="button"],
+    [role="link"],
+    [role="tab"],
+    [role="menuitem"],
+    [role="option"],
+    [role="switch"],
+    [role="checkbox"],
+    [role="radio"] {
+        cursor: pointer;
+    }
 
-  button:disabled,
-  [aria-disabled="true"],
-  [disabled] {
-    cursor: not-allowed;
-  }
+    button:disabled,
+    [aria-disabled="true"],
+    [disabled] {
+        cursor: not-allowed;
+    }
 }
 
 @layer components {
-  /* ---- THE TYPE SCALE ---------------------------------------------------
+    /* ---- THE TYPE SCALE ---------------------------------------------------
      Semantic tiers. font-size + line-height only — weight/colour stay with the
      element's own utilities (font-semibold, text-muted, …). Applies everywhere
      but chat message text (that reads --chat-body/name/time inline). */
-  .t-h1 { font-size: var(--fs-h1); line-height: 1.15; letter-spacing: -0.01em; }
-  .t-h2 { font-size: var(--fs-h2); line-height: 1.2; letter-spacing: -0.01em; }
-  .t-h3 { font-size: var(--fs-h3); line-height: 1.25; }
-  .t-h4 { font-size: var(--fs-h4); line-height: 1.3; }
-  .t-lead { font-size: var(--fs-lead); line-height: 1.5; }
-  .t-base { font-size: var(--fs-base); line-height: 1.5; }
-  .t-small { font-size: var(--fs-small); line-height: 1.4; }
+    .t-h1 {
+        font-size: var(--fs-h1);
+        line-height: 1.15;
+        letter-spacing: -0.01em;
+    }
+    .t-h2 {
+        font-size: var(--fs-h2);
+        line-height: 1.2;
+        letter-spacing: -0.01em;
+    }
+    .t-h3 {
+        font-size: var(--fs-h3);
+        line-height: 1.25;
+    }
+    .t-h4 {
+        font-size: var(--fs-h4);
+        line-height: 1.3;
+    }
+    .t-lead {
+        font-size: var(--fs-lead);
+        line-height: 1.5;
+    }
+    .t-base {
+        font-size: var(--fs-base);
+        line-height: 1.5;
+    }
+    .t-small {
+        font-size: var(--fs-small);
+        line-height: 1.4;
+    }
 
-  /* Listed as one selector group rather than having the variants @apply .btn.
+    /* Listed as one selector group rather than having the variants @apply .btn.
      v4's @apply only accepts real utilities, so applying a component class
      defined in this same layer fails to build. */
-  .btn,
-  .btn-primary,
-  .btn-ghost,
-  .btn-danger {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 font-medium
-           disabled:cursor-not-allowed disabled:opacity-50;
-    font-size: var(--fs-base);
-    transition:
-      background-color 150ms,
-      border-color 150ms,
-      color 150ms,
-      transform 120ms ease-out;
-  }
+    .btn,
+    .btn-primary,
+    .btn-ghost,
+    .btn-danger {
+        @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-50;
+        font-size: var(--fs-base);
+        transition:
+            background-color 150ms,
+            border-color 150ms,
+            color 150ms,
+            transform 120ms ease-out;
+    }
 
-  /* Press feedback: a tiny sink. Disabled buttons stay still. */
-  .btn:active:not(:disabled),
-  .btn-primary:active:not(:disabled),
-  .btn-ghost:active:not(:disabled),
-  .btn-danger:active:not(:disabled) {
-    transform: scale(0.97);
-  }
+    /* Press feedback: a tiny sink. Disabled buttons stay still. */
+    .btn:active:not(:disabled),
+    .btn-primary:active:not(:disabled),
+    .btn-ghost:active:not(:disabled),
+    .btn-danger:active:not(:disabled) {
+        transform: scale(0.97);
+    }
 
-  .btn-primary {
-    @apply bg-primary text-primary-foreground hover:bg-primary-strong;
-  }
+    .btn-primary {
+        @apply bg-primary text-primary-foreground hover:bg-primary-strong;
+    }
 
-  .btn-ghost {
-    @apply border border-border bg-surface-raised text-foreground hover:border-primary
-           hover:text-primary;
-  }
+    .btn-ghost {
+        @apply border-border bg-surface-raised text-foreground hover:border-primary hover:text-primary border;
+    }
 
-  .btn-danger {
-    @apply border border-error-line bg-error-soft text-error hover:border-error;
-  }
+    .btn-danger {
+        @apply border-error-line bg-error-soft text-error hover:border-error border;
+    }
 
-  .field {
-    @apply w-full rounded-lg border border-border bg-surface-raised px-3 py-2 outline-none
-           transition-colors focus:border-primary;
-    font-size: var(--fs-base);
-  }
+    .field {
+        @apply border-border bg-surface-raised focus:border-primary w-full rounded-lg border px-3 py-2 transition-colors outline-none;
+        font-size: var(--fs-base);
+    }
 
-  /* Borderless icon button for controls that sit inside the composer bar. The
+    /* Borderless icon button for controls that sit inside the composer bar. The
      bar owns the frame; these just tint on hover. */
-  .icon-btn {
-    @apply inline-flex items-center justify-center rounded-lg p-2 text-muted transition-colors
-           hover:bg-primary-soft hover:text-primary disabled:cursor-not-allowed
-           disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-muted;
-  }
+    .icon-btn {
+        @apply text-muted hover:bg-primary-soft hover:text-primary disabled:hover:text-muted inline-flex items-center justify-center rounded-lg p-2 transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent;
+    }
 
-  .card {
-    @apply rounded-xl border border-border bg-surface p-4;
-  }
+    .card {
+        @apply border-border bg-surface rounded-xl border p-4;
+    }
 
-  .tag {
-    @apply inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-medium uppercase
-           tracking-wider;
-    font-size: var(--fs-small);
-  }
+    .tag {
+        @apply inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-medium tracking-wider uppercase;
+        font-size: var(--fs-small);
+    }
 
-  /* ---- MENUS & POPOVERS -------------------------------------------------
+    /* ---- MENUS & POPOVERS -------------------------------------------------
      ONE look for every floating panel: the context menu, the composer's tools
      popover, the emoji picker frame, dropdowns. Solid raised surface, soft
      corners, pop animation. If a floating panel doesn't use these classes,
      that's a bug in the making — this is how the menus stay consistent. */
-  .menu-panel {
-    @apply rounded-xl border border-border bg-surface-raised p-1.5 shadow-xl;
-    animation: var(--animate-pop);
-    transform-origin: top;
-  }
+    .menu-panel {
+        @apply border-border bg-surface-raised rounded-xl border p-1.5;
+        animation: var(--animate-pop);
+        transform-origin: top;
+    }
 
-  .menu-item {
-    @apply flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left
-           text-foreground transition-colors;
-    font-size: var(--fs-base);
-  }
-  .menu-item:hover:not(:disabled) {
-    @apply bg-primary-soft text-primary;
-  }
-  .menu-item:disabled {
-    @apply cursor-not-allowed text-muted;
-  }
+    .menu-item {
+        @apply text-foreground flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors;
+        font-size: var(--fs-base);
+    }
+    .menu-item:hover:not(:disabled) {
+        @apply bg-primary-soft text-primary;
+    }
+    .menu-item:disabled {
+        @apply text-muted cursor-not-allowed;
+    }
 
-  .menu-item-danger {
-    @apply text-error;
-  }
-  .menu-item-danger:hover:not(:disabled) {
-    @apply bg-error-soft text-error;
-  }
+    .menu-item-danger {
+        @apply text-error;
+    }
+    .menu-item-danger:hover:not(:disabled) {
+        @apply bg-error-soft text-error;
+    }
 
-  /* Hairline between menu groups. */
-  .menu-sep {
-    @apply my-1 border-t border-border;
-  }
+    /* Hairline between menu groups. */
+    .menu-sep {
+        @apply border-border my-1 border-t;
+    }
 
-  /* ---- MODALS ------------------------------------------------------------
+    /* ---- MODALS ------------------------------------------------------------
      Same deal as menus: one backdrop, one panel, used by every dialog. The
      backdrop is SOLID black (rule A — a translucent wash would let a video
      wallpaper bleed through); the panel rises in. */
-  .modal-backdrop {
-    @apply fixed inset-0 z-50 flex items-center justify-center bg-black p-4;
-  }
+    .modal-backdrop {
+        @apply fixed inset-0 z-50 flex items-center justify-center bg-black p-4;
+    }
 
-  .modal-panel {
-    @apply w-full rounded-xl border border-border bg-surface p-5;
-    animation: var(--animate-slide-up);
-  }
+    .modal-panel {
+        @apply border-border bg-surface w-full rounded-xl border p-5;
+        animation: var(--animate-slide-up);
+    }
 }
 
 /* Motion accessibility: entrance animations and press feedback collapse. */
 @media (prefers-reduced-motion: reduce) {
-  .menu-panel,
-  .modal-panel {
-    animation: none;
-  }
-  .btn:active:not(:disabled),
-  .btn-primary:active:not(:disabled),
-  .btn-ghost:active:not(:disabled),
-  .btn-danger:active:not(:disabled) {
-    transform: none;
-  }
+    .menu-panel,
+    .modal-panel {
+        animation: none;
+    }
+    .btn:active:not(:disabled),
+    .btn-primary:active:not(:disabled),
+    .btn-ghost:active:not(:disabled),
+    .btn-danger:active:not(:disabled) {
+        transform: none;
+    }
 }
