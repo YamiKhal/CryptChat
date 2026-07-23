@@ -2,19 +2,19 @@
  * Per-channel pseudonymous identity for incognito channels (ROADMAP #7).
  *
  * In an incognito channel nobody sends a name or an avatar; members are shown
- * only as a stable colour with a short tag. The mapping is derived from the
+ * only as a stable color with a short tag. The mapping is derived from the
  * channel id AND the sender id together, so the same person is a *different*
- * colour in a different channel -- a member cannot use the colour to link you
+ * color in a different channel -- a member cannot use the color to link you
  * across channels.
  *
  * Honest scope: this is what other members see. The relay still knows the
  * membership it routes for (it has to) and the signed envelope still carries
  * the real sender id for verification -- so this is anonymity from the people in
- * the room, not from the server. The colour is deterministic and local; no
+ * the room, not from the server. The color is deterministic and local; no
  * secret is involved, so it needs no key.
  */
 
-/** FNV-1a, enough for a stable colour bucket. Not a security primitive. */
+/** FNV-1a, enough for a stable color bucket. Not a security primitive. */
 function hash(input: string): number {
     let h = 0x811c9dc5;
     for (let i = 0; i < input.length; i++) {

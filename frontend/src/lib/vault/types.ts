@@ -35,7 +35,7 @@ export interface StoredChannel {
      * peer's own profile avatar instead.
      */
     icon?: BinaryAsset;
-    /** Incognito mode: members shown as colours only, no names or avatars sent. */
+    /** Incognito mode: members shown as colors only, no names or avatars sent. */
     incognito?: boolean;
     /** 'dm' for a 1:1 direct message; absent/undefined for a normal group channel. */
     type?: "dm";
@@ -106,7 +106,7 @@ export interface UserProfile {
  * Purely cosmetic and purely local: it rides in the vault so it syncs across a
  * user's own devices and stays private, but it is never a security boundary.
  * "Premium only" is a product perk enforced in the UI, not a secret -- a user
- * editing their own client to recolour their own screen harms no one, so there
+ * editing their own client to recolor their own screen harms no one, so there
  * is nothing here to defend server-side.
  *
  * `colors` maps a token slug (see CUSTOMIZABLE_TOKENS in theme.ts) to an
@@ -115,7 +115,7 @@ export interface UserProfile {
 export interface CustomTheme {
     enabled: boolean;
     colors: Record<string, string>;
-    /** Optional per-message-bubble colour + opacity overrides. */
+    /** Optional per-message-bubble color + opacity overrides. */
     bubbles?: BubbleTheme;
 }
 

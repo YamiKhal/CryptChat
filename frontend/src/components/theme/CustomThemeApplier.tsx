@@ -10,7 +10,7 @@ import { applyCustomThemeVars } from "@/lib/theme";
  * the auth screen shows the plain base theme and the override lands once the
  * vault opens. Keyed on the vault instance: unlocking, switching account and
  * locking all change it, so a locked or account-switched screen never keeps the
- * previous identity's colours on the page. Live edits in the customizer apply
+ * previous identity's colors on the page. Live edits in the customizer apply
  * themselves directly for instant feedback; this covers reload and navigation.
  */
 export default function CustomThemeApplier() {

@@ -69,7 +69,7 @@ npm run dev
 ```
 
 This starts Postgres (Docker), then runs the backend and frontend together with
-combined, colour-tagged logs. The backend applies `schema.sql` on boot, so there
+combined, color-tagged logs. The backend applies `schema.sql` on boot, so there
 is no manual DB setup. `Ctrl+C` stops both.
 
 - Backend: http://localhost:3000 (auto-restarts on change via nodemon)

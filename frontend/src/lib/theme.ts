@@ -107,8 +107,8 @@ export const TOKEN_LABELS: Record<ThemeToken, string> = {
 };
 
 /**
- * Per-message-bubble overrides, kept apart from the flat colour tokens because
- * each is a colour *plus* an opacity (so a self bubble can be a faint accent
+ * Per-message-bubble overrides, kept apart from the flat color tokens because
+ * each is a color *plus* an opacity (so a self bubble can be a faint accent
  * wash, an other bubble a solid panel). Applied as the `--bubble-*` CSS vars the
  * message bubble reads; anything unset falls back to the CSS defaults in
  * index.css, which track the light/dark base.
@@ -128,7 +128,7 @@ export interface BubbleTheme {
  * Companions derived from a chosen accent so the whole button state tracks it:
  * the hover shade (primary-strong, unless the user set it explicitly) and the
  * readable text on top (primary-foreground / secondary-foreground). Without this,
- * changing the accent left the hover colour and button text on the default green.
+ * changing the accent left the hover color and button text on the default green.
  */
 const DERIVED_TOKENS = [
     "primary-strong",
@@ -181,7 +181,7 @@ export function isHexColor(value: string): boolean {
     return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value);
 }
 
-/** The four bubble vars, paired with their colour source field. */
+/** The four bubble vars, paired with their color source field. */
 const BUBBLE_VARS: {
     var: string;
     color: keyof BubbleTheme;
@@ -197,7 +197,7 @@ const BUBBLE_VARS: {
  *
  * Idempotent and total over CUSTOMIZABLE_TOKENS and the bubble vars: any token
  * not present has its inline override removed, so disabling a custom theme or
- * dropping a single colour cleanly falls back to the base. Passing null for both
+ * dropping a single color cleanly falls back to the base. Passing null for both
  * clears everything.
  */
 export function applyCustomThemeVars(
@@ -215,7 +215,7 @@ export function applyCustomThemeVars(
     }
 
     // Derived companions. Cleared first, then set only when their source is a
-    // valid custom colour, so falling back to the base theme is clean. The hover
+    // valid custom color, so falling back to the base theme is clean. The hover
     // shade is only derived when the user did not set primary-strong themselves.
     for (const token of DERIVED_TOKENS)
         root.style.removeProperty(`--color-${token}`);
@@ -251,9 +251,9 @@ export function applyCustomThemeVars(
         );
     }
 
-    // Per-bubble colour. SOLID only. a bubble sits over the wallpaper (which can
+    // Per-bubble color. SOLID only. a bubble sits over the wallpaper (which can
     // be a video), so any translucency would let it bleed through. Opacity fields
-    // that may exist on older saved themes are ignored; the colour is applied flat.
+    // that may exist on older saved themes are ignored; the color is applied flat.
     for (const bubbleVar of BUBBLE_VARS) {
         const color = bubbles?.[bubbleVar.color] as string | undefined;
         if (color && isHexColor(color))

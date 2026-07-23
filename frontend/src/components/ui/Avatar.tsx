@@ -27,14 +27,14 @@ interface AvatarProps {
     className?: string;
     style?: CSSProperties;
     /**
-     * Incognito mode: a solid colour swatch instead of an image or initials.
+     * Incognito mode: a solid color swatch instead of an image or initials.
      * A hue in [0, 360). When set, `asset` and `name` are ignored for rendering,
      * since an incognito member has neither to show.
      */
     color?: number;
 }
 
-/** Deterministic hue from the name, so a person keeps the same colour. */
+/** Deterministic hue from the name, so a person keeps the same color. */
 function hueFor(name: string): number {
     let hash = 0;
     for (let i = 0; i < name.length; i++)
@@ -90,7 +90,7 @@ export default function Avatar({
 
     const base = `${SIZES[size]} shrink-0 rounded-full overflow-hidden ${className}`;
 
-    // Incognito: a solid colour, no image and no initials to reveal.
+    // Incognito: a solid color, no image and no initials to reveal.
     if (color !== undefined) {
         return (
             <div

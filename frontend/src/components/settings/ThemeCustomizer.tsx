@@ -29,11 +29,11 @@ import { InfoTip } from "@/components/ui/InfoTip";
  * Premium palette + wallpaper editor.
  *
  * Purely cosmetic, purely local. "Premium only" is a product perk gated here in
- * the UI; there is no server secret behind it, because a user recolouring their
+ * the UI; there is no server secret behind it, because a user recoloring their
  * own screen is nobody's threat. Non-premium users get an honest teaser rather
  * than a hidden control.
  *
- * Colours apply live (the native picker gives instant feedback) and persist to
+ * Colors apply live (the native picker gives instant feedback) and persist to
  * the vault, debounced so dragging the picker does not reseal the vault on every
  * frame. The base light/dark toggle keeps working underneath: any token left
  * unset follows the base.
@@ -46,7 +46,7 @@ interface Props {
     onChange: () => void;
 }
 
-/** The colour the picker should open on: an override if set, else the live base value. */
+/** The color the picker should open on: an override if set, else the live base value. */
 function seedColor(colors: Record<string, string>, token: ThemeToken): string {
     if (colors[token]) return colors[token];
     const computed = getComputedStyle(document.documentElement)
@@ -146,7 +146,7 @@ export default function ThemeCustomizer({ vault, isPremium, onChange }: Props) {
         URL.revokeObjectURL(url);
     }
 
-    /** Load a theme JSON, keeping only valid hex colours and sane opacities. */
+    /** Load a theme JSON, keeping only valid hex colors and sane opacities. */
     async function importTheme(e: ChangeEvent<HTMLInputElement>) {
         const file = e.target.files?.[0];
         if (themeInput.current) themeInput.current.value = "";
@@ -256,7 +256,7 @@ export default function ThemeCustomizer({ vault, isPremium, onChange }: Props) {
                             className="fill-warn-soft"
                             aria-hidden="true"
                         />
-                        Custom colours and chat wallpaper are a supporter perk.
+                        Custom colors and chat wallpaper are a supporter perk.
                     </p>
                     <Link to="/subscribe" className="btn-ghost t-base w-full">
                         Become a supporter
@@ -272,11 +272,11 @@ export default function ThemeCustomizer({ vault, isPremium, onChange }: Props) {
         <SettingsSection
             title="Custom theme"
             info="Overrides sit on top of the light/dark base; anything untouched follows it."
-            infoDetails="Your colour overrides sit on top of the current light/dark base. Anything you leave untouched follows the base theme, so toggling light/dark still works underneath."
+            infoDetails="Your color overrides sit on top of the current light/dark base. Anything you leave untouched follows the base theme, so toggling light/dark still works underneath."
         >
             <SettingRow
                 title="Custom palette"
-                description="Recolour on top of the base theme."
+                description="Recolor on top of the base theme."
                 control={
                     <Toggle
                         checked={enabled}
@@ -351,11 +351,11 @@ export default function ThemeCustomizer({ vault, isPremium, onChange }: Props) {
 
                     <button onClick={reset} className="btn-ghost t-base w-full">
                         <RotateCcw size={12} aria-hidden="true" />
-                        Reset colours to base
+                        Reset colors to base
                     </button>
 
                     {/* Share a palette as a JSON file. Import validates before applying, so
-              a hand-edited or hostile file cannot inject anything but colours. */}
+              a hand-edited or hostile file cannot inject anything but colors. */}
                     <input
                         ref={themeInput}
                         type="file"
@@ -438,7 +438,7 @@ export default function ThemeCustomizer({ vault, isPremium, onChange }: Props) {
     );
 }
 
-/** A solid colour swatch for one bubble surface. Bubbles are always opaque so a
+/** A solid color swatch for one bubble surface. Bubbles are always opaque so a
  *  video wallpaper can never show through them, so there is no opacity control. */
 function BubbleControl({
     label,
@@ -457,7 +457,7 @@ function BubbleControl({
                 className="h-6 w-6 shrink-0 cursor-pointer rounded border-0 bg-transparent p-0"
                 value={/^#[0-9a-fA-F]{6}$/.test(color) ? color : "#000000"}
                 onChange={(e) => onColor(e.target.value)}
-                aria-label={`${label} colour`}
+                aria-label={`${label} color`}
             />
         </div>
     );

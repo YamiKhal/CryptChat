@@ -1,32 +1,33 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CryptChat</title>
-    <!--
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>CryptChat</title>
+        <!--
       Stamp the theme before first paint so a light-theme user never sees a
       dark flash. Runs synchronously ahead of the module bundle. Dark is the
       default for anything unset or unreadable (private mode, storage blocked).
       Keep the storage key in sync with src/lib/theme.ts.
     -->
-    <script>
-      (function () {
-        try {
-          var t = localStorage.getItem('cryptchat.theme');
-          document.documentElement.dataset.theme = t === 'light' ? 'light' : 'dark';
-        } catch (e) {
-          document.documentElement.dataset.theme = 'dark';
-        }
-      })();
-    </script>
-  </head>
-  <!-- Colours come from the base layer in index.css, which reads the @theme
+        <script>
+            (function () {
+                try {
+                    var t = localStorage.getItem("cryptchat.theme");
+                    document.documentElement.dataset.theme =
+                        t === "light" ? "light" : "dark";
+                } catch (e) {
+                    document.documentElement.dataset.theme = "dark";
+                }
+            })();
+        </script>
+    </head>
+    <!-- Colros come from the base layer in index.css, which reads the @theme
        tokens. Utility classes here (bg-neutral-950 et al) would sit in the
        utilities layer and silently outrank that rule, pinning the page to
        Tailwind's stock palette instead of the theme. -->
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+    <body>
+        <div id="root"></div>
+        <script type="module" src="/src/main.tsx"></script>
+    </body>
 </html>

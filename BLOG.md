@@ -138,7 +138,7 @@ accepted.
 
 The encryption is the easy part now. libsodium does the heavy lifting. The hard
 part is everything _around_ the message. Typing indicators, presence, "who's
-premium," a colour that follows you between channels: each is a tiny correlation
+premium," a color that follows you between channels: each is a tiny correlation
 handle and a privacy product earns its keep in how carefully it refuses to leak
 them.
 
@@ -169,7 +169,7 @@ Not a catalogue. just the ones that best express what the thing is for:
 - **Messages that clean up after themselves.** Disappearing messages start their
   clock when they're actually read and remove themselves from both sides. a
   cooperative-client feature, not a magic trick.
-- **Incognito channels.** No names, no avatars. just stable per-channel colours,
+- **Incognito channels.** No names, no avatars. just stable per-channel colors,
   for conversations where identity is noise.
 - **Direct messages, with blocking and leaving** scoped to the conversation, so
   the relationship graph never becomes a server-side social network.

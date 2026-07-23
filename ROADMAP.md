@@ -22,7 +22,7 @@ Deferred by decision: **group-call SFrame (#9)**. 1:1 calls do not need
 per-frame encryption (no media server sees the stream), so this is only required
 if group calls are added later. TOTP fallback for #5 remains a later addition.
 
-**#7 shipped as display-only.** Members are shown as per-channel colours and no
+**#7 shipped as display-only.** Members are shown as per-channel colors and no
 name/avatar is sent. but the envelope still carries the real `senderId`, so the
 §7 crux (channel-scoped signing identities, for true unlinkability from other
 members) is NOT yet implemented. Incognito currently hides identity in the

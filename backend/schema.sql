@@ -330,7 +330,7 @@ CREATE INDEX IF NOT EXISTS webauthn_credentials_user_idx
   ON webauthn_credentials (user_id);
 
 -- Incognito channels (ROADMAP #7, premium). A display mode: members appear only
--- as stable per-channel colours, never names or avatars and no profile is
+-- as stable per-channel colors, never names or avatars and no profile is
 -- broadcast into the channel. The flag itself is not sensitive -- the server
 -- already knows the membership it routes for -- so it lives here in plaintext.
 ALTER TABLE channels ADD COLUMN IF NOT EXISTS incognito BOOLEAN NOT NULL DEFAULT FALSE;

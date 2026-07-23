@@ -69,7 +69,7 @@ export function useRelayOutbound(
                 {
                     kind: "message",
                     body: locked ? "" : payload.body,
-                    // Incognito channels carry no name; members are shown as colours only.
+                    // Incognito channels carry no name; members are shown as colors only.
                     displayName: channel.incognito ? "" : profile.displayName,
                     avatar: payload.asset,
                     attachments: payload.attachments,

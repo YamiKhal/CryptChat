@@ -11,7 +11,7 @@
  *                        utility: `--color-primary` -> bg-primary / text-primary
  *                        / border-primary, `--color-primary-soft` -> bg-primary-soft,
  *                        and so on.
- *   2. :root extras      Runtime-only vars that are not colour utilities:
+ *   2. :root extras      Runtime-only vars that are not color utilities:
  *                        wallpaper scrim, chat text scale, message-bubble fills.
  *   3. [data-theme=light] The LIGHT palette. Same token names, different values.
  *                        An inline script in index.html stamps this before first
@@ -21,25 +21,25 @@
  *
  * TWO HARD RULES so this never gets "out of control" again:
  *
- *   A. SOLID COLOURS ONLY. No component uses an opacity modifier (bg-primary/10)
+ *   A. SOLID COLROS ONLY. No component uses an opacity modifier (bg-primary/10)
  *      for a fill or border. Instead every accent ships THREE solid tokens:
  *
- *         --color-primary          the vivid colour. text, icons, strong borders
+ *         --color-primary          the vivid color. text, icons, strong borders
  *         --color-primary-soft     a solid tinted PANEL fill  (accent mixed into bg)
  *         --color-primary-line     a solid tinted BORDER       (accent mixed into bg)
  *
  *      `-soft` and `-line` are built with color-mix against the OPAQUE --color-bg,
- *      so the result is itself fully opaque. a real solid colour, never a wash.
+ *      so the result is itself fully opaque. a real solid color, never a wash.
  *      Because they reference the base token by var(), they update for free when
  *      the theme flips light/dark AND when a premium user sets a custom accent.
  *
- *   B. FOREGROUND IS EXPLICIT. Each fill declares the text colour that belongs on
+ *   B. FOREGROUND IS EXPLICIT. Each fill declares the text color that belongs on
  *      it. Dark theme: the accent is bright, so text ON an accent fill is dark
  *      (--color-primary-foreground). Light theme: the accent is dark, so text on
  *      it is white. Body text is --color-foreground on surfaces, --color-muted for
  *      secondary text. Never guess. read the token.
  *
- * If a colour you need is missing, add a token here. Do not hardcode a hex or
+ * If a color you need is missing, add a token here. Do not hardcode a hex or
  * reach for an opacity modifier in a component.
  */
 @theme {
@@ -171,7 +171,7 @@
 }
 
 /**
- * Runtime-only vars (not colour utilities).
+ * Runtime-only vars (not color utilities).
  */
 :root {
     /* Wallpaper scrim: a wash laid over the user's wallpaper image, behind message
@@ -370,7 +370,7 @@
         @apply bg-bg text-foreground font-mono antialiased;
     }
 
-    /* Solid selection. a tinted panel colour, not a translucent wash. */
+    /* Solid selection. a tinted panel color, not a translucent wash. */
     ::selection {
         @apply bg-primary-line text-foreground;
     }
@@ -393,7 +393,7 @@
    * faint contrast against the pane reads as an uneven line with "bolder in some
    * spots" banding. Dropping it leaves only the thumb. a single solid pill that
    * looks identical and clean in every engine. Only the track is transparent (a
-   * bare edge gutter); the thumb itself stays a solid colour, so the UI's
+   * bare edge gutter); the thumb itself stays a solid color, so the UI's
    * no-translucency rule still holds for anything that reads as a surface. */
     * {
         scrollbar-width: thin;
@@ -459,7 +459,7 @@
 
 @layer components {
     /* ---- THE TYPE SCALE ---------------------------------------------------
-     Semantic tiers. font-size + line-height only. weight/colour stay with the
+     Semantic tiers. font-size + line-height only. weight/color stay with the
      element's own utilities (font-semibold, text-muted, …). Applies everywhere
      but chat message text (that reads --chat-body/name/time inline). */
     .t-h1 {

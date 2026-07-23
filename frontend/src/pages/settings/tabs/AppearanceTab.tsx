@@ -218,7 +218,7 @@ export default function AppearanceTab({
 
                 <SettingRow
                     title="Message bubbles"
-                    description="Wrap messages in a coloured bubble."
+                    description="Wrap messages in a colored bubble."
                     info="Turn off for a flat, IRC-style transcript with no bubble behind the text."
                     infoDetails="With bubbles off, message text sits directly on the chat background with no fill, border, or tail. Spacing and alignment are unchanged. only the bubble's paint is dropped. A purely local display choice."
                     control={

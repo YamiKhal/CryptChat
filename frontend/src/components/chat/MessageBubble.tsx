@@ -266,7 +266,7 @@ export default function MessageBubble({
                                 style={{
                                     fontSize: "var(--chat-body)",
                                     // Bubble fill + border come from CSS vars so a custom theme can
-                                    // recolour self / other bubbles independently.
+                                    // recolor self / other bubbles independently.
                                     background: isSelf
                                         ? "var(--bubble-self-bg)"
                                         : "var(--bubble-other-bg)",

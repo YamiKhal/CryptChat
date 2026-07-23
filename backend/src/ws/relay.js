@@ -394,7 +394,7 @@ async function handleKeyAck(userId, msg) {
 // and it never enters the transcript. The relay already knows the sender (it is
 // this socket's user) and the channel roster, so forwarding senderId leaks
 // nothing new -- the recipient's client decides whether to name them or, in an
-// incognito channel, show only a colour. Throttled client-side; the token
+// incognito channel, show only a color. Throttled client-side; the token
 // bucket is the backstop against a socket that ignores that.
 async function handleTyping(userId, msg) {
     const { channelId } = msg;
