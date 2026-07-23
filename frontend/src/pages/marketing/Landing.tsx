@@ -41,6 +41,34 @@ function Hero() {
                     >
                         <TerminalCard />
                     </div>
+                    <FloatTile className="mk-float -top-6 -left-24 hidden lg:grid">
+                        <Lock
+                            size={22}
+                            className="text-secondary"
+                            aria-hidden="true"
+                        />
+                    </FloatTile>
+                    <FloatTile className="mk-float-alt top-24 -right-28 hidden lg:grid">
+                        <Flame
+                            size={22}
+                            className="text-warn"
+                            aria-hidden="true"
+                        />
+                    </FloatTile>
+                    <FloatTile className="mk-float -right-16 -bottom-2 hidden xl:grid">
+                        <KeyRound
+                            size={22}
+                            className="text-primary"
+                            aria-hidden="true"
+                        />
+                    </FloatTile>
+                    <FloatTile className="mk-float-alt bottom-24 -left-32 hidden xl:grid">
+                        <Phone
+                            size={22}
+                            className="text-info"
+                            aria-hidden="true"
+                        />
+                    </FloatTile>
                 </div>
                 <p
                     data-reveal
@@ -64,6 +92,23 @@ function Hero() {
                 </div>
             </div>
         </section>
+    );
+}
+
+function FloatTile({
+    className,
+    children,
+}: {
+    className: string;
+    children: React.ReactNode;
+}) {
+    return (
+        <div
+            className={`border-border bg-surface absolute size-14 place-items-center rounded-2xl border shadow-lg ${className}`}
+            aria-hidden="true"
+        >
+            {children}
+        </div>
     );
 }
 
