@@ -256,6 +256,18 @@ async function handleSend(senderId, msg, ws) {
     // client did not send one.
     const clientId = UUID.test(msg.clientId ?? "") ? msg.clientId : null;
 
+    // One timestamp for the whole fan-out, read from the database clock and written
+    // explicitly onto every row rather than left to the column default.
+    //
+    // This is the transcript's sort key on every client, so it has to be a single
+    // value from a single clock. Per-row defaults would give each recipient a
+    // slightly different stamp, and two sends racing through concurrent handlers
+    // could interleave their inserts -- leaving two members of the same channel
+    // with the two messages in opposite orders. It is read from the database, not
+    // this process, so multiple backend instances still agree.
+    const stamped = await pool.query("SELECT now() AS at");
+    const createdAt = stamped.rows[0].at;
+
     // Skip any recipient who has blocked the sender: no row is queued, which is
     // what makes a block "stop receiving". dm_blocks only ever holds DM pairs, so
     // this predicate is a no-op for group channels.
@@ -280,9 +292,9 @@ async function handleSend(senderId, msg, ws) {
         // channel_members -- so every member received every row, N times over and
         // could delete rows addressed to anyone else.
         const inserted = await pool.query(
-            `INSERT INTO message_queue (channel_id, sender_id, recipient_id, ciphertext, nonce, kind, client_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, created_at`,
-            [channelId, senderId, recipientId, ciphertext, nonce, kind, clientId],
+            `INSERT INTO message_queue (channel_id, sender_id, recipient_id, ciphertext, nonce, kind, client_id, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+            [channelId, senderId, recipientId, ciphertext, nonce, kind, clientId, createdAt],
         );
         const queued = inserted.rows[0];
 
@@ -307,12 +319,16 @@ async function handleSend(senderId, msg, ws) {
             kind,
             ciphertext,
             nonce,
-            createdAt: queued.created_at,
+            createdAt,
         });
     }
 
+    // The ack carries the same stamp back to the sender, so their own copy is
+    // ordered on the same clock as everyone else's rather than on their device's.
     if (msg.clientId) {
-        ws.send(JSON.stringify({ type: "sent", clientId: msg.clientId, channelId }));
+        ws.send(
+            JSON.stringify({ type: "sent", clientId: msg.clientId, channelId, createdAt }),
+        );
     }
 }
 

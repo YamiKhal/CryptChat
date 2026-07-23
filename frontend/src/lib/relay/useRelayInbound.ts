@@ -6,6 +6,7 @@ import {
     unwrapChannelKey,
 } from "@/lib/crypto";
 import { StoredMessage } from "@/lib/vault";
+import { observeServerTime } from "@/lib/relay/clock";
 import {
     RelayRefs,
     Incoming,
@@ -32,6 +33,11 @@ export function useRelayInbound(refs: RelayRefs, userId: string | null) {
             const channel = v.getChannel(data.channelId);
             if (!channel?.hasKey) return false; // no key yet; leave it queued
 
+            // Every frame the relay stamps is a sample of its clock. Our own
+            // messages are stamped from this estimate until their ack lands, so
+            // they render in the right place instead of jumping when it does.
+            observeServerTime(data.createdAt);
+
             const contact = v.getContact(data.senderId);
 
             const { envelope, verified } = await openEnvelope(
@@ -52,13 +58,21 @@ export function useRelayInbound(refs: RelayRefs, userId: string | null) {
                 // only allowed to move the pinned record if the signature checked out --
                 // otherwise anyone with the channel key could rename anyone.
                 if (verified) {
-                    await v.updateContactProfile(data.senderId, {
-                        displayName: envelope.displayName,
-                        avatar: envelope.avatar,
-                        bio: envelope.bio,
-                        background: envelope.background,
-                    });
-                    handlers.current.onChannelKey?.(data.channelId);
+                    const changed = await v.updateContactProfile(
+                        data.senderId,
+                        {
+                            displayName: envelope.displayName,
+                            avatar: envelope.avatar,
+                            bio: envelope.bio,
+                            background: envelope.background,
+                        },
+                    );
+                    // Only redraw on actual news. Peers re-announce on every channel
+                    // they open, and that announcement is normally identical to what
+                    // we already hold -- bumping regardless made one person switching
+                    // channels reload the channel list, unread counts and open
+                    // transcript for every other member.
+                    if (changed) handlers.current.onChannelKey?.(data.channelId);
                 }
                 return true;
             }
@@ -182,7 +196,13 @@ export function useRelayInbound(refs: RelayRefs, userId: string | null) {
                 // Only honour the crown on a verified message: an unverified one has no
                 // trustworthy sender to attribute a badge to.
                 supporterClaimed: verified && envelope.supporter === true,
-                createdAt: envelope.sentAt || data.createdAt,
+                // Order on the relay's stamp, not the sender's. Their clock is
+                // theirs: skew of a couple of seconds is normal and puts a reply
+                // above the message it answers in a quick exchange. The signed
+                // `sentAt` is kept beside it as what the author claims, and is the
+                // only stamp left if an older relay sent none.
+                createdAt: data.createdAt || envelope.sentAt,
+                sentAt: envelope.sentAt || undefined,
                 verified,
             };
 

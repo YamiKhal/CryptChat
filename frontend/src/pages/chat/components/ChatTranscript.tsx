@@ -113,19 +113,32 @@ export function ChatTranscript({
                     // "someone left" sits exactly where it happened rather than always at
                     // the bottom. A presence line also breaks message grouping, so the
                     // next message shows its header again.
+                    //
+                    // Messages carry the relay's stamp (see StoredMessage.createdAt) and
+                    // are already in this order from the vault; presence notices are
+                    // local-clock and session-only, so they are merely placed near where
+                    // they happened. Ties fall back to the message id, matching the
+                    // vault's comparator -- two orderings that disagree would swap
+                    // messages between a fresh render and a reload.
                     const items = [
                         ...messages.map((message) => ({
                             type: "msg" as const,
                             at: message.createdAt,
+                            key: message.id,
                             message,
                         })),
                         ...presenceLog.map((notice) => ({
                             type: "presence" as const,
                             at: notice.at,
+                            key: notice.id,
                             id: notice.id,
                             text: notice.text,
                         })),
-                    ].sort((a, b) => a.at.localeCompare(b.at));
+                    ].sort((a, b) =>
+                        a.at === b.at
+                            ? a.key.localeCompare(b.key)
+                            : a.at.localeCompare(b.at),
+                    );
 
                     let prevSenderId: string | null = null;
                     let prevAt: string | null = null;

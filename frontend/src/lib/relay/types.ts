@@ -213,6 +213,9 @@ export type Incoming =
           nonce: string;
       }
     | { type: "profile-request"; channelId: string; requesterId: string }
-    | { type: "sent"; clientId: string; channelId: string }
+    // `createdAt` is the relay's stamp for the message just sent, the same value
+    // every recipient is ordering on. Optional: a relay predating it sends none,
+    // and the sender's copy then keeps its local estimate.
+    | { type: "sent"; clientId: string; channelId: string; createdAt?: string }
     | { type: "key-offer-sent"; channelId: string; recipientId: string }
     | { type: "dm-request"; channelId: string };

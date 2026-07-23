@@ -230,7 +230,21 @@ export interface StoredMessage {
      * channel rather than dropped.
      */
     reactions?: Record<string, string[]>;
+    /**
+     * The relay's timestamp, and the transcript's sort key.
+     *
+     * Deliberately not the sender's clock: two devices disagree by seconds, so
+     * ordering on `sentAt` puts a reply above the message it answers whenever the
+     * exchange is quicker than the skew. On our own messages this is an estimate
+     * of the relay's clock until the 'sent' ack pins it.
+     */
     createdAt: string;
+    /**
+     * The sender's own clock, signed into the envelope. Kept for provenance --
+     * it is what the author claims, which `createdAt` is not -- but never used
+     * for ordering.
+     */
+    sentAt?: string;
     /** Signature checked against the pinned key. False means "do not trust attribution". */
     verified: boolean;
     pending?: boolean;

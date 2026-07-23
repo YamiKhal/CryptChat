@@ -40,7 +40,8 @@ export function useChannelMessages({
     const [presenceLog, setPresenceLog] = useState<PresenceNotice[]>([]);
 
     const bottomRef = useRef<HTMLDivElement>(null);
-    const announced = useRef<string | null>(null);
+    /** Channels we have announced our profile to on the current connection. */
+    const announced = useRef<Set<string>>(new Set());
 
     const hasKey = channel?.hasKey;
 
@@ -87,12 +88,22 @@ export function useChannelMessages({
     // Announce our display name and avatar once per channel, once we hold a key.
     // Peers cannot render a name they were never sent -- the server has none to
     // give them.
+    //
+    // A set, not the last channel seen: that only remembered one, so bouncing
+    // A -> B -> A re-announced to A every time. The announcement is fanned out to
+    // every member, so a switch was costing each of them a frame to decrypt.
+    // Cleared on disconnect below, since a reconnect may find members who joined
+    // while we were away.
     useEffect(() => {
         if (!channelId || !hasKey || !connected) return;
-        if (announced.current === channelId) return;
-        announced.current = channelId;
+        if (announced.current.has(channelId)) return;
+        announced.current.add(channelId);
         broadcastProfile(channelId).catch(() => {});
     }, [channelId, hasKey, connected, broadcastProfile]);
+
+    useEffect(() => {
+        if (!connected) announced.current.clear();
+    }, [connected]);
 
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -104,16 +115,21 @@ export function useChannelMessages({
     // genuinely newer material.
     useEffect(() => {
         if (!vault || !channelId) return;
+        // Mark up to the newest message we are showing, not to "now". Messages are
+        // stamped by the relay while this device's clock is its own; a device
+        // running behind the relay writes a marker older than the messages it just
+        // displayed and they stay unread. Falls back to now for an empty channel.
+        const newest = messages[messages.length - 1]?.createdAt;
         // Bump the shared revision when the marker actually advances, so the channel
         // list recomputes its unread badge now rather than waiting for the next
         // unrelated relay event (which left the badge stuck at 1-2).
         vault
-            .markChannelRead(channelId)
+            .markChannelRead(channelId, newest)
             .then((advanced) => {
                 if (advanced) bumpRevision();
             })
             .catch(() => {});
-    }, [vault, channelId, messages.length, bumpRevision]);
+    }, [vault, channelId, messages, bumpRevision]);
 
     // Burn-after-read sweep. While the channel is open, start the clock on any
     // burn message on screen and remove ones whose time is up. Running only while

@@ -8,6 +8,7 @@ import {
     CallSignal,
 } from "@/lib/crypto";
 import { StoredMessage } from "@/lib/vault";
+import { serverNow } from "@/lib/relay/clock";
 import { RelayRefs, SendPayload } from "@/lib/relay/types";
 
 type OfferKeyTo = (
@@ -43,7 +44,12 @@ export function useRelayOutbound(
             if (!channel?.hasKey)
                 throw new Error("no key for this channel yet");
 
+            // Two stamps, and they are not interchangeable. `sentAt` is our own
+            // clock, signed into the envelope as what we claim. `orderedAt` is our
+            // estimate of the relay's clock, which is what every transcript sorts
+            // on -- replaced by the relay's real value when the ack arrives.
             const sentAt = new Date().toISOString();
+            const orderedAt = serverNow();
             const profile = v.profile;
 
             // Password-locked: the body is sealed under the code and the envelope
@@ -121,7 +127,8 @@ export function useRelayOutbound(
                 burnTtl: payload.burn,
                 firstViewedAt: payload.burn ? sentAt : undefined,
                 spoiler: payload.spoiler || undefined,
-                createdAt: sentAt,
+                createdAt: orderedAt,
+                sentAt,
                 verified: true,
                 pending: ws?.readyState !== WebSocket.OPEN,
             };

@@ -11,6 +11,7 @@ import {
 } from "@/lib/relay/types";
 import { useRelayInbound } from "@/lib/relay/useRelayInbound";
 import { useRelayOutbound } from "@/lib/relay/useRelayOutbound";
+import { observeServerTime, resetServerClock } from "@/lib/relay/clock";
 
 export type { SendPayload } from "@/lib/relay/types";
 
@@ -212,6 +213,22 @@ export function useRelay({
                             // trade profiles forever.
                             await broadcastProfile(data.channelId);
                             break;
+                        case "sent": {
+                            // The relay accepted our message and tells us where it
+                            // sits on its clock. Adopt that stamp so our copy orders
+                            // identically to every recipient's, and drop the pending
+                            // flag. Only re-render if something actually moved.
+                            observeServerTime(data.createdAt);
+                            const changed =
+                                await vaultRef.current?.confirmSentMessage(
+                                    data.channelId,
+                                    data.clientId,
+                                    data.createdAt,
+                                );
+                            if (changed)
+                                handlers.current.onChannelKey?.(data.channelId);
+                            break;
+                        }
                         case "dm-request":
                             // A DM invitation just gained its first message. Nothing is
                             // delivered yet -- just nudge the UI to refetch /channel/list so the
@@ -252,6 +269,9 @@ export function useRelay({
             if (timer) clearTimeout(timer);
             wsRef.current?.close();
             wsRef.current = null;
+            // The clock estimate describes the connection we just dropped. The next
+            // one re-learns it from its first frame; a stale offset is worse.
+            resetServerClock();
         };
     }, [
         token,
