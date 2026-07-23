@@ -3,7 +3,7 @@ import { ArrowRight, Flame, KeyRound, Lock, Phone } from "lucide-react";
 import MarketingLayout from "./components/MarketingLayout";
 import { Icon } from "./components/icons";
 import { BurnMockup, ChatMockup, TerminalCard } from "./components/visuals";
-import { FEATURES, HERO_LINE, HERO_SUB, MARQUEE, TAGLINE } from "./content";
+import { FEATURES, HERO_SUB, MARQUEE } from "./content";
 
 /**
  * The product's front door, discord.com-style: a huge centred hero over a live
