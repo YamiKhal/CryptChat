@@ -49,15 +49,38 @@ same GitHub repo; they differ by **Base Directory** and build settings.
 - **Base Directory:** `/backend` (Dockerfile is `backend/Dockerfile`).
 - **Port (exposed):** `3000`.
 - Give it a public domain, e.g. `https://api.CryptChat.example.com`.
-- **Environment variables:**
+- **Environment variables.** Everything below is checked at boot; a missing one
+  logs `FATAL: ...` and exits, so the container restart-loops instead of half-working.
 
-    | Key            | Value                                                                                      |
-    | -------------- | ------------------------------------------------------------------------------------------ |
-    | `PORT`         | `3000`                                                                                     |
-    | `DATABASE_URL` | internal Postgres URL from step 1 (point db name at the one you want, e.g. `.../darkchat`) |
-    | `JWT_SECRET`   | long random string (`openssl rand -hex 32`)                                                |
-    | `CORS_ORIGIN`  | the frontend's public URL (step 3), e.g. `https://CryptChat.example.com`                   |
-    | `BLOB_DIR`     | `/data/blobs`. must match the persistent storage mount below                               |
+    | Key                    | Value                                                                                      |
+    | ---------------------- | ------------------------------------------------------------------------------------------ |
+    | `NODE_ENV`             | `production`                                                                               |
+    | `PORT`                 | `3000`                                                                                     |
+    | `DATABASE_URL`         | internal Postgres URL from step 1 (point db name at the one you want, e.g. `.../darkchat`) |
+    | `JWT_SECRET`           | random string, min 32 chars (`openssl rand -hex 32`)                                       |
+    | `CORS_ORIGIN`          | the frontend's public URL (step 3), e.g. `https://CryptChat.example.com`. no `*`           |
+    | `PUBLIC_APP_URL`       | same frontend URL. builds links in outbound mail, derives the WebAuthn RP id               |
+    | `MAIL_API_KEY`         | mail provider key. without it, verification and reset mail goes nowhere                    |
+    | `MAIL_FROM`            | sender address, e.g. `no-reply@CryptChat.example.com`                                      |
+    | `EMAIL_MASTER_KEY`     | 32 random bytes, base64 (see command below)                                                |
+    | `EMAIL_INDEX_PEPPER`   | 32 random bytes, base64. must differ from the others                                       |
+    | `USERNAME_INDEX_PEPPER`| 32 random bytes, base64. must differ from the others                                       |
+    | `REDEEM_PEPPER`        | 32 random bytes, base64. must differ from the others                                       |
+    | `BLOB_DIR`             | `/data/blobs`. must match the persistent storage mount below                               |
+
+    ```bash
+    node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+    ```
+
+    > Generate the four key/pepper values **separately**. They protect different
+    > things (a reversible address, two search indexes, a payment code); reusing
+    > one value across them makes one leak three leaks. Losing
+    > `EMAIL_MASTER_KEY` makes every stored address unreadable. back it up.
+
+- **Optional.** Billing is off unless `STRIPE_SECRET_KEY` is set (routes 404,
+  app fully usable). If you enable it, also set `STRIPE_WEBHOOK_SECRET`,
+  `STRIPE_PORTAL_URL` (else users cannot cancel) and the `STRIPE_PRICE_*` /
+  `STRIPE_GIFT_PRICE_*` ids. Calls need `TURN_URL` + `TURN_SECRET`.
 
 - WebSocket relay is served on the same domain at path `/ws`. Coolify's Traefik
   proxy passes WebSockets through on the app's domain by default. no extra config.
