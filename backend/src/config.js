@@ -244,10 +244,45 @@ if (process.env.STRIPE_SECRET_KEY) {
     }
 }
 
+const databaseUrl = required("DATABASE_URL");
+
+/**
+ * Postgres TLS, decided explicitly rather than inferred from NODE_ENV.
+ *
+ * Production does not imply a public database. The common deploy (Coolify,
+ * docker-compose) puts Postgres on a private container network where it speaks
+ * plaintext and enabling TLS only produces "the server does not support SSL
+ * connections". A database reached over the open internet is the case that
+ * needs it, and that is what `DATABASE_SSL` is for.
+ *
+ *   disable   (default) no TLS. only safe on a private network
+ *   require   TLS, certificate verified. use for any database off-box
+ *   no-verify TLS, certificate not verified. accepts a self-signed cert, gives
+ *             no protection against an active attacker
+ *
+ * `sslmode=` in DATABASE_URL is honoured too; DATABASE_SSL wins if both are set.
+ */
+function databaseSsl() {
+    const fromUrl = /[?&]sslmode=([^&]+)/.exec(databaseUrl)?.[1];
+    const mode = (process.env.DATABASE_SSL || fromUrl || "disable").toLowerCase();
+
+    if (mode === "disable" || mode === "false" || mode === "off") return undefined;
+    if (mode === "no-verify" || mode === "prefer" || mode === "allow") {
+        return { rejectUnauthorized: false };
+    }
+    if (mode === "require" || mode === "true" || mode === "verify-full" || mode === "verify-ca") {
+        return { rejectUnauthorized: true };
+    }
+
+    console.error(`FATAL: DATABASE_SSL="${mode}" is not a recognised value.`);
+    process.exit(1);
+}
+
 export const config = {
     isProd,
     port: Number(process.env.PORT) || 3000,
-    databaseUrl: required("DATABASE_URL"),
+    databaseUrl,
+    dbSsl: databaseSsl(),
     jwtSecret: JWT_SECRET,
 
     // Exact-match allowlist. Also gates the WebSocket handshake, which closes the
