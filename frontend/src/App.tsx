@@ -57,7 +57,7 @@ export default function App() {
 
     const routes = (
         <Routes>
-            {/* Public marketing layer — reachable logged in or out. */}
+            {/* Public marketing layer. reachable logged in or out. */}
             <Route path="/" element={<Landing />} />
             <Route path="/showcase" element={<Showcase />} />
             <Route path="/kb" element={<KnowledgeBase />} />

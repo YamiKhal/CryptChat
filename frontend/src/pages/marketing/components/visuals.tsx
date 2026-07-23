@@ -3,12 +3,12 @@ import { Flame, KeyRound, Lock, ShieldCheck, Terminal } from "lucide-react";
 
 /**
  * The marketing pages' "product shots": small hand-built UI mockups instead of
- * screenshots, so they stay sharp at any size, follow the live theme, and cost
+ * screenshots, so they stay sharp at any size, follow the live theme and cost
  * no assets. Solid token fills only.
  */
 
 /* ------------------------------------------------------------------------- *
- * Terminal card — the hero visual. Types its script line by line on a loop,
+ * Terminal card. the hero visual. Types its script line by line on a loop,
  * with a blinking caret. Under prefers-reduced-motion it renders fully typed.
  * ------------------------------------------------------------------------- */
 
@@ -101,7 +101,7 @@ export function TerminalCard() {
 }
 
 /* ------------------------------------------------------------------------- *
- * Chat mockup — three bubbles, one locked. Reads like the real transcript.
+ * Chat mockup. three bubbles, one locked. Reads like the real transcript.
  * ------------------------------------------------------------------------- */
 
 function Bubble({
@@ -162,7 +162,7 @@ export function ChatMockup() {
 }
 
 /* ------------------------------------------------------------------------- *
- * Burn mockup — a message mid-destruction.
+ * Burn mockup. a message mid-destruction.
  * ------------------------------------------------------------------------- */
 
 export function BurnMockup() {
@@ -186,7 +186,7 @@ export function BurnMockup() {
 }
 
 /* ------------------------------------------------------------------------- *
- * Key card — recovery phrase chips + a fingerprint line.
+ * Key card. recovery phrase chips + a fingerprint line.
  * ------------------------------------------------------------------------- */
 
 const PHRASE = ["ember", "vault", "quiet", "orbit", "cedar", "night"];
@@ -220,7 +220,7 @@ export function KeyCard() {
 }
 
 /* ------------------------------------------------------------------------- *
- * Theme swatches — the "make it yours" visual.
+ * Theme swatches. the "make it yours" visual.
  * ------------------------------------------------------------------------- */
 
 const ACCENTS = ["#34c07a", "#45c3d6", "#7cb0ef", "#e2b566", "#f16d6b"];

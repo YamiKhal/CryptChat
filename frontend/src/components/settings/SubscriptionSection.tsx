@@ -14,12 +14,12 @@ import type { Badge as BadgeState } from "@/lib/api";
  * The whole subscription surface, in Settings.
  *
  * This is the merged home for everything billing: current status, the banked-gift
- * counter, the free-vs-supporter comparison, buying or gifting a plan, and
+ * counter, the free-vs-supporter comparison, buying or gifting a plan and
  * redeeming a code. The standalone /subscribe page still exists for buying while
  * logged out, but a signed-in user never has to leave Settings.
  *
  * Presentational for the parts the parent owns -- the redeem field's code, busy
- * flag, and status message. The perks table, plan picker, and credit counter are
+ * flag and status message. The perks table, plan picker and credit counter are
  * self-contained: the picker fetches plans and drives its own anonymous checkout,
  * so nothing about buying is wired through here.
  *
@@ -54,8 +54,8 @@ export default function SubscriptionSection({
           the mechanic is never invisible. --- */}
             <SettingsSection
                 title="Subscription"
-                info="Your badge is the only record — no payment details are stored."
-                infoDetails="Your badge is the only record. We store no payment details and your account is not linked to your payment in our database — the badge and the purchase are connected only by a random code you redeemed."
+                info="Your badge is the only record. no payment details are stored."
+                infoDetails="Your badge is the only record. We store no payment details and your account is not linked to your payment in our database. the badge and the purchase are connected only by a random code you redeemed."
             >
                 <SettingBlock>
                     {badge ? (
@@ -68,7 +68,7 @@ export default function SubscriptionSection({
                         </p>
                     ) : (
                         <p className="t-base text-muted">
-                            Free account — no subscription active.
+                            Free account. no subscription active.
                         </p>
                     )}
 
@@ -98,7 +98,7 @@ export default function SubscriptionSection({
                                     never stored who paid, which is the point.
                                     Your badge stays until{" "}
                                     {new Date(badge.until).toLocaleDateString()}{" "}
-                                    either way — you paid for that time.
+                                    either way. you paid for that time.
                                 </p>
                             </>
                         ) : (
@@ -110,7 +110,7 @@ export default function SubscriptionSection({
                 </SettingBlock>
             </SettingsSection>
 
-            {/* --- Plans: what supporter is, and how to buy or gift it. A subscriber
+            {/* --- Plans: what supporter is and how to buy or gift it. A subscriber
           sees only gifting -- a second recurring plan would double-bill, but
           banking a gift is fine. --- */}
             <SettingsSection title="Plans">
@@ -146,7 +146,7 @@ export default function SubscriptionSection({
                     </button>
                     <p className="t-small text-muted">
                         {badge
-                            ? "Gifted months are held in reserve and start once nothing else is covering your account — you will not pay for time you were given."
+                            ? "Gifted months are held in reserve and start once nothing else is covering your account. you will not pay for time you were given."
                             : "Subscriptions and gifts are bought logged out and redeemed with a code, so the payment is never tied to this account on our side."}
                     </p>
                 </SettingBlock>

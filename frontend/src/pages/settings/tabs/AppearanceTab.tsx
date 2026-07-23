@@ -146,7 +146,7 @@ export default function AppearanceTab({
         <div className="space-y-8">
             {/* Live preview. Reflects text size and the picture / column
                 choices, the custom palette (which applies to the page's CSS
-                tokens live), a set wallpaper, and the supporter crown. */}
+                tokens live), a set wallpaper and the supporter crown. */}
             <ChatPreview
                 size={textSize}
                 hideImages={hideImages}
@@ -160,7 +160,7 @@ export default function AppearanceTab({
             <SettingsSection
                 title="Theme"
                 info="Theme is stored only on this device; the server never sees it."
-                infoDetails="Your theme choice is stored only on this device — the server never sees it. Dark is the default."
+                infoDetails="Your theme choice is stored only on this device. the server never sees it. Dark is the default."
             >
                 <SettingRow title="Light / dark" control={<ThemeToggle />} />
             </SettingsSection>
@@ -189,7 +189,7 @@ export default function AppearanceTab({
                 <SettingRow
                     title="Time format"
                     info="How message timestamps are written. Local display only."
-                    infoDetails="Switches message timestamps between 24-hour (15:05) and 12-hour (3:05 PM). Defaults to your device's own convention until you choose. A local display preference — it changes nothing about what you send."
+                    infoDetails="Switches message timestamps between 24-hour (15:05) and 12-hour (3:05 PM). Defaults to your device's own convention until you choose. A local display preference. it changes nothing about what you send."
                 >
                     <div className="pt-1">
                         <SegmentedControl
@@ -220,7 +220,7 @@ export default function AppearanceTab({
                     title="Message bubbles"
                     description="Wrap messages in a coloured bubble."
                     info="Turn off for a flat, IRC-style transcript with no bubble behind the text."
-                    infoDetails="With bubbles off, message text sits directly on the chat background with no fill, border, or tail. Spacing and alignment are unchanged — only the bubble's paint is dropped. A purely local display choice."
+                    infoDetails="With bubbles off, message text sits directly on the chat background with no fill, border, or tail. Spacing and alignment are unchanged. only the bubble's paint is dropped. A purely local display choice."
                     control={
                         <Toggle
                             checked={!hideBubbles}
@@ -245,7 +245,7 @@ export default function AppearanceTab({
                 />
             </SettingsSection>
 
-            {/* Supporter-badge visibility — a display choice, so it lives with
+            {/* Supporter-badge visibility. a display choice, so it lives with
                 the rest of them. Only a supporter has a crown to show. */}
             {badge && (
                 <SettingsSection title="Supporter badge">
@@ -253,7 +253,7 @@ export default function AppearanceTab({
                         title="Show my crown"
                         description="Crown on your messages."
                         info="Just cosmetic. Never shown in incognito."
-                        infoDetails="When on, a supporter crown appears on your messages for others. It is a personal flourish, not proof of payment — anyone's client can display one — and it is never shown in incognito channels. Paid status is a detail about you, so sharing it is your choice."
+                        infoDetails="When on, a supporter crown appears on your messages for others. It is a personal flourish, not proof of payment. anyone's client can display one. and it is never shown in incognito channels. Paid status is a detail about you, so sharing it is your choice."
                         control={
                             <Toggle
                                 checked={showBadge}
@@ -270,7 +270,7 @@ export default function AppearanceTab({
                     title="Always preview links"
                     description="Prefix a link with ! to preview just that one."
                     info="On means the server fetches every link you send."
-                    infoDetails="Building a preview asks the server to fetch that URL, so the relay learns which link you sent — the one thing it otherwise never sees. The preview itself is encrypted and sent with your message, so people reading it never load anything and their IP stays private. Links always work as plain clickable text with this off."
+                    infoDetails="Building a preview asks the server to fetch that URL, so the relay learns which link you sent. the one thing it otherwise never sees. The preview itself is encrypted and sent with your message, so people reading it never load anything and their IP stays private. Links always work as plain clickable text with this off."
                     control={
                         <Toggle
                             checked={alwaysPreview}

@@ -1,11 +1,11 @@
 import { config } from "../config.js";
 
 /**
- * What can be bought, and what each thing is worth.
+ * What can be bought and what each thing is worth.
  *
- * Two shapes, and the difference runs all the way through the system:
+ * Two shapes and the difference runs all the way through the system:
  *
- *   subscription -- recurring. Stripe owns the clock: it renews, it bills, and
+ *   subscription -- recurring. Stripe owns the clock: it renews, it bills and
  *                   `invoice.paid` extends the entitlement. Cancelling is the
  *                   user's, via the portal.
  *
@@ -55,10 +55,38 @@ export const PLANS = {
     },
 
     /* --- gifts: a second Stripe product, four one-off prices --- */
-    gift1: { kind: "gift", months: 1, label: "1 month", blurb: "one-off", priceKey: "gift1", priceValue: "4.99" },
-    gift3: { kind: "gift", months: 3, label: "3 months", blurb: "one-off", priceKey: "gift3", priceValue: "13.99" },
-    gift6: { kind: "gift", months: 6, label: "6 months", blurb: "one-off", priceKey: "gift6", priceValue: "25.99" },
-    gift12: { kind: "gift", months: 12, label: "12 months", blurb: "one-off", priceKey: "gift12", priceValue: "49.99" },
+    gift1: {
+        kind: "gift",
+        months: 1,
+        label: "1 month",
+        blurb: "one-off",
+        priceKey: "gift1",
+        priceValue: "4.99",
+    },
+    gift3: {
+        kind: "gift",
+        months: 3,
+        label: "3 months",
+        blurb: "one-off",
+        priceKey: "gift3",
+        priceValue: "13.99",
+    },
+    gift6: {
+        kind: "gift",
+        months: 6,
+        label: "6 months",
+        blurb: "one-off",
+        priceKey: "gift6",
+        priceValue: "25.99",
+    },
+    gift12: {
+        kind: "gift",
+        months: 12,
+        label: "12 months",
+        blurb: "one-off",
+        priceKey: "gift12",
+        priceValue: "49.99",
+    },
 };
 
 /**

@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /**
- * THEME TOKENS  (Tailwind v4, CSS-first — no tailwind.config.js)
+ * THEME TOKENS  (Tailwind v4, CSS-first. no tailwind.config.js)
  * ============================================================================
  *
  * How this file is organised, top to bottom:
@@ -24,12 +24,12 @@
  *   A. SOLID COLOURS ONLY. No component uses an opacity modifier (bg-primary/10)
  *      for a fill or border. Instead every accent ships THREE solid tokens:
  *
- *         --color-primary          the vivid colour — text, icons, strong borders
+ *         --color-primary          the vivid colour. text, icons, strong borders
  *         --color-primary-soft     a solid tinted PANEL fill  (accent mixed into bg)
  *         --color-primary-line     a solid tinted BORDER       (accent mixed into bg)
  *
  *      `-soft` and `-line` are built with color-mix against the OPAQUE --color-bg,
- *      so the result is itself fully opaque — a real solid colour, never a wash.
+ *      so the result is itself fully opaque. a real solid colour, never a wash.
  *      Because they reference the base token by var(), they update for free when
  *      the theme flips light/dark AND when a premium user sets a custom accent.
  *
@@ -37,7 +37,7 @@
  *      it. Dark theme: the accent is bright, so text ON an accent fill is dark
  *      (--color-primary-foreground). Light theme: the accent is dark, so text on
  *      it is white. Body text is --color-foreground on surfaces, --color-muted for
- *      secondary text. Never guess — read the token.
+ *      secondary text. Never guess. read the token.
  *
  * If a colour you need is missing, add a token here. Do not hardcode a hex or
  * reach for an opacity modifier in a component.
@@ -176,14 +176,14 @@
 :root {
     /* Wallpaper scrim: a wash laid over the user's wallpaper image, behind message
      content, so bubbles stay legible over a busy photo. This is the ONE place
-     translucency is intentional — it is dimming a photo, not tinting the UI. It
+     translucency is intentional. it is dimming a photo, not tinting the UI. It
      tracks light/dark, not the custom palette, so it always dims the readable way. */
     --wallpaper-scrim: rgba(7, 10, 8, 0.62);
 
     /* Message-bubble fills + borders. SOLID by default (Rule A): your own bubble
      is a solid green-tinted panel, others' is the raised surface. Both are built
      with color-mix against opaque surfaces, so they stay opaque and follow the
-     accent — including a premium custom accent. A custom theme overrides these as
+     accent. including a premium custom accent. A custom theme overrides these as
      inline --bubble-* vars, which win. The bubble reads them directly. */
     --bubble-self-bg: color-mix(
         in srgb,
@@ -210,8 +210,8 @@
     /* ONE type scale for the whole app (everything EXCEPT chat message text,
      which stays user-customisable via --chat-* above). Seven tiers, biggest to
      smallest: h1 > h2 > h3 > h4 > lead > base > small. Each is a clamp() so the
-     rendered size is genuinely different on phone, tablet and desktop — the min
-     is the phone size, the max the desktop size, and it scales fluidly with the
+     rendered size is genuinely different on phone, tablet and desktop. the min
+     is the phone size, the max the desktop size and it scales fluidly with the
      viewport in between. Never hardcode a text-[13px] or a bare text-sm again;
      reach for .t-h1 … .t-small. */
     --fs-h1: clamp(1.5rem, 1.28rem + 1.1vw, 1.75rem); /* 24 -> 28 */
@@ -227,7 +227,7 @@
    bubble fill + border vars to transparent on the transcript subtree, so message
    text sits straight on the (scrimmed) background with no panel or tail. Set on a
    container that wraps the bubbles, so it beats the custom-theme --bubble-* vars
-   applied higher up on :root. Only paint changes — the bubble box still lays out
+   applied higher up on :root. Only paint changes. the bubble box still lays out
    exactly as before, keeping spacing and alignment consistent. */
 [data-chat-bubbles="hidden"] {
     --bubble-self-bg: transparent;
@@ -237,7 +237,7 @@
 }
 
 /* With the bubble invisible, its padding is just dead space. Collapse top/bottom
-   to 0 so lines sit at their natural rhythm, and pull the horizontal padding down
+   to 0 so lines sit at their natural rhythm and pull the horizontal padding down
    to match the name header's px-1 so the message text lines up directly under the
    name instead of sitting indented where the bubble fill used to be. Attribute-
    descendant selector outranks the utility p-* at any breakpoint. */
@@ -251,7 +251,7 @@
 /* A grouped row's avatar slot is an empty spacer that still reserves the avatar
    height. Once the bubble padding is gone the message line is shorter than that
    height, so the slot forces the row taller than its text and opens an uneven gap
-   below every grouped line. Collapse the slot's height here (width, and thus the
+   below every grouped line. Collapse the slot's height here (width and thus the
    indent, is untouched). !important overrides the element's inline height; scoped
    to this mode so the bubbled view keeps its avatar-height floor unchanged. */
 [data-chat-bubbles="hidden"] [data-av-spacer] {
@@ -326,13 +326,13 @@
  * The green identity is kept but INVERTED in role: on a light surface the accent
  * is a dark green, so green TEXT is legible on the page and a green button fill
  * takes WHITE text (--color-primary-foreground). The -soft / -line tints and the
- * bubble vars derive from these by var(), so they flip automatically — only the
+ * bubble vars derive from these by var(), so they flip automatically. only the
  * base tokens are restated here.
  */
 :root[data-theme="light"] {
     --wallpaper-scrim: rgba(232, 237, 233, 0.55);
 
-    /* surfaces, back to front. Deliberately NOT pure white anywhere — every
+    /* surfaces, back to front. Deliberately NOT pure white anywhere. every
      surface carries a faint green-grey tint so the page reads as paper, not a
      lightbox. The old #ffffff panels were blinding next to the dark theme. */
     --color-bg: #dfe6e1;
@@ -340,11 +340,11 @@
     --color-surface-raised: #f6f9f6;
     --color-border: #c3cfc6;
 
-    /* text — softened off-black; full #000-adjacent ink on tinted paper glares */
+    /* text. softened off-black; full #000-adjacent ink on tinted paper glares */
     --color-foreground: #16231b;
     --color-muted: #52665a;
 
-    /* primary: dark green on light — green text reads, buttons take white text */
+    /* primary: dark green on light. green text reads, buttons take white text */
     --color-primary: #0e7a3c;
     --color-primary-strong: #0a6431;
     --color-primary-foreground: #ffffff;
@@ -370,13 +370,13 @@
         @apply bg-bg text-foreground font-mono antialiased;
     }
 
-    /* Solid selection — a tinted panel colour, not a translucent wash. */
+    /* Solid selection. a tinted panel colour, not a translucent wash. */
     ::selection {
         @apply bg-primary-line text-foreground;
     }
 
     /* Focus must stay visible: this app asks people to retype channel codes and
-     passphrases, and keyboard users need to see where they are. Solid accent. */
+     passphrases and keyboard users need to see where they are. Solid accent. */
     :focus-visible {
         outline: 2px solid var(--color-primary);
         outline-offset: 2px;
@@ -391,7 +391,7 @@
    * The TRACK is transparent on purpose. A solid track paints a persistent
    * full-height strip beside the content; in Firefox's `thin` mode that strip's
    * faint contrast against the pane reads as an uneven line with "bolder in some
-   * spots" banding. Dropping it leaves only the thumb — a single solid pill that
+   * spots" banding. Dropping it leaves only the thumb. a single solid pill that
    * looks identical and clean in every engine. Only the track is transparent (a
    * bare edge gutter); the thumb itself stays a solid colour, so the UI's
    * no-translucency rule still holds for anything that reads as a surface. */
@@ -431,7 +431,7 @@
     }
 
     /* Pointer on anything clickable. Covers buttons, links, role="button",
-     labels, selects, summary, and any element opting in via [role] or
+     labels, selects, summary and any element opting in via [role] or
      the tabindex/onclick escape hatches. Disabled controls keep the
      not-allowed cursor (see .btn:disabled etc.). */
     a[href],
@@ -459,7 +459,7 @@
 
 @layer components {
     /* ---- THE TYPE SCALE ---------------------------------------------------
-     Semantic tiers. font-size + line-height only — weight/colour stay with the
+     Semantic tiers. font-size + line-height only. weight/colour stay with the
      element's own utilities (font-semibold, text-muted, …). Applies everywhere
      but chat message text (that reads --chat-body/name/time inline). */
     .t-h1 {
@@ -553,7 +553,7 @@
      ONE look for every floating panel: the context menu, the composer's tools
      popover, the emoji picker frame, dropdowns. Solid raised surface, soft
      corners, pop animation. If a floating panel doesn't use these classes,
-     that's a bug in the making — this is how the menus stay consistent. */
+     that's a bug in the making. this is how the menus stay consistent. */
     .menu-panel {
         @apply border-border bg-surface-raised rounded-xl border p-1.5;
         animation: var(--animate-pop);
@@ -585,7 +585,7 @@
 
     /* ---- MODALS ------------------------------------------------------------
      Same deal as menus: one backdrop, one panel, used by every dialog. The
-     backdrop is SOLID black (rule A — a translucent wash would let a video
+     backdrop is SOLID black (rule A. a translucent wash would let a video
      wallpaper bleed through); the panel rises in. */
     .modal-backdrop {
         @apply fixed inset-0 z-50 flex items-center justify-center bg-black p-4;

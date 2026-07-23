@@ -1,8 +1,8 @@
-import { defineConfig, type Plugin } from 'vite';
-import react from '@vitejs/plugin-react';
-import tailwindcss from '@tailwindcss/vite'
-import { fileURLToPath } from 'node:url';
-import crypto from 'node:crypto';
+import { defineConfig, type Plugin } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import { fileURLToPath } from "node:url";
+import crypto from "node:crypto";
 
 /**
  * Content-Security-Policy for the built app.
@@ -10,14 +10,14 @@ import crypto from 'node:crypto';
  * The SPA holds the vault key in browser storage and renders peer-controlled
  * text and images, so an XSS here is a full compromise. This CSP is the
  * structural backstop: even if a rendering bug slipped through, script can only
- * load from our own origin, and there is nowhere to exfiltrate to but the API.
+ * load from our own origin and there is nowhere to exfiltrate to but the API.
  *
  * Build-only (`apply: 'build'`): Vite's dev server needs inline scripts, eval,
  * and its own websocket for HMR, which a strict CSP forbids -- so this must not
  * touch dev.
  *
  * Two directives are load-bearing and easy to get wrong:
- *   - 'wasm-unsafe-eval' in script-src: libsodium is WebAssembly, and strict CSP
+ *   - 'wasm-unsafe-eval' in script-src: libsodium is WebAssembly and strict CSP
  *     blocks WASM compilation without it. Omit it and the whole crypto layer
  *     dies at startup.
  *   - connect-src must name the API + its websocket origin, or every request and
@@ -37,117 +37,125 @@ import crypto from 'node:crypto';
  * stream bound through a blob URL.
  */
 function contentSecurityPolicy(): Plugin {
-  return {
-    name: 'inject-csp',
-    apply: 'build',
-    enforce: 'post',
-    transformIndexHtml(html) {
-      // Hash every inline <script> (only the theme bootstrap) so 'self' can stay
-      // strict without 'unsafe-inline'.
-      const inline = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
-      const hashes = inline.map(
-        (m) => `'sha256-${crypto.createHash('sha256').update(m[1]).digest('base64')}'`
-      );
+    return {
+        name: "inject-csp",
+        apply: "build",
+        enforce: "post",
+        transformIndexHtml(html) {
+            // Hash every inline <script> (only the theme bootstrap) so 'self' can stay
+            // strict without 'unsafe-inline'.
+            const inline = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
+            const hashes = inline.map(
+                (m) =>
+                    `'sha256-${crypto.createHash("sha256").update(m[1]).digest("base64")}'`,
+            );
 
-      const api = process.env.VITE_API_URL || 'http://localhost:3000';
-      let apiOrigin = "'self'";
-      let wsOrigin = '';
-      try {
-        const u = new URL(api);
-        apiOrigin = u.origin;
-        wsOrigin = `${u.protocol === 'https:' ? 'wss:' : 'ws:'}//${u.host}`;
-      } catch {
-        // Malformed VITE_API_URL: fall back to 'self' only. The app will fail
-        // loudly against a cross-origin API, which is the correct signal.
-      }
+            const api = process.env.VITE_API_URL || "http://localhost:3000";
+            let apiOrigin = "'self'";
+            let wsOrigin = "";
+            try {
+                const u = new URL(api);
+                apiOrigin = u.origin;
+                wsOrigin = `${u.protocol === "https:" ? "wss:" : "ws:"}//${u.host}`;
+            } catch {
+                // Malformed VITE_API_URL: fall back to 'self' only. The app will fail
+                // loudly against a cross-origin API, which is the correct signal.
+            }
 
-      const csp = [
-        `default-src 'none'`,
-        // 'wasm-unsafe-eval' is required for libsodium; the hashes cover the
-        // inline theme bootstrap. No 'unsafe-inline', no 'unsafe-eval'.
-        `script-src 'self' 'wasm-unsafe-eval' ${hashes.join(' ')}`.trim(),
-        // React writes styles via CSSOM (not blocked), but keep 'unsafe-inline'
-        // for any library <style>. Style injection cannot run script.
-        `style-src 'self' 'unsafe-inline'`,
-        // blob: for decrypted images, data: for the theme wallpaper.
-        `img-src 'self' blob: data:`,
-        `font-src 'self'`,
-        // blob: covers any call stream bound through a blob URL. srcObject
-        // MediaStreams are not CSP-governed, but this is the safe superset.
-        `media-src 'self' blob:`,
-        `connect-src 'self' ${apiOrigin} ${wsOrigin}`.trim(),
-        `worker-src 'self' blob:`,
-        // Explicitly permit RTCPeerConnection for 1:1 DM calls under the strict
-        // default-src. ICE/TURN traffic itself is not connect-src-governed.
-        `webrtc 'allow'`,
-        `base-uri 'none'`,
-        `object-src 'none'`,
-        `frame-ancestors 'none'`,
-        `form-action 'none'`,
-        `require-trusted-types-for 'script'`,
-      ].join('; ');
+            const csp = [
+                `default-src 'none'`,
+                // 'wasm-unsafe-eval' is required for libsodium; the hashes cover the
+                // inline theme bootstrap. No 'unsafe-inline', no 'unsafe-eval'.
+                `script-src 'self' 'wasm-unsafe-eval' ${hashes.join(" ")}`.trim(),
+                // React writes styles via CSSOM (not blocked), but keep 'unsafe-inline'
+                // for any library <style>. Style injection cannot run script.
+                `style-src 'self' 'unsafe-inline'`,
+                // blob: for decrypted images, data: for the theme wallpaper.
+                `img-src 'self' blob: data:`,
+                `font-src 'self'`,
+                // blob: covers any call stream bound through a blob URL. srcObject
+                // MediaStreams are not CSP-governed, but this is the safe superset.
+                `media-src 'self' blob:`,
+                `connect-src 'self' ${apiOrigin} ${wsOrigin}`.trim(),
+                `worker-src 'self' blob:`,
+                // Explicitly permit RTCPeerConnection for 1:1 DM calls under the strict
+                // default-src. ICE/TURN traffic itself is not connect-src-governed.
+                `webrtc 'allow'`,
+                `base-uri 'none'`,
+                `object-src 'none'`,
+                `frame-ancestors 'none'`,
+                `form-action 'none'`,
+                `require-trusted-types-for 'script'`,
+            ].join("; ");
 
-      return {
-        html,
-        tags: [
-          {
-            tag: 'meta',
-            attrs: { 'http-equiv': 'Content-Security-Policy', content: csp },
-            injectTo: 'head-prepend',
-          },
-        ],
-      };
-    },
-  };
+            return {
+                html,
+                tags: [
+                    {
+                        tag: "meta",
+                        attrs: {
+                            "http-equiv": "Content-Security-Policy",
+                            content: csp,
+                        },
+                        injectTo: "head-prepend",
+                    },
+                ],
+            };
+        },
+    };
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), contentSecurityPolicy()],
-  build: {
-    // The sodium chunk is ~1MB (WebAssembly, base64-inlined). That is the floor
-    // for shipping Argon2id to the browser and cannot be split further, so raise
-    // the warning past it rather than see a false alarm on every build.
-    chunkSizeWarningLimit: 1100,
-    rollupOptions: {
-      output: {
-        // Split the two dependencies that dominate the bundle into their own
-        // chunks. libsodium is the big one (WebAssembly, base64-inlined) and it
-        // almost never changes, so isolating it lets the browser cache it across
-        // app deploys and download it in parallel with the app code. It cannot be
-        // lazy-loaded -- the auth screen needs Argon2id the moment someone logs
-        // in -- but it does not have to sit in the same chunk as everything else.
-        manualChunks(id) {
-          if (id.includes('libsodium')) return 'sodium';
-          if (/node_modules\/(react|react-dom|react-router|scheduler)\//.test(id)) {
-            return 'react-vendor';
-          }
+    plugins: [react(), tailwindcss(), contentSecurityPolicy()],
+    build: {
+        // The sodium chunk is ~1MB (WebAssembly, base64-inlined). That is the floor
+        // for shipping Argon2id to the browser and cannot be split further, so raise
+        // the warning past it rather than see a false alarm on every build.
+        chunkSizeWarningLimit: 1100,
+        rollupOptions: {
+            output: {
+                // Split the two dependencies that dominate the bundle into their own
+                // chunks. libsodium is the big one (WebAssembly, base64-inlined) and it
+                // almost never changes, so isolating it lets the browser cache it across
+                // app deploys and download it in parallel with the app code. It cannot be
+                // lazy-loaded -- the auth screen needs Argon2id the moment someone logs
+                // in -- but it does not have to sit in the same chunk as everything else.
+                manualChunks(id) {
+                    if (id.includes("libsodium")) return "sodium";
+                    if (
+                        /node_modules\/(react|react-dom|react-router|scheduler)\//.test(
+                            id,
+                        )
+                    ) {
+                        return "react-vendor";
+                    }
+                },
+            },
         },
-      },
     },
-  },
-  resolve: {
-    alias: {
-      // `@/` -> src root, so imports survive file moves without recomputing
-      // `../` depth. Keep in sync with tsconfig `paths` and vitest.config.
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
-      // libsodium-wrappers-sumo@0.7.16 ships a broken ESM build: it imports
-      // './libsodium-sumo.mjs' as a sibling, but that file lives in the
-      // separate libsodium-sumo package, so rollup cannot resolve it. Point at
-      // the CJS build, which resolves its dependency normally.
-      //
-      // Absolute path bypasses the package's "exports" map, which would
-      // otherwise block this subpath. Same workaround the non-sumo package
-      // needed; the sumo build is required because crypto_pwhash (Argon2id,
-      // used for the at-rest vault) is omitted from the standard build.
-      'libsodium-wrappers-sumo': fileURLToPath(
-        new URL(
-          './node_modules/libsodium-wrappers-sumo/dist/modules-sumo/libsodium-wrappers.js',
-          import.meta.url
-        )
-      ),
+    resolve: {
+        alias: {
+            // `@/` -> src root, so imports survive file moves without recomputing
+            // `../` depth. Keep in sync with tsconfig `paths` and vitest.config.
+            "@": fileURLToPath(new URL("./src", import.meta.url)),
+            // libsodium-wrappers-sumo@0.7.16 ships a broken ESM build: it imports
+            // './libsodium-sumo.mjs' as a sibling, but that file lives in the
+            // separate libsodium-sumo package, so rollup cannot resolve it. Point at
+            // the CJS build, which resolves its dependency normally.
+            //
+            // Absolute path bypasses the package's "exports" map, which would
+            // otherwise block this subpath. Same workaround the non-sumo package
+            // needed; the sumo build is required because crypto_pwhash (Argon2id,
+            // used for the at-rest vault) is omitted from the standard build.
+            "libsodium-wrappers-sumo": fileURLToPath(
+                new URL(
+                    "./node_modules/libsodium-wrappers-sumo/dist/modules-sumo/libsodium-wrappers.js",
+                    import.meta.url,
+                ),
+            ),
+        },
     },
-  },
-  server: {
-    port: 5173,
-  },
+    server: {
+        port: 5173,
+    },
 });

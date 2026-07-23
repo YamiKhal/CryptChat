@@ -28,7 +28,7 @@ export default function BillingTab({ setStatus }: { setStatus: SetStatus }) {
             setStatus({
                 kind: "ok",
                 text: res.redeemed.parked
-                    ? `${period} banked. They start when your current subscription stops renewing — you will not pay for gifted time.`
+                    ? `${period} banked. They start when your current subscription stops renewing. you will not pay for gifted time.`
                     : "Badge activated.",
             });
         } catch (err) {

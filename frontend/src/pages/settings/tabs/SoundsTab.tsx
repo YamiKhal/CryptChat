@@ -108,7 +108,7 @@ export default function SoundsTab({
             <SettingsSection
                 title="Sounds"
                 info="Generated on this device and never sent anywhere."
-                infoDetails="Every cue is synthesized in your browser — no audio is downloaded and nothing about it leaves the device. These settings are stored locally, like the rest of your display preferences."
+                infoDetails="Every cue is synthesized in your browser. no audio is downloaded and nothing about it leaves the device. These settings are stored locally, like the rest of your display preferences."
             >
                 <SettingRow
                     title="Enable sounds"

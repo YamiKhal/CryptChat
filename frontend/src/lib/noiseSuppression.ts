@@ -1,10 +1,13 @@
-import { RnnoiseWorkletNode, loadRnnoise } from '@sapphi-red/web-noise-suppressor';
+import {
+    RnnoiseWorkletNode,
+    loadRnnoise,
+} from "@sapphi-red/web-noise-suppressor";
 // Vite serves these as same-origin hashed assets (so the strict CSP is happy:
 // the worklet module loads under script-src 'self', the wasm fetch under
-// connect-src 'self', and WASM compiles under 'wasm-unsafe-eval').
-import rnnoiseWasmUrl from '@sapphi-red/web-noise-suppressor/rnnoise.wasm?url';
-import rnnoiseSimdWasmUrl from '@sapphi-red/web-noise-suppressor/rnnoise_simd.wasm?url';
-import rnnoiseWorkletUrl from '@sapphi-red/web-noise-suppressor/rnnoiseWorklet.js?url';
+// connect-src 'self' and WASM compiles under 'wasm-unsafe-eval').
+import rnnoiseWasmUrl from "@sapphi-red/web-noise-suppressor/rnnoise.wasm?url";
+import rnnoiseSimdWasmUrl from "@sapphi-red/web-noise-suppressor/rnnoise_simd.wasm?url";
+import rnnoiseWorkletUrl from "@sapphi-red/web-noise-suppressor/rnnoiseWorklet.js?url";
 
 /**
  * Krisp-grade microphone noise suppression via RNNoise.
@@ -25,20 +28,23 @@ import rnnoiseWorkletUrl from '@sapphi-red/web-noise-suppressor/rnnoiseWorklet.j
  */
 
 export interface SuppressedMic {
-  /** The cleaned audio track to send. */
-  track: MediaStreamTrack;
-  /** Tear down the audio graph and the context. Does NOT stop the raw mic track. */
-  dispose: () => void;
+    /** The cleaned audio track to send. */
+    track: MediaStreamTrack;
+    /** Tear down the audio graph and the context. Does NOT stop the raw mic track. */
+    dispose: () => void;
 }
 
 // The wasm binary is fetched once and reused across calls in a session.
 let wasmBinaryPromise: Promise<ArrayBuffer> | null = null;
 
 function getWasmBinary(): Promise<ArrayBuffer> {
-  if (!wasmBinaryPromise) {
-    wasmBinaryPromise = loadRnnoise({ url: rnnoiseWasmUrl, simdUrl: rnnoiseSimdWasmUrl });
-  }
-  return wasmBinaryPromise;
+    if (!wasmBinaryPromise) {
+        wasmBinaryPromise = loadRnnoise({
+            url: rnnoiseWasmUrl,
+            simdUrl: rnnoiseSimdWasmUrl,
+        });
+    }
+    return wasmBinaryPromise;
 }
 
 /**
@@ -47,35 +53,37 @@ function getWasmBinary(): Promise<ArrayBuffer> {
  * `rawTrack` stays owned by the caller (it is the mic; stopping it is the
  * caller's job on hangup). Muting is done on the *cleaned* track by the caller.
  */
-export async function suppressMic(rawTrack: MediaStreamTrack): Promise<SuppressedMic> {
-  const wasmBinary = await getWasmBinary();
+export async function suppressMic(
+    rawTrack: MediaStreamTrack,
+): Promise<SuppressedMic> {
+    const wasmBinary = await getWasmBinary();
 
-  // RNNoise is fixed at 48kHz; pin the context so the worklet's frame size lines
-  // up with the sample rate.
-  const ctx = new AudioContext({ sampleRate: 48000 });
-  await ctx.audioWorklet.addModule(rnnoiseWorkletUrl);
+    // RNNoise is fixed at 48kHz; pin the context so the worklet's frame size lines
+    // up with the sample rate.
+    const ctx = new AudioContext({ sampleRate: 48000 });
+    await ctx.audioWorklet.addModule(rnnoiseWorkletUrl);
 
-  const source = ctx.createMediaStreamSource(new MediaStream([rawTrack]));
-  const rnnoise = new RnnoiseWorkletNode(ctx, { maxChannels: 1, wasmBinary });
-  const destination = ctx.createMediaStreamDestination();
+    const source = ctx.createMediaStreamSource(new MediaStream([rawTrack]));
+    const rnnoise = new RnnoiseWorkletNode(ctx, { maxChannels: 1, wasmBinary });
+    const destination = ctx.createMediaStreamDestination();
 
-  source.connect(rnnoise).connect(destination);
+    source.connect(rnnoise).connect(destination);
 
-  const track = destination.stream.getAudioTracks()[0];
-  if (!track) {
-    void ctx.close().catch(() => {});
-    throw new Error('noise suppression produced no track');
-  }
-
-  const dispose = () => {
-    try {
-      source.disconnect();
-      rnnoise.disconnect();
-    } catch {
-      // graph already torn down
+    const track = destination.stream.getAudioTracks()[0];
+    if (!track) {
+        void ctx.close().catch(() => {});
+        throw new Error("noise suppression produced no track");
     }
-    void ctx.close().catch(() => {});
-  };
 
-  return { track, dispose };
+    const dispose = () => {
+        try {
+            source.disconnect();
+            rnnoise.disconnect();
+        } catch {
+            // graph already torn down
+        }
+        void ctx.close().catch(() => {});
+    };
+
+    return { track, dispose };
 }

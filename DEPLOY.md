@@ -1,16 +1,16 @@
 # Deployment (Coolify)
 
-## Repo model — one monorepo
+## Repo model. one monorepo
 
 Everything lives in a single Git repository: `backend/`, `frontend/`,
-`docker-compose.yml`, and this file. Do **not** split into two repos. Coolify
-deploys multiple "resources" from different base directories of the *same* repo.
+`docker-compose.yml` and this file. Do **not** split into two repos. Coolify
+deploys multiple "resources" from different base directories of the _same_ repo.
 
 ### What to push to GitHub
 
 Push the whole project **except** what `.gitignore` excludes:
 
-- Ignored (never pushed): `node_modules/`, `dist/`, and every `.env` file.
+- Ignored (never pushed): `node_modules/`, `dist/` and every `.env` file.
 - Pushed: all source, both `package.json` + `package-lock.json`, both
   `.env.example`, `schema.sql`, `Dockerfile`, `docker-compose.yml`, configs.
 
@@ -29,7 +29,7 @@ Secrets (`JWT_SECRET`, DB password) are set in the Coolify UI, **not** committed
 
 ---
 
-## Coolify — three resources in one project
+## Coolify. three resources in one project
 
 Create one Coolify Project, then add these three resources. All point at the
 same GitHub repo; they differ by **Base Directory** and build settings.
@@ -46,21 +46,21 @@ same GitHub repo; they differ by **Base Directory** and build settings.
 
 - Coolify → **New Resource → Application → your GitHub repo**.
 - **Build Pack:** Dockerfile.
-- **Base Directory:** `/backend`  (Dockerfile is `backend/Dockerfile`).
+- **Base Directory:** `/backend` (Dockerfile is `backend/Dockerfile`).
 - **Port (exposed):** `3000`.
 - Give it a public domain, e.g. `https://api.CryptChat.example.com`.
 - **Environment variables:**
 
-  | Key            | Value                                                        |
-  |----------------|-------------------------------------------------------------|
-  | `PORT`         | `3000`                                                      |
-  | `DATABASE_URL` | internal Postgres URL from step 1 (point db name at the one you want, e.g. `.../darkchat`) |
-  | `JWT_SECRET`   | long random string (`openssl rand -hex 32`)                |
-  | `CORS_ORIGIN`  | the frontend's public URL (step 3), e.g. `https://CryptChat.example.com` |
-  | `BLOB_DIR`     | `/data/blobs` — must match the persistent storage mount below |
+    | Key            | Value                                                                                      |
+    | -------------- | ------------------------------------------------------------------------------------------ |
+    | `PORT`         | `3000`                                                                                     |
+    | `DATABASE_URL` | internal Postgres URL from step 1 (point db name at the one you want, e.g. `.../darkchat`) |
+    | `JWT_SECRET`   | long random string (`openssl rand -hex 32`)                                                |
+    | `CORS_ORIGIN`  | the frontend's public URL (step 3), e.g. `https://CryptChat.example.com`                   |
+    | `BLOB_DIR`     | `/data/blobs`. must match the persistent storage mount below                               |
 
 - WebSocket relay is served on the same domain at path `/ws`. Coolify's Traefik
-  proxy passes WebSockets through on the app's domain by default — no extra config.
+  proxy passes WebSockets through on the app's domain by default. no extra config.
 
 #### Persistent storage for attachments (required)
 
@@ -70,19 +70,19 @@ container filesystem and **every redeploy wipes them**.
 - Coolify → backend app → **Storages** → add persistent storage mounted at
   `/data/blobs`.
 - Back it with a **Hetzner Volume** (block storage, ~€0.044/GB/mo, resizes live)
-  rather than the VPS root disk — plans are small, and 50MB files fill them fast.
+  rather than the VPS root disk. plans are small and 50MB files fill them fast.
 
 > **Put blobs on a different disk from Postgres.** If they share one and blobs
 > fill it, Postgres cannot write and the whole app goes down. Separate volumes
 > turn a storage incident into a failed upload instead of an outage.
 
-**Backups:** Coolify backs up Postgres, *not* arbitrary volumes — the blob volume
+**Backups:** Coolify backs up Postgres, _not_ arbitrary volumes. the blob volume
 is unprotected by default. Use `restic`/`borg` from the Volume to a **Hetzner
 Storage Box** (cheap, off-box; it speaks SFTP/Borg, not S3, so it's a backup
 target, not a live store).
 
 **Uploads and proxies:** files upload in ~1MB chunks, so no single request is
-large. If you ever put Cloudflare in front of this, that matters — the free tier
+large. If you ever put Cloudflare in front of this, that matters. the free tier
 rejects any request body over 100MB.
 
 **Scaling out:** `src/blobStore.js` is a narrow interface (`append` /
@@ -95,7 +95,7 @@ streaming through Node.
 ### 3. Frontend (static site)
 
 - Coolify → **New Resource → Application → same GitHub repo**.
-- **Build Pack:** Nixpacks (static) — or "Static" if offered.
+- **Build Pack:** Nixpacks (static). or "Static" if offered.
 - **Base Directory:** `/frontend`.
 - **Install command:** `npm install`
 - **Build command:** `npm run build`
@@ -103,13 +103,13 @@ streaming through Node.
 - Give it a public domain, e.g. `https://CryptChat.example.com`.
 - **Build-time environment variable:**
 
-  | Key            | Value                                         |
-  |----------------|-----------------------------------------------|
-  | `VITE_API_URL` | backend's public URL, e.g. `https://api.CryptChat.example.com` |
+    | Key            | Value                                                          |
+    | -------------- | -------------------------------------------------------------- |
+    | `VITE_API_URL` | backend's public URL, e.g. `https://api.CryptChat.example.com` |
 
-  > ⚠️ `VITE_API_URL` is **baked into the JS at build time**, not read at
-  > runtime. If the backend URL changes, you must **rebuild/redeploy the
-  > frontend**. This also drives the WebSocket URL (`https:`→`wss:`, `+/ws`).
+    > ⚠️ `VITE_API_URL` is **baked into the JS at build time**, not read at
+    > runtime. If the backend URL changes, you must **rebuild/redeploy the
+    > frontend**. This also drives the WebSocket URL (`https:`→`wss:`, `+/ws`).
 
 ### Wiring recap
 
@@ -140,8 +140,11 @@ Changing the backend URL later means redeploying the frontend too.
 ## Alternative: single docker-compose deploy
 
 Coolify can also deploy `docker-compose.yml` directly (db + backend). It does
-**not** include the frontend, and the compose file publishes Postgres on host
-port `5433` for local dev — remove that `ports:` block for a server deploy. The
+**not** include the frontend and the compose file publishes Postgres on host
+port `5433` for local dev. remove that `ports:` block for a server deploy. The
 three-resource split above is the recommended path; use compose only if you
 specifically want DB + backend bundled.
+
+```
+
 ```

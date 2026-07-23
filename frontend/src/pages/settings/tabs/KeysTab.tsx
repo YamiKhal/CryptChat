@@ -72,7 +72,7 @@ export default function KeysTab({
         }
         const ok = confirm(
             "Restore this backup?\n\n" +
-                "Everything currently on this device for this account — channels, contacts, and message history — is replaced by the backup. The app reloads and asks for your password.",
+                "Everything currently on this device for this account. channels, contacts and message history. is replaced by the backup. The app reloads and asks for your password.",
         );
         if (!ok) return;
         setBusy(true);
@@ -90,9 +90,9 @@ export default function KeysTab({
             <SettingsSection title="Backup">
                 <SettingRow
                     title="Export"
-                    description="One encrypted file — keys, channels, history."
+                    description="One encrypted file. keys, channels, history."
                     info="Sealed with your login password."
-                    infoDetails="Writes everything on this device to one encrypted file. Restore it after clearing your browser, or on a new device. Anyone holding the file can attempt an offline crack, so keep it private — and a password change makes older backups unreadable."
+                    infoDetails="Writes everything on this device to one encrypted file. Restore it after clearing your browser, or on a new device. Anyone holding the file can attempt an offline crack, so keep it private. and a password change makes older backups unreadable."
                     control={
                         <button
                             onClick={handleExport}
@@ -108,7 +108,7 @@ export default function KeysTab({
                     title="Import"
                     description={
                         importFile
-                            ? "Backup loaded — restoring replaces this device."
+                            ? "Backup loaded. restoring replaces this device."
                             : "Restore a backup file onto this device."
                     }
                     info="Replaces everything on this device."
@@ -189,8 +189,8 @@ export default function KeysTab({
 }
 
 /**
- * Auto-backup as ONE row: title, a status dot in the description, and the
- * control that fits the state — a toggle when it can simply be on/off, an
+ * Auto-backup as ONE row: title, a status dot in the description and the
+ * control that fits the state. a toggle when it can simply be on/off, an
  * upgrade button without premium, nothing on unsupported browsers.
  */
 function AutoBackupRow({
@@ -208,7 +208,7 @@ function AutoBackupRow({
                 title="Automatic backup"
                 description="Needs Chrome or Edge."
                 info="Firefox and Safari cannot write to a chosen file."
-                infoDetails="Automatic backup keeps a file on disk that rewrites itself after every change. Only Chromium browsers grant that file access — elsewhere, use Export above."
+                infoDetails="Automatic backup keeps a file on disk that rewrites itself after every change. Only Chromium browsers grant that file access. elsewhere, use Export above."
             />
         );
     }
@@ -217,7 +217,7 @@ function AutoBackupRow({
         return (
             <SettingRow
                 title="Automatic backup"
-                description="Pick a file once — it keeps itself current."
+                description="Pick a file once. it keeps itself current."
                 info="A supporter feature."
                 infoDetails="Supporters pick a file on disk that CryptChat rewrites silently after every change. It lives outside the browser, so clearing browsing data cannot touch it. A cloud-synced folder covers a lost device too."
                 control={
@@ -285,13 +285,13 @@ function AutoBackupRow({
                 {statusText}
                 {backup.configured &&
                     (backup.status === "idle" || backup.status === "saved") && (
-                    <button
-                        onClick={() => backup.backupNow()}
-                        className="text-muted hover:text-primary ml-1 underline underline-offset-2"
-                    >
-                        back up now
-                    </button>
-                )}
+                        <button
+                            onClick={() => backup.backupNow()}
+                            className="text-muted hover:text-primary ml-1 underline underline-offset-2"
+                        >
+                            back up now
+                        </button>
+                    )}
             </p>
         </SettingRow>
     );

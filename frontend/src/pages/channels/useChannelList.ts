@@ -4,7 +4,7 @@ import { Vault, StoredChannel } from "@/lib/vault";
 
 /**
  * The channel list and its live upkeep: the local channel array, per-channel
- * unread counts, the premium flag (which gates the incognito toggle), and the
+ * unread counts, the premium flag (which gates the incognito toggle) and the
  * reconcile against server membership. Returns the data plus `reload`, which the
  * page's mutations call after a local vault write.
  */

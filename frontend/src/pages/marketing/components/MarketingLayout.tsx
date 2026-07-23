@@ -9,7 +9,7 @@ import "../marketing.css";
  *
  * Also owns the scroll-reveal machinery: one IntersectionObserver watches every
  * [data-reveal] element on the mounted page and stamps .is-visible the first
- * time it scrolls into view (then stops watching it — reveals play once).
+ * time it scrolls into view (then stops watching it. reveals play once).
  * Pages opt in per element; stagger with style={{ "--reveal-delay": "120ms" }}.
  */
 export default function MarketingLayout({ children }: { children: ReactNode }) {
@@ -31,7 +31,7 @@ export default function MarketingLayout({ children }: { children: ReactNode }) {
     }, []);
 
     return (
-        <div className="flex min-h-screen flex-col bg-bg text-foreground">
+        <div className="bg-bg text-foreground flex min-h-screen flex-col">
             <MarketingNav />
             <main className="flex-1">{children}</main>
             <MarketingFooter />

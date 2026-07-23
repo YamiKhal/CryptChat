@@ -4,7 +4,7 @@ import { ChatTextSize } from "@/lib/vault";
 /**
  * A miniature transcript that mirrors the chat-display choices live. It carries
  * its own data-chat-size so the CSS size variables resolve exactly as they will
- * in a real chat, and remounts on any change (via key) to replay the fade.
+ * in a real chat and remounts on any change (via key) to replay the fade.
  */
 export function ChatPreview({
     size,
@@ -56,7 +56,7 @@ export function ChatPreview({
             >
                 <PreviewRow
                     name="Ada"
-                    text="hey — did the keys come through?"
+                    text="hey. did the keys come through?"
                     time={fmt(15, 3)}
                     hideImages={hideImages}
                 />

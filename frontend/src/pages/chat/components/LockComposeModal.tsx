@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Lock } from 'lucide-react';
+import { useState } from "react";
+import { Lock } from "lucide-react";
 
 /**
  * Configure the password lock for the next message.
@@ -12,73 +12,82 @@ import { Lock } from 'lucide-react';
  * device -- it is what recipients type to decrypt this one message.
  */
 export function LockComposeModal({
-  initialCode,
-  initialHint,
-  armed,
-  onConfirm,
-  onDisable,
-  onClose,
+    initialCode,
+    initialHint,
+    armed,
+    onConfirm,
+    onDisable,
+    onClose,
 }: {
-  initialCode: string;
-  initialHint: string;
-  /** Whether a lock is already armed (so the modal was opened to edit it). */
-  armed: boolean;
-  onConfirm: (code: string, hint: string) => void;
-  onDisable: () => void;
-  onClose: () => void;
+    initialCode: string;
+    initialHint: string;
+    /** Whether a lock is already armed (so the modal was opened to edit it). */
+    armed: boolean;
+    onConfirm: (code: string, hint: string) => void;
+    onDisable: () => void;
+    onClose: () => void;
 }) {
-  const [code, setCode] = useState(initialCode);
-  const [hint, setHint] = useState(initialHint);
+    const [code, setCode] = useState(initialCode);
+    const [hint, setHint] = useState(initialHint);
 
-  function confirm() {
-    if (!code.trim()) return;
-    onConfirm(code.trim(), hint.trim());
-  }
+    function confirm() {
+        if (!code.trim()) return;
+        onConfirm(code.trim(), hint.trim());
+    }
 
-  return (
-    <div
-      className="modal-backdrop"
-      onClick={onClose}
-    >
-      <div
-        className="modal-panel max-w-xs space-y-3"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <p className="flex items-center gap-1.5 t-h4 font-medium">
-          <Lock size={14} className="text-primary" aria-hidden="true" />
-          Password-protect message
-        </p>
-        <input
-          className="field t-h4"
-          placeholder="code recipients must enter"
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && confirm()}
-          autoComplete="off"
-          autoFocus
-        />
-        <input
-          className="field t-h4"
-          placeholder="hint (optional, shown before unlocking)"
-          value={hint}
-          onChange={(e) => setHint(e.target.value)}
-          maxLength={140}
-          autoComplete="off"
-        />
-        <p className="t-small text-muted">
-          Share the code another way. It never reaches our servers and cannot be recovered — without
-          it, the message stays locked. This guards against a glance over the shoulder, not against
-          someone who already has the message.
-        </p>
-        <div className="flex gap-2">
-          <button onClick={armed ? onDisable : onClose} className="btn-ghost flex-1 t-base">
-            {armed ? 'Turn off lock' : 'Cancel'}
-          </button>
-          <button onClick={confirm} disabled={!code.trim()} className="btn-primary flex-1 t-base">
-            Lock message
-          </button>
+    return (
+        <div className="modal-backdrop" onClick={onClose}>
+            <div
+                className="modal-panel max-w-xs space-y-3"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <p className="t-h4 flex items-center gap-1.5 font-medium">
+                    <Lock
+                        size={14}
+                        className="text-primary"
+                        aria-hidden="true"
+                    />
+                    Password-protect message
+                </p>
+                <input
+                    className="field t-h4"
+                    placeholder="code recipients must enter"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && confirm()}
+                    autoComplete="off"
+                    autoFocus
+                />
+                <input
+                    className="field t-h4"
+                    placeholder="hint (optional, shown before unlocking)"
+                    value={hint}
+                    onChange={(e) => setHint(e.target.value)}
+                    maxLength={140}
+                    autoComplete="off"
+                />
+                <p className="t-small text-muted">
+                    Share the code another way. It never reaches our servers and
+                    cannot be recovered. without it, the message stays locked.
+                    This guards against a glance over the shoulder, not against
+                    someone who already has the message.
+                </p>
+                <div className="flex gap-2">
+                    <button
+                        onClick={armed ? onDisable : onClose}
+                        className="btn-ghost t-base flex-1"
+                    >
+                        {armed ? "Turn off lock" : "Cancel"}
+                    </button>
+                    <button
+                        onClick={confirm}
+                        disabled={!code.trim()}
+                        className="btn-primary t-base flex-1"
+                    >
+                        Lock message
+                    </button>
+                </div>
+            </div>
         </div>
-      </div>
-    </div>
-  );
+    );
 }

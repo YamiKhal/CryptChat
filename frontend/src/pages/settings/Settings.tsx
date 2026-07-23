@@ -100,7 +100,9 @@ export default function Settings() {
         return (
             <div className="grid h-full place-items-center p-4">
                 <div className="card space-y-3 text-center">
-                    <p className="t-h4">Unlock your vault to change settings.</p>
+                    <p className="t-h4">
+                        Unlock your vault to change settings.
+                    </p>
                     <Link to="/login" className="btn-ghost">
                         Unlock
                     </Link>
@@ -113,7 +115,7 @@ export default function Settings() {
 
     return (
         <div className="flex h-full">
-            {/* category list — the left column, mirroring the channel list. On mobile
+            {/* category list. the left column, mirroring the channel list. On mobile
           it is the whole screen until a category is chosen. */}
             <aside
                 className={`border-border bg-surface w-full flex-col border-r lg:flex lg:w-85 lg:shrink-0 ${
@@ -173,7 +175,7 @@ export default function Settings() {
                 <AccountBar />
             </aside>
 
-            {/* active category — the right pane, mirroring the chat panel. */}
+            {/* active category. the right pane, mirroring the chat panel. */}
             <main
                 className={`min-w-0 flex-1 flex-col ${tab ? "flex" : "hidden lg:flex"}`}
             >
@@ -215,7 +217,10 @@ export default function Settings() {
                             />
                         )}
                         {tab === "appearance" && (
-                            <AppearanceTab vault={vault} setStatus={setStatus} />
+                            <AppearanceTab
+                                vault={vault}
+                                setStatus={setStatus}
+                            />
                         )}
                         {tab === "sounds" && (
                             <SoundsTab vault={vault} setStatus={setStatus} />

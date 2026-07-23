@@ -1,6 +1,6 @@
 /**
  * Marketing-layer styles: display type + motion primitives used only by the
- * public pages. Plain CSS over the existing tokens — no new colours, no
+ * public pages. Plain CSS over the existing tokens. no new colours, no
  * translucency (rule A holds out here too; every fill is a solid token).
  *
  * Motion inventory:

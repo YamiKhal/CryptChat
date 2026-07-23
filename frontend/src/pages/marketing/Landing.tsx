@@ -8,7 +8,7 @@ import { FEATURES, HERO_LINE, HERO_SUB, MARQUEE, TAGLINE } from "./content";
 /**
  * The product's front door, discord.com-style: a huge centred hero over a live
  * typing terminal with floating feature tiles, a looping claim ticker, a
- * staggered feature grid, two alternating deep-dive rows with UI mockups, and
+ * staggered feature grid, two alternating deep-dive rows with UI mockups and
  * a bold closing band. Motion comes from marketing.css ([data-reveal], .mk-*)
  * and respects prefers-reduced-motion. Solid token fills only.
  */

@@ -1,24 +1,24 @@
-# Identity, Recovery, and Billing
+# Identity, Recovery and Billing
 
 CryptChat's threat model has one hard line: **the relay never learns a message
 body, a channel key, a display name, or an avatar.** That line does not move.
 
-This document covers everything on the *other* side of it — the account layer.
-Monetization requires an identity we can bill and a mailbox we can reach, and
-those are not free. This is the record of what we accepted, what we refused, and
+This document covers everything on the _other_ side of it. the account layer.
+Monetization requires an identity we can bill and a mailbox we can reach and
+those are not free. This is the record of what we accepted, what we refused and
 why.
 
 ## Summary of the change
 
-| Thing | Before | After |
-|---|---|---|
-| Email | none | optional, encrypted at rest, server-readable only inside the send path |
-| Recovery | key file export only | recovery code (256-bit) + email confirmation |
-| Vault backup | none (localStorage only) | server-held blob, sealed under the recovery code |
-| Activity metadata | none | **still none** — deliberately |
-| Payment link | none | Stripe ↔ random `entitlement_id` ↔ account |
+| Thing             | Before                   | After                                                                  |
+| ----------------- | ------------------------ | ---------------------------------------------------------------------- |
+| Email             | none                     | optional, encrypted at rest, server-readable only inside the send path |
+| Recovery          | key file export only     | recovery code (256-bit) + email confirmation                           |
+| Vault backup      | none (localStorage only) | server-held blob, sealed under the recovery code                       |
+| Activity metadata | none                     | **still none**. deliberately                                           |
+| Payment link      | none                     | Stripe ↔ random `entitlement_id` ↔ account                             |
 
-Messages, channels, channel keys, blobs, and envelope signing are **unchanged**.
+Messages, channels, channel keys, blobs and envelope signing are **unchanged**.
 No part of this touches `crypto.ts` sealing, the relay, or the blob store.
 
 ---
@@ -29,14 +29,14 @@ No part of this touches `crypto.ts` sealing, the relay, or the blob store.
 
 The email is encrypted at rest with a **server-held key**. The server can
 decrypt it. It does so in exactly one place: the outbound mail path. No API
-route ever returns a plaintext address, and no operator UI displays one.
+route ever returns a plaintext address and no operator UI displays one.
 
 This is **"we never expose it"**, not **"we cannot read it."** Those are
 different claims and only the first one is true. A database dump combined with
 the KMS key yields plaintext addresses.
 
-We say so in the privacy policy in those words. The alternative — sealing the
-address with the vault key so the server truly cannot read it — makes the
+We say so in the privacy policy in those words. The alternative. sealing the
+address with the vault key so the server truly cannot read it. makes the
 address unreachable by our own mail sender, which makes recovery and activation
 impossible. That was considered and rejected: an email nobody can send to is
 decoration.
@@ -52,7 +52,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ;
 ```
 
 `email_hash` is an **HMAC, not a bare SHA-256**. A bare hash of an email is not
-a protection — the input space is small enough that anyone holding a dump tests
+a protection. the input space is small enough that anyone holding a dump tests
 their guesses offline and confirms whether a given person has an account. The
 HMAC pepper (`EMAIL_INDEX_PEPPER`) lives in the environment, never in the
 database, so a dump alone cannot be tested against.
@@ -71,13 +71,13 @@ encrypting directly: it lets the master key rotate without rewriting every row.
 ### Masking
 
 `email_mask` is computed **server-side at write time** and is the only form any
-API returns. Never reconstruct a mask from ciphertext on the client — the client
+API returns. Never reconstruct a mask from ciphertext on the client. the client
 would need the plaintext to do it, which defeats the point.
 
 The requested "first 4 + last 4" leaks more than it looks: `aboEmad1231@outlook.com`
-→ `aboE…k.com` still gives away the provider, and for short addresses the mask
+→ `aboE…k.com` still gives away the provider and for short addresses the mask
 approaches the address. Use instead: **first 2 of local part, provider domain
-kept, everything else fixed-width elided** — `ab•••••••@outlook.com`. Fixed-width
+kept, everything else fixed-width elided**. `ab•••••••@outlook.com`. Fixed-width
 matters: a mask that varies with length leaks the length.
 
 ### Verification
@@ -97,18 +97,18 @@ CREATE TABLE IF NOT EXISTS email_tokens (
 ```
 
 Single-use, 24h for verify, 30 min for reset. The address is only written to
-`users` when the token is consumed — otherwise typoing a stranger's address
+`users` when the token is consumed. otherwise typoing a stranger's address
 silently attaches it to your account until they notice.
 
 ### Setting up the sender
 
-You need a domain you control — no provider will let you send as `gmail.com`.
+You need a domain you control. no provider will let you send as `gmail.com`.
 
 1. **Verify the domain** (Resend → Domains → Add). It returns DNS records: a
    DKIM `TXT` (signs your mail so it cannot be forged), SPF (`MX` + `TXT`,
-   authorising Resend to send as you), and optionally DMARC. Add them at your
+   authorising Resend to send as you) and optionally DMARC. Add them at your
    registrar and verify. Minutes, usually.
-2. **API key** with *sending access only* → `MAIL_API_KEY`.
+2. **API key** with _sending access only_ → `MAIL_API_KEY`.
 3. `MAIL_FROM` must be at the verified domain: `CryptChat <noreply@example.com>`.
 4. `PUBLIC_APP_URL` builds the links inside the mail. Getting this wrong mails
    your users a password-reset link pointing at someone else's host, so
@@ -118,7 +118,7 @@ Prefer a subdomain (`mail.example.com`) over the apex: a deliverability problem
 then cannot poison the reputation of your main domain.
 
 **Locally, set none of it.** With no `MAIL_API_KEY` the mailer prints the message
-to stdout, link included — which is how a developer clicks through the flow and
+to stdout, link included. which is how a developer clicks through the flow and
 how the test suite reads tokens. Production refuses to boot without it, because
 auth mail silently going nowhere is worse than a loud failure.
 
@@ -129,7 +129,7 @@ same shape.
 
 EmailJS sends from the browser under a publishable key. Any auth flow built on
 it is trivially defeated: a locked-out user's recovery mail would be composed and
-sent *by the client that requested it*, so an attacker who types your address
+sent _by the client that requested it_, so an attacker who types your address
 receives the token in their own browser. Recovery mail must originate on the
 server, where the client cannot see or redirect it.
 
@@ -143,14 +143,14 @@ nothing else.
 
 ### The trap
 
-The password *is* the vault key ([vault.ts:211](frontend/src/lib/vault.ts#L211)).
+The password _is_ the vault key ([vault.ts:211](frontend/src/lib/vault.ts#L211)).
 Resetting the server-side password verifier does **not** open a local vault
-sealed under the old password, and the server has never held the private keys
+sealed under the old password and the server has never held the private keys
 ([auth.js:151-153](backend/src/routes/auth.js#L151-L153)).
 
 So a naive "email password reset" produces a working login into an account with
-zero channels, zero contacts, and zero history — the user reads this as total
-data loss, and they are essentially right. Email reset alone must never be shipped
+zero channels, zero contacts and zero history. the user reads this as total
+data loss and they are essentially right. Email reset alone must never be shipped
 as "account recovery."
 
 ### The design: recovery code wraps a server-held key bundle
@@ -168,12 +168,12 @@ defines: identity keypairs + every channel key. The blob is uploaded to the
 server.
 
 **Why server-side storage is safe here, when storing the vault would not be:**
-the vault is sealed under a *human-chosen password* — a server holding it holds
+the vault is sealed under a _human-chosen password_. a server holding it holds
 an offline cracking target. The recovery blob is sealed under 256 bits of CSPRNG
 output. There is no dictionary for that. The server holds ciphertext it cannot
 attack, which is exactly the standard it already meets for message ciphertext.
 
-This is strictly *stronger* than today's posture and it is what makes recovery
+This is strictly _stronger_ than today's posture and it is what makes recovery
 possible at all: the blob is the only copy of the keys reachable from a device
 that has never seen the account.
 
@@ -201,7 +201,7 @@ Both factors are required. Email alone cannot recover; code alone cannot recover
 
 1. User submits username + email. Server HMACs the address and compares to
    `email_hash`.
-2. **Response is identical whether or not it matched** — same body, same status,
+2. **Response is identical whether or not it matched**. same body, same status,
    same latency. Otherwise the endpoint is an oracle that confirms which address
    owns which account.
 3. On a real match, server mails a 30-minute single-use reset token.
@@ -209,16 +209,16 @@ Both factors are required. Email alone cannot recover; code alone cannot recover
    verifier. `vault_salt` is **rotated** at this point, because the old local
    vault is unopenable anyway and keeping the salt implies otherwise.
 5. Client prompts for the recovery code, pulls `recovery_blob`, unwraps the
-   KeyBundle, rebuilds the vault under the new password, and re-uploads a fresh
+   KeyBundle, rebuilds the vault under the new password and re-uploads a fresh
    blob under a fresh salt.
 
 Step 5 is not optional and the UI must not let the user skip it and land in a
 half-restored account. If the user has no recovery code, the honest message is
-that the channels are gone — the same answer the app gives today.
+that the channels are gone. the same answer the app gives today.
 
 **Attacker with mailbox access, no recovery code:** resets the password, logs in,
 sees an empty account. They now hold the username. They cannot read history and
-cannot impersonate to existing contacts — a new identity means a new signing key,
+cannot impersonate to existing contacts. a new identity means a new signing key,
 and contacts pin on first use, so the change surfaces as `keyChangedAt` rather
 than being silently accepted ([vault.ts:337](frontend/src/lib/vault.ts#L337)).
 TOFU is what contains this, so it must not be weakened.
@@ -247,72 +247,72 @@ CREATE TABLE IF NOT EXISTS entitlements (
 ```
 
 There is **no activity column and no login timestamp anywhere in this schema.**
-That absence is a feature, not an omission — see §3.3.
+That absence is a feature, not an omission. see §3.3.
 
 ### Gifts are credit, not an expiry bump
 
-Two products at Stripe: **Supporter** (four recurring prices — monthly, 3, 6, 12
+Two products at Stripe: **Supporter** (four recurring prices. monthly, 3, 6, 12
 months) and **Supporter Gift** (four one-off prices for the same durations). A
 subscription renews and is cancellable; a gift is a code worth N months and
 nothing else.
 
-Three rules make gifts fair, and each exists because the obvious implementation
+Three rules make gifts fair and each exists because the obvious implementation
 is wrong:
 
 1. **The clock starts at redemption.** Setting `expires_at` at purchase would
-   burn the months between buying a gift and handing it over — hence the nullable
+   burn the months between buying a gift and handing it over. hence the nullable
    column.
 2. **Redeeming while already covered parks the months** (`status='credit'`). The
    naive `expires_at += N months` collides with the subscription's own
-   `invoice.paid`, which pushes the same column forward — so the user would pay
+   `invoice.paid`, which pushes the same column forward. so the user would pay
    for months they had been given. Parked credit starts only when nothing else
    covers the account, lazily, on the next badge read. No cron.
 3. **Credits queue.** Two 3-month gifts are six months in sequence, never three
    months twice.
 
-Gift codes never expire — prepaid value with an expiry date is restricted or
-banned in much of the EU and US, and an unredeemed row grants nothing anyway.
-Subscription codes *do* expire, because Stripe's clock has been running since
+Gift codes never expire. prepaid value with an expiry date is restricted or
+banned in much of the EU and US and an unredeemed row grants nothing anyway.
+Subscription codes _do_ expire, because Stripe's clock has been running since
 purchase. That asymmetry is deliberate.
 
 1. `checkout.session.completed` → create an entitlement, generate a redemption
    code, store `HMAC(code)`, write `entitlement_id` into the Stripe subscription
-   metadata. **Nothing else goes into that metadata** — no user id, no username.
+   metadata. **Nothing else goes into that metadata**. no user id, no username.
 2. The success page is the only place the code exists in plaintext. It is not
    emailed and not recoverable; losing it before redemption is a support ticket.
 3. `POST /billing/redeem` (authenticated) → match `HMAC(code)`, set `user_id`,
    `status='active'`, `granted_at=now()`, null out `redeem_hash`.
 4. `invoice.paid` → look up by `entitlement_id` from metadata, extend `expires_at`.
 
-Badge = `status='active' AND expires_at > now()`. Nothing else is checked, and
+Badge = `status='active' AND expires_at > now()`. Nothing else is checked and
 no billing detail is ever read at request time.
 
 ### What this does and does not buy
 
 Stripe knows `payer email + card + entitlement_id`. Our database knows
 `entitlement_id + user_id`. Neither side alone links a human to an account.
-Anyone holding **both** — a subpoena, a breach spanning both, an insider with
-Stripe dashboard access — joins them on `entitlement_id` immediately.
+Anyone holding **both**. a subpoena, a breach spanning both, an insider with
+Stripe dashboard access. joins them on `entitlement_id` immediately.
 
 So the accurate claim is: **"we don't store payment information and our database
-contains no link between your payment and your account."** Not *"there is no
-link."* Marketing must not round this up; the gap between those sentences is the
+contains no link between your payment and your account."** Not _"there is no
+link."_ Marketing must not round this up; the gap between those sentences is the
 kind of thing that ends a privacy-first product's credibility permanently.
 
 If true unlinkability is the goal, the only real answer is one-time passes sold
-as fresh anonymous codes with no renewal mapping to maintain — no recurring
+as fresh anonymous codes with no renewal mapping to maintain. no recurring
 subscription can avoid holding a durable pointer.
 
-### 3.3 No activity tracking — rejected on ethical grounds
+### 3.3 No activity tracking. rejected on ethical grounds
 
 An earlier draft auto-cancelled a subscription if the user did not log in during
 the billing month, which required a `last_active_month` column. **This was
 dropped deliberately and must not come back.**
 
-The feature required building an activity log on paying accounts — the server
+The feature required building an activity log on paying accounts. the server
 would have learned when each subscriber was last active, which is metadata it
 has never held about anyone. That was the single largest privacy regression in
-the whole design, larger than the email address, and it existed only to cancel
+the whole design, larger than the email address and it existed only to cancel
 subscriptions users had not asked to cancel. Taking money is not a reason to
 start surveilling.
 
@@ -324,15 +324,15 @@ Consequences, all of them good:
   question in any jurisdiction.
 - Cancellation is the user's, through Stripe's hosted portal **login page**
   (`STRIPE_PORTAL_URL`): they enter the address they paid with, Stripe mails them
-  a magic link, and they cancel there. We handle `customer.subscription.deleted`
+  a magic link and they cancel there. We handle `customer.subscription.deleted`
   by setting `status='cancelled'` and letting `expires_at` run out. We never
-  cancel on someone's behalf — and could not if we wanted to, having stored no
+  cancel on someone's behalf. and could not if we wanted to, having stored no
   customer id. That is the design working as intended, but it does mean the
   portal link is **required in practice**: without it, subscribers have no route
   to cancel at all.
 
 **Do not add `last_login_at` to `users` for analytics, engagement metrics, or
-convenience.** If a future feature seems to need it, it does not — it needs a
+convenience.** If a future feature seems to need it, it does not. it needs a
 different design. This paragraph is the reason.
 
 ---
@@ -344,7 +344,7 @@ Re-evaluated and kept, all of it:
 - E2E envelopes, signing, canonical byte encoding, replay/reattribution defenses
 - Channel keys wrapped per recipient; server holds no key that opens anything
 - Client-side vault; private keys never transmitted
-- TOFU contact pinning with explicit key-change acceptance — load-bearing for the
+- TOFU contact pinning with explicit key-change acceptance. load-bearing for the
   attacker-with-mailbox case above
 - No filename, MIME, or content hash on the server; random blob ids, no dedup
 - Sender-built link previews (recipients never fetch)
@@ -368,7 +368,7 @@ Considered and refused:
 - EmailJS or any client-side sender in an auth path
 
 GDPR consequences that follow: the email makes this personal data, so we need a
-deletion path, an export path, and DPAs with Stripe and the mail provider.
+deletion path, an export path and DPAs with Stripe and the mail provider.
 
 ---
 
@@ -376,17 +376,17 @@ deletion path, an export path, and DPAs with Stripe and the mail provider.
 
 Each stage ships independently and leaves the app working.
 
-1. **Config + crypto plumbing** — `EMAIL_MASTER_KEY`, `EMAIL_INDEX_PEPPER`,
+1. **Config + crypto plumbing**. `EMAIL_MASTER_KEY`, `EMAIL_INDEX_PEPPER`,
    `MAIL_API_KEY`, `MAIL_FROM`, boot-checked. Envelope encrypt/decrypt helpers.
    No user-visible change.
-2. **Recovery blob** — code generation at registration, blob upload, re-upload on
-   channel change. Ships *before* email: it's the part that makes recovery mean
-   something, and it's useful with no email at all.
-3. **Email** — optional field at registration, add/change/remove in Settings,
+2. **Recovery blob**. code generation at registration, blob upload, re-upload on
+   channel change. Ships _before_ email: it's the part that makes recovery mean
+   something and it's useful with no email at all.
+3. **Email**. optional field at registration, add/change/remove in Settings,
    verification tokens, masked display.
-4. **Reset flow** — reset tokens, constant-response lookup, forced recovery-code
+4. **Reset flow**. reset tokens, constant-response lookup, forced recovery-code
    step, vault rebuild.
-5. **Billing** — anonymous checkout, entitlement rows, redemption, webhooks,
+5. **Billing**. anonymous checkout, entitlement rows, redemption, webhooks,
    badge.
-6. **`username_hash` HMAC migration** — dual-read, rewrite on login. Independent
+6. **`username_hash` HMAC migration**. dual-read, rewrite on login. Independent
    of everything above.

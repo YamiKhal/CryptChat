@@ -2,36 +2,36 @@
 
 Monorepo: `backend/` (Express + ws + Postgres) and `frontend/` (Vite + React).
 
-| doc | what it covers |
-| --- | --- |
-| [DEPLOY.md](DEPLOY.md) | deployment |
-| [TESTING.md](TESTING.md) | how to run and add tests |
-| [IDENTITY.md](IDENTITY.md) | email, recovery, and billing — what we accepted, refused, and why |
-| [stripe.md](stripe.md) | Stripe setup, start to finish |
+| doc                        | what it covers                                                 |
+| -------------------------- | -------------------------------------------------------------- |
+| [DEPLOY.md](DEPLOY.md)     | deployment                                                     |
+| [TESTING.md](TESTING.md)   | how to run and add tests                                       |
+| [IDENTITY.md](IDENTITY.md) | email, recovery and billing. what we accepted, refused and why |
+| [stripe.md](stripe.md)     | Stripe setup, start to finish                                  |
 
 ## Tiers
 
-Premium is additive; nothing in the core product depends on it, and billing can
+Premium is additive; nothing in the core product depends on it and billing can
 be switched off entirely (leave `STRIPE_SECRET_KEY` blank and the routes 404).
 
-| | free | supporter |
-| --- | --- | --- |
-| File uploads | 20MB | 50MB |
-| Characters per message | 1,000 | 4,000 |
-| Uploads at all | needs a confirmed email | included |
+|                        | free                    | supporter |
+| ---------------------- | ----------------------- | --------- |
+| File uploads           | 20MB                    | 50MB      |
+| Characters per message | 1,000                   | 4,000     |
+| Uploads at all         | needs a confirmed email | included  |
 
 Uploading is gated on a confirmed email **or** a subscription. An open upload
 endpoint on anonymous accounts is a free, unattributable file host; a verified
 mailbox or a payment is the thread back to a person that makes abuse actionable.
 
-The character limit is a **product** limit, not a security boundary, and cannot
-be otherwise: the relay only sees ciphertext, so it caps *bytes* and the client
+The character limit is a **product** limit, not a security boundary and cannot
+be otherwise: the relay only sees ciphertext, so it caps _bytes_ and the client
 counts characters. A patched client can exceed it. The byte ceiling is the real
 resource guard.
 
 ## Local development
 
-One-time setup (installs root, backend, and frontend deps, and creates `.env`
+One-time setup (installs root, backend and frontend deps and creates `.env`
 files if missing):
 
 ```
@@ -41,7 +41,7 @@ cp frontend/.env.example frontend/.env   # only if frontend/.env doesn't exist
 ```
 
 Then set `JWT_SECRET` in `backend/.env`. The server **refuses to boot** without
-one that is at least 32 characters and is not the example placeholder — a weak
+one that is at least 32 characters and is not the example placeholder. a weak
 signing secret forges every session, so it fails loudly instead of running
 insecurely:
 
@@ -54,7 +54,7 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 
 Local development needs nothing else. The account-layer keys
 (`EMAIL_MASTER_KEY`, the index peppers) are derived from `JWT_SECRET` when
-unset, and with no `MAIL_API_KEY` the mailer prints verification and reset links
+unset and with no `MAIL_API_KEY` the mailer prints verification and reset links
 straight to the terminal instead of sending them.
 
 **Production requires all of them explicitly** and refuses to boot otherwise —
@@ -72,51 +72,53 @@ This starts Postgres (Docker), then runs the backend and frontend together with
 combined, colour-tagged logs. The backend applies `schema.sql` on boot, so there
 is no manual DB setup. `Ctrl+C` stops both.
 
-- Backend: http://localhost:3000  (auto-restarts on change via nodemon)
-- Frontend: http://localhost:5173  (hot-reloads via Vite)
+- Backend: http://localhost:3000 (auto-restarts on change via nodemon)
+- Frontend: http://localhost:5173 (hot-reloads via Vite)
 - Postgres: host port **5433** (chosen to avoid clashing with other local Postgres)
 
 ### Root scripts
 
-| Command                 | What it does                                        |
-|-------------------------|-----------------------------------------------------|
-| `npm run setup`         | Install deps for root + backend + frontend          |
-| `npm run dev`           | Start db + backend + frontend together              |
-| `npm run dev:backend`   | Backend only                                        |
-| `npm run dev:frontend`  | Frontend only                                       |
-| `npm run verify`        | Typecheck + every test + build. Run before pushing. |
-| `npm test`              | Frontend + backend suites                           |
-| `npm run test:unit`     | Fast, no server or database needed                  |
-| `npm run db:up`         | Start Postgres in the background                     |
-| `npm run db:down`       | Stop Postgres                                        |
-| `npm run db:reset`      | Wipe the DB volume and start fresh                  |
-| `npm run build`         | Production build of the frontend                    |
+| Command                | What it does                                        |
+| ---------------------- | --------------------------------------------------- |
+| `npm run setup`        | Install deps for root + backend + frontend          |
+| `npm run dev`          | Start db + backend + frontend together              |
+| `npm run dev:backend`  | Backend only                                        |
+| `npm run dev:frontend` | Frontend only                                       |
+| `npm run verify`       | Typecheck + every test + build. Run before pushing. |
+| `npm test`             | Frontend + backend suites                           |
+| `npm run test:unit`    | Fast, no server or database needed                  |
+| `npm run db:up`        | Start Postgres in the background                    |
+| `npm run db:down`      | Stop Postgres                                       |
+| `npm run db:reset`     | Wipe the DB volume and start fresh                  |
+| `npm run build`        | Production build of the frontend                    |
 
 **Restarting:** backend and frontend already auto-reload on file changes. To
 restart the whole stack, `Ctrl+C` then `npm run dev` again. To wipe the DB,
 `npm run db:reset`.
 
 ### Docker (backend + db only)
+
 ```
 docker compose up --build
 ```
+
 Runs Postgres + backend. Frontend is run separately (`npm run dev:frontend`).
 
 ## What the server knows
 
 Nothing about your messages. It stores an HMAC of your username, an Argon2id
-password verifier, two public keys, and ciphertext it cannot open. Display names
-and avatars are **not** server-side — they travel inside the end-to-end
+password verifier, two public keys and ciphertext it cannot open. Display names
+and avatars are **not** server-side. they travel inside the end-to-end
 encrypted envelope and are only ever sent to people who already hold the channel
 key.
 
 The relay does see metadata it cannot avoid seeing: which user IDs share a
-channel, when they send, and the **size** of messages and files. It also learns
+channel, when they send and the **size** of messages and files. It also learns
 any URL you explicitly ask it to preview (see [Link previews](#link-previews)).
 
-**One exception, and it is a real one:** if you add an optional email address,
-the server *can* read it. It is encrypted at rest and no API ever returns it —
-Settings shows only a mask like `ab•••••••@outlook.com` — but the mail path
+**One exception and it is a real one:** if you add an optional email address,
+the server _can_ read it. It is encrypted at rest and no API ever returns it —
+Settings shows only a mask like `ab•••••••@outlook.com`. but the mail path
 decrypts it, so the honest claim is "we never expose it", not "we cannot read
 it". An account without an address is fully functional; it just cannot have its
 password reset by mail. Nothing about email touches messages, channels, or keys.
@@ -144,7 +146,7 @@ so, rather than showing an empty channel that will never populate.
 ## Message authenticity
 
 Every member holds the same channel key, so decryption alone proves nothing
-about *who* wrote a message. Each envelope is signed with the sender's Ed25519
+about _who_ wrote a message. Each envelope is signed with the sender's Ed25519
 key over a length-prefixed canonical encoding that commits to `channelId` and
 `senderId`, so a message cannot be replayed into another channel or
 reattributed. Peer keys are pinned on first use; a key change is flagged in the
@@ -158,26 +160,26 @@ swapped keys in between.
 
 Both live **inside** the signed envelope, not alongside it. A reply carries the
 replier's snapshot of what they answered (id, author, a clipped excerpt) and a
-reaction is its own envelope naming its target — so a relay can neither repoint
+reaction is its own envelope naming its target. so a relay can neither repoint
 a reply at a different message nor move a reaction onto one. The `removed` flag
 on a reaction is signed too, which stops a replayed "add" from undoing someone's
 removal.
 
 The quoted excerpt is the **replier's** claim about the original, taken at reply
-time, and the UI renders it as such. That is deliberate: it has to survive the
-recipient never having received the original (joined late, cleared history), and
+time and the UI renders it as such. That is deliberate: it has to survive the
+recipient never having received the original (joined late, cleared history) and
 it puts the replier on the record for what they quoted.
 
-Envelopes are **v3**. v2 is still accepted for reading — messages already in a
-vault were signed under the v2 field list, and refusing them would silently
+Envelopes are **v3**. v2 is still accepted for reading. messages already in a
+vault were signed under the v2 field list and refusing them would silently
 destroy every existing transcript.
 
 ## File attachments
 
 Any file type, up to **50MB** for supporters and **20MB** on the free tier
 (see [Tiers](#tiers)). Files never travel in the message envelope —
-base64 would add 33%, and the relay duplicates each queued message *per
-recipient*. Instead:
+base64 would add 33% and the relay duplicates each queued message _per
+recipient_. Instead:
 
 1. The client mints a **random per-file key** (never the channel key) and
    encrypts with `crypto_secretstream_xchacha20poly1305` in 1MB chunks.
@@ -186,11 +188,11 @@ recipient*. Instead:
    count. Resumable via `GET /blob/:id/status`.
 3. The envelope carries only `{blobId, key, header, name, mime, size, hash}` —
    a few hundred bytes, well under the 256KB cap.
-4. Recipients stream it back and decrypt. `TAG_FINAL` catches truncation, and
+4. Recipients stream it back and decrypt. `TAG_FINAL` catches truncation and
    the signed `hash` and `size` are verified before the file is saved.
 
 The server stores ciphertext plus routing metadata. It never learns the
-filename, the type, or the contents — the `blobs` table has no column for them.
+filename, the type, or the contents. the `blobs` table has no column for them.
 Blob IDs are **random, not content hashes**: content-addressing would enable
 dedup, which hands the server a confirmation oracle for known files.
 
@@ -200,29 +202,29 @@ Chunking also keeps every HTTP body ~1MB, which sidesteps proxy body limits
 ### Images render inline; everything else downloads
 
 Images (`png`/`jpeg`/`gif`/`webp`/`avif`) display in the chat with no download
-button. **Animated GIFs play** — the *original* bytes are served, not the
+button. **Animated GIFs play**. the _original_ bytes are served, not the
 envelope thumbnail, which is canvas-flattened and would show only frame one.
 The thumbnail is used as an instant poster while the real file arrives.
 
 Loading is lazy (`IntersectionObserver`), cached with an LRU budget so scrolling
-doesn't refetch, and the cache is dropped on lock so decrypted images never
-outlive the key. Images above 12MB need a click — decoding is the risk, not
+doesn't refetch and the cache is dropped on lock so decrypted images never
+outlive the key. Images above 12MB need a click. decoding is the risk, not
 downloading: a 40MB PNG can declare 30000×30000 and expand to gigabytes.
 
 **The declared MIME is never trusted.** A file's type is chosen by the sender,
 so bytes are sniffed by magic number and only rendered if they really are a
-bitmap on the allowlist. **SVG is excluded and must stay excluded** — it's a
-document, not a bitmap, and a blob URL holding one executes script in this
+bitmap on the allowlist. **SVG is excluded and must stay excluded**. it's a
+document, not a bitmap and a blob URL holding one executes script in this
 origin. A file named `.png` containing HTML falls back to a download-only card.
 
 Non-images are download-only, forced to `application/octet-stream`, with
 filenames sanitized against bidi-override tricks (`invoice‮fdp.exe`).
 
-**Honest limits.** The server *cannot scan attachments for malware* — it holds
+**Honest limits.** The server _cannot scan attachments for malware_. it holds
 ciphertext. That's inherent to E2E. And unlike images (which are re-encoded
 through a canvas, stripping EXIF), **metadata inside a `.pdf`, `.docx`, `.zip`,
-or `.mp4` cannot be stripped** — author names, GPS, local paths ride along
-inside the format. Encryption hides that from the *relay*, not from the people
+or `.mp4` cannot be stripped**. author names, GPS, local paths ride along
+inside the format. Encryption hides that from the _relay_, not from the people
 in the channel.
 
 ## Link previews
@@ -230,15 +232,15 @@ in the channel.
 **Off by default.** Links render as plain clickable text and fetch nothing.
 
 - Prefix a link with `!` to preview that one: `!https://example.com`
-- Settings → *Always preview links* makes it the default for the first link.
+- Settings → _Always preview links_ makes it the default for the first link.
 
 The **sender** builds the preview: their client asks the relay to fetch the
 URL's Open Graph tags (CORS stops the browser doing it directly), re-encodes
-the thumbnail through the canvas path, and ships the result **inside the
+the thumbnail through the canvas path and ships the result **inside the
 encrypted envelope**. Recipients render it having made **zero network
 requests**.
 
-A link that *is* an image renders as the image. If the original is ≤150KB it is
+A link that _is_ an image renders as the image. If the original is ≤150KB it is
 embedded whole rather than canvas-thumbnailed, so a linked **GIF keeps its
 frames and animates**; larger ones fall back to a static thumbnail to stay under
 the 256KB envelope cap.
@@ -246,7 +248,7 @@ the 256KB envelope cap.
 That last part is the whole point. If recipients unfurled links themselves,
 posting a link to a server you control would harvest the IP address of everyone
 in the channel. Same reason YouTube is a thumbnail and a link, **not an
-iframe** — clicking is the user's own explicit choice to reveal themselves.
+iframe**. clicking is the user's own explicit choice to reveal themselves.
 
 **The cost, stated plainly:** generating a preview tells the relay which URL you
 sent. That's the one place the server learns message content, which is why it is
@@ -259,10 +261,10 @@ via a `lookup` hook (closing DNS rebinding), redirects followed manually and
 re-validated, plus size and time caps. Errors are generic so it can't be used as
 an internal port scanner.
 
-## Keys at rest, and moving devices
+## Keys at rest and moving devices
 
 Private keys and channel keys are encrypted at rest with a key derived from
-your password via Argon2id (`crypto_pwhash`), namespaced per account — two
+your password via Argon2id (`crypto_pwhash`), namespaced per account. two
 usernames in the same browser cannot read each other's vaults. The vault key is
 held in memory, with an optional tab-scoped `sessionStorage` copy so a reload
 does not re-prompt.
@@ -270,7 +272,7 @@ does not re-prompt.
 Because the server never has your private keys, logging in on a new device
 leaves it with **no keys**. That device shows an import prompt: export an
 encrypted key file (Settings → export keys) and import it there. Use a
-different passphrase for the file than your login password — the file leaves
+different passphrase for the file than your login password. the file leaves
 the device.
 
 ### Recovery
@@ -281,21 +283,21 @@ keys and channel keys, which is uploaded to the server sealed under that code.
 The server holding that blob is safe in a way that holding your vault would not
 be: the vault is sealed under a human-chosen password and would be an offline
 cracking target, while the recovery blob is sealed under 256 bits of CSPRNG
-output. There is no dictionary for that — it is ciphertext the server cannot
+output. There is no dictionary for that. it is ciphertext the server cannot
 attack, the same standard it already meets for every message it relays. The code
-itself is never transmitted, and no verifier for it is stored (a verifier would
+itself is never transmitted and no verifier for it is stored (a verifier would
 be an offline oracle to grind against).
 
 Recovery needs **both factors**, because each covers what the other cannot:
 
-| factor | what it does | what it cannot do |
-| --- | --- | --- |
-| email | proves you control the mailbox, so the server accepts a new password | decrypt anything |
-| recovery code | decrypts your keys and channels | log you in |
+| factor        | what it does                                                         | what it cannot do |
+| ------------- | -------------------------------------------------------------------- | ----------------- |
+| email         | proves you control the mailbox, so the server accepts a new password | decrypt anything  |
+| recovery code | decrypts your keys and channels                                      | log you in        |
 
 A password reset without the code gets you a working login into an account with
-**no channels and no history** — the app says so plainly rather than letting you
-discover it. Lose the code and forget the password, and the vault is gone; that
+**no channels and no history**. the app says so plainly rather than letting you
+discover it. Lose the code and forget the password and the vault is gone; that
 part has not changed.
 
 Full design, including what we refused to build and why:
@@ -303,5 +305,5 @@ Full design, including what we refused to build and why:
 
 > **Note:** the frontend depends on `libsodium-wrappers-sumo`, not
 > `libsodium-wrappers`. The standard build omits `crypto_pwhash` (Argon2id),
-> which the vault depends on, while `@types` declares it either way — so the
+> which the vault depends on, while `@types` declares it either way. so the
 > standard build typechecks and then fails at runtime.

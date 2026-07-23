@@ -180,7 +180,7 @@ export default function Auth() {
 
                         <p className="border-info-line bg-info-soft t-base text-info rounded-lg border p-3">
                             Password's right, but this device has none of your
-                            data — the server never held it. Restore your backup
+                            data. the server never held it. Restore your backup
                             file to continue.
                         </p>
 
@@ -319,7 +319,7 @@ export default function Auth() {
                                             <InfoTip
                                                 tip="It remains encrypted and hidden. Only used for password recovery. You can't send files without a verified email. Providing it is optional."
                                                 details="An email lets you reset a forgotten password. It is encrypted, never shown to
-                      anyone, and never displayed in full, not even to you. You can add or remove it
+                      anyone and never displayed in full, not even to you. You can add or remove it
                       later in Settings. Skipping it costs you the ability to send files in chats."
                                                 title="How we use your Email"
                                             />

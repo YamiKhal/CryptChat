@@ -7,7 +7,7 @@
  * no dependency on the backup feature -- it only announces that it changed.
  *
  * Deliberately NOT emitted by the low-level storage writes: a restore/import
- * writes sealed bytes too, and re-backing-up mid-restore would be pointless
+ * writes sealed bytes too and re-backing-up mid-restore would be pointless
  * churn. Only user-driven vault mutations emit.
  */
 
@@ -16,16 +16,16 @@ type Listener = (userId: string) => void;
 const listeners = new Set<Listener>();
 
 export function onVaultChange(listener: Listener): () => void {
-  listeners.add(listener);
-  return () => void listeners.delete(listener);
+    listeners.add(listener);
+    return () => void listeners.delete(listener);
 }
 
 export function emitVaultChange(userId: string): void {
-  for (const listener of listeners) {
-    try {
-      listener(userId);
-    } catch {
-      // A misbehaving subscriber must not break the write that triggered it.
+    for (const listener of listeners) {
+        try {
+            listener(userId);
+        } catch {
+            // A misbehaving subscriber must not break the write that triggered it.
+        }
     }
-  }
 }

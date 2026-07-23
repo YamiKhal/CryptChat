@@ -105,7 +105,7 @@ export default function Channels() {
 
             if (res.members.length === 0) {
                 setNotice(
-                    "Joined. You are the only member — no key to receive yet.",
+                    "Joined. You are the only member. no key to receive yet.",
                 );
             } else {
                 setNotice(

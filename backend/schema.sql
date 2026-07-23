@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS users (
 ALTER TABLE users ADD COLUMN IF NOT EXISTS sign_pubkey TEXT;
 
 -- Per-user salt for the client's Argon2id vault KDF. Public by design: a salt
--- is not a secret, and the client needs it before it can decrypt anything, so
+-- is not a secret and the client needs it before it can decrypt anything, so
 -- it must survive a fresh device install. The vault key itself is derived
 -- client-side and never sent.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS vault_salt TEXT;
@@ -142,11 +142,11 @@ CREATE TABLE IF NOT EXISTS login_attempts (
 -- and a badge it can grant. Read IDENTITY.md before extending any of it.
 --
 -- Note what is still absent, deliberately: there is no last_login_at, no
--- last_active_at, and no activity column of any kind. The server does not know
+-- last_active_at and no activity column of any kind. The server does not know
 -- when anyone was online and is not going to start.
 -- ===================================================================
 
--- Session generation. Bumped whenever the password changes, and carried in every
+-- Session generation. Bumped whenever the password changes and carried in every
 -- JWT as `epoch`.
 --
 -- Without this a password reset does not actually take the account back: tokens
@@ -158,7 +158,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS token_epoch INT NOT NULL DEFAULT 0;
 
 -- Optional email. Encrypted at rest under a server-held key (envelope: the DEK
 -- is per-row and wrapped by EMAIL_MASTER_KEY). The server *can* read this -- it
--- must, to send to it -- but does so only in the outbound mail path, and no API
+-- must, to send to it -- but does so only in the outbound mail path and no API
 -- returns anything but `email_mask`.
 --
 -- email_hash is an HMAC under EMAIL_INDEX_PEPPER, not a bare digest: emails are
@@ -213,7 +213,7 @@ CREATE TABLE IF NOT EXISTS recovery_blobs (
 -- Mailed single-use tokens: address confirmation and password reset.
 --
 -- Stored as sha256(token). The token is 256 bits of CSPRNG output, so a plain
--- digest is right here -- there is nothing to grind, and unlike a password it
+-- digest is right here -- there is nothing to grind and unlike a password it
 -- needs no KDF.
 CREATE TABLE IF NOT EXISTS email_tokens (
   token_hash TEXT PRIMARY KEY,
@@ -276,7 +276,7 @@ ALTER TABLE entitlements ADD COLUMN IF NOT EXISTS duration_months INT;
 ALTER TABLE entitlements ALTER COLUMN expires_at DROP NOT NULL;
 
 -- Unredeemed gift codes never expire. Prepaid value with an expiry date is
--- restricted or outright banned in much of the EU and US, and an unredeemed row
+-- restricted or outright banned in much of the EU and US and an unredeemed row
 -- grants nothing anyway -- the only cost of keeping it is one dead row.
 --
 -- status values:
@@ -330,7 +330,7 @@ CREATE INDEX IF NOT EXISTS webauthn_credentials_user_idx
   ON webauthn_credentials (user_id);
 
 -- Incognito channels (ROADMAP #7, premium). A display mode: members appear only
--- as stable per-channel colours, never names or avatars, and no profile is
+-- as stable per-channel colours, never names or avatars and no profile is
 -- broadcast into the channel. The flag itself is not sensitive -- the server
 -- already knows the membership it routes for -- so it lives here in plaintext.
 ALTER TABLE channels ADD COLUMN IF NOT EXISTS incognito BOOLEAN NOT NULL DEFAULT FALSE;
@@ -363,13 +363,13 @@ ALTER TABLE channels ADD COLUMN IF NOT EXISTS dm_key TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS channels_dm_key_idx
   ON channels (dm_key) WHERE dm_key IS NOT NULL;
 
--- One row = "blocker no longer wants blocked's DM messages, and blocked cannot
+-- One row = "blocker no longer wants blocked's DM messages and blocked cannot
 -- open a new DM with blocker". Pair-scoped, not channel-scoped, so it survives
 -- leaving and re-creating the DM. DM-scoped by design: it never touches a shared
 -- group channel (see the block-scope decision in the plan).
 --
 -- Enforced in two places: the relay skips queueing a message to a recipient who
--- blocked the sender (delivery stops), and POST /channel/dm refuses a blocked
+-- blocked the sender (delivery stops) and POST /channel/dm refuses a blocked
 -- initiator (no new DM).
 CREATE TABLE IF NOT EXISTS dm_blocks (
   blocker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

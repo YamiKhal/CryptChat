@@ -8,7 +8,7 @@ import { saveAccount, getAccount } from "@/lib/vault";
 /**
  * Password recovery, in the only shape that is honest.
  *
- * Two factors, and both are required, because each covers what the other cannot:
+ * Two factors and both are required, because each covers what the other cannot:
  *
  *   - the email proves you control the mailbox, which lets the server accept a
  *     new password;
@@ -16,7 +16,7 @@ import { saveAccount, getAccount } from "@/lib/vault";
  *     cannot help with.
  *
  * A reset without the code produces a working login into an account with no
- * channels and no history. That is not a recovery, and presenting it as one is
+ * channels and no history. That is not a recovery and presenting it as one is
  * how a user concludes the app ate their data. So the code step is part of this
  * flow rather than an optional extra afterwards.
  */
@@ -71,7 +71,7 @@ export default function Recover() {
             const existing = getAccount(res.userId);
             saveAccount({
                 userId: res.userId,
-                // `||`, not `??`: an absent local record leaves this blank, and a blank
+                // `||`, not `??`: an absent local record leaves this blank and a blank
                 // string is not nullish -- so `??` would save an empty username instead
                 // of falling through to the label.
                 username: existing?.username || "recovered",

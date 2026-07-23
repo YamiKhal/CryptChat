@@ -38,7 +38,9 @@ export default function AccountTab({
         let cancelled = false;
         api.getEmail(session.token)
             .then((res) => !cancelled && setEmail(res))
-            .catch(() => !cancelled && setEmail({ mask: null, verified: false }));
+            .catch(
+                () => !cancelled && setEmail({ mask: null, verified: false }),
+            );
         return () => {
             cancelled = true;
         };
@@ -72,7 +74,7 @@ export default function AccountTab({
 
     async function handleRemoveEmail() {
         setStatus(null);
-        // Losing the address means losing password reset entirely, and the recovery
+        // Losing the address means losing password reset entirely and the recovery
         // code alone cannot get you back in -- worth one confirmation.
         if (
             !confirm(
@@ -103,7 +105,7 @@ export default function AccountTab({
                 <SettingRow
                     title="Username"
                     control={
-                        <span className="t-base font-mono text-muted">
+                        <span className="t-base text-muted font-mono">
                             {account.username}
                         </span>
                     }
@@ -123,8 +125,8 @@ export default function AccountTab({
 
             <SettingsSection
                 title="Email"
-                info="Optional, encrypted, and only for password resets."
-                infoDetails="Shown partially on purpose — the full address is encrypted and the server only decrypts it to send you mail. Nobody can read it back out, including you. It exists so you can reset a forgotten password; it cannot decrypt your channels, and an account without one works exactly the same otherwise."
+                info="Optional, encrypted and only for password resets."
+                infoDetails="Shown partially on purpose. the full address is encrypted and the server only decrypts it to send you mail. Nobody can read it back out, including you. It exists so you can reset a forgotten password; it cannot decrypt your channels and an account without one works exactly the same otherwise."
             >
                 <SettingBlock>
                     {email === null ? (
@@ -154,7 +156,9 @@ export default function AccountTab({
                     {email?.pendingMask && (
                         <p className="border-info-line bg-info-soft t-base text-info rounded border p-3">
                             Waiting on confirmation for{" "}
-                            <span className="font-mono">{email.pendingMask}</span>
+                            <span className="font-mono">
+                                {email.pendingMask}
+                            </span>
                             . The link expires in 24 hours.
                         </p>
                     )}

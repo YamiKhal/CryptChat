@@ -25,10 +25,7 @@ export function NewChannelModal({
     const [code, setCode] = useState("");
 
     return (
-        <div
-            className="modal-backdrop"
-            onClick={onClose}
-        >
+        <div className="modal-backdrop" onClick={onClose}>
             <div
                 className="modal-panel max-w-xs space-y-3"
                 onClick={(e) => e.stopPropagation()}
@@ -101,7 +98,7 @@ export function NewChannelModal({
                                 <span className="t-small">
                                     Incognito
                                     <span className="text-muted mt-0.5 block">
-                                        Members show as colours — no names, no
+                                        Members show as colours. no names, no
                                         avatars. Hides who's who in the UI, not
                                         from the server.
                                     </span>

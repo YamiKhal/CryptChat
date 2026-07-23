@@ -9,10 +9,7 @@ import {
 } from "@/lib/binary";
 import { Vault, AccountDescriptor } from "@/lib/vault";
 import Avatar from "@/components/ui/Avatar";
-import {
-    SettingsSection,
-    SettingRow,
-} from "@/components/settings/SettingsUI";
+import { SettingsSection, SettingRow } from "@/components/settings/SettingsUI";
 import { SetStatus } from "@/pages/settings/types";
 
 export default function ProfileTab({
@@ -109,8 +106,8 @@ export default function ProfileTab({
         <div className="space-y-8">
             <SettingsSection
                 title="Profile"
-                info="Only channel members see this — never the server."
-                infoDetails="Your name, picture, bio, and banner are encrypted and signed, then sent only to members of channels you are in. The server stores none of it — it only ever holds a hash of your username."
+                info="Only channel members see this. never the server."
+                infoDetails="Your name, picture, bio and banner are encrypted and signed, then sent only to members of channels you are in. The server stores none of it. it only ever holds a hash of your username."
             >
                 <SettingRow
                     title="Picture"
