@@ -104,21 +104,33 @@ const HEADING_CLASS: Record<1 | 2 | 3, string> = {
 /**
  * Render a message body with formatting (**bold**, __italic__, ~~strike~~,
  * ||spoiler||, and `#` headings) plus clickable links.
+ *
+ * `trailing` is inline chrome (edited marker, lock/burn icons) flowed onto the
+ * end of the LAST line rather than dropped onto a new one, so short appendages
+ * ride alongside the text and wrap with it.
  */
-export function Body({ text }: { text: string }) {
+export function Body({ text, trailing }: { text: string; trailing?: ReactNode }) {
+  const blocks = toBlocks(text);
   return (
     <div className="wrap-break-word">
-      {toBlocks(text).map((block, i) =>
-        block.type === "heading" ? (
-          <p key={i} className={`${HEADING_CLASS[block.level]} mt-1 first:mt-0`}>
+      {blocks.map((block, i) => {
+        const last = i === blocks.length - 1;
+        const content = (
+          <>
             {renderInline(block.children)}
+            {last && trailing}
+          </>
+        );
+        return block.type === "heading" ? (
+          <p key={i} className={`${HEADING_CLASS[block.level]} mt-1 first:mt-0`}>
+            {content}
           </p>
         ) : (
           <p key={i} className="whitespace-pre-wrap">
-            {renderInline(block.children)}
+            {content}
           </p>
-        ),
-      )}
+        );
+      })}
     </div>
   );
 }

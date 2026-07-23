@@ -188,13 +188,16 @@
   --bubble-other-border: transparent;
 }
 
-/* With the bubble invisible, its vertical padding is just dead space that pushes
-   consecutive lines apart. Collapse top/bottom padding to 0 so lines sit at their
-   natural rhythm; horizontal padding stays, keeping text aligned with the bubbled
-   view. Attribute-descendant selector outranks the utility py-* at any breakpoint. */
+/* With the bubble invisible, its padding is just dead space. Collapse top/bottom
+   to 0 so lines sit at their natural rhythm, and pull the horizontal padding down
+   to match the name header's px-1 so the message text lines up directly under the
+   name instead of sitting indented where the bubble fill used to be. Attribute-
+   descendant selector outranks the utility p-* at any breakpoint. */
 [data-chat-bubbles="hidden"] [data-bubble] {
   padding-top: 0;
   padding-bottom: 0;
+  padding-left: 0.25rem;
+  padding-right: 0.25rem;
 }
 
 /* A grouped row's avatar slot is an empty spacer that still reserves the avatar
