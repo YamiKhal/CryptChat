@@ -112,6 +112,43 @@
     transform: translateY(-6px);
 }
 
+/* ---- feature card network: lines + card borders flash green on hover ---- */
+.mk-link {
+    stroke: var(--color-border);
+    stroke-width: 1.5;
+    transition: stroke 200ms ease;
+}
+.mk-link.is-lit {
+    stroke: var(--color-primary);
+    animation: mk-flash 700ms ease;
+}
+.mk-node:hover {
+    border-color: var(--color-primary);
+    animation: mk-node-flash 700ms ease;
+}
+@keyframes mk-flash {
+    0% {
+        stroke: var(--color-border);
+    }
+    45% {
+        stroke: var(--color-primary-strong);
+    }
+    100% {
+        stroke: var(--color-primary);
+    }
+}
+@keyframes mk-node-flash {
+    0% {
+        box-shadow: 0 0 0 0 transparent;
+    }
+    45% {
+        box-shadow: 0 0 0 1px var(--color-primary);
+    }
+    100% {
+        box-shadow: 0 0 0 0 transparent;
+    }
+}
+
 /* ---- accessibility: motion off means off -------------------------------- */
 @media (prefers-reduced-motion: reduce) {
     [data-reveal] {
@@ -122,7 +159,9 @@
     .mk-float,
     .mk-float-alt,
     .mk-marquee-track,
-    .mk-caret {
+    .mk-caret,
+    .mk-link.is-lit,
+    .mk-node:hover {
         animation: none;
     }
     .mk-lift,

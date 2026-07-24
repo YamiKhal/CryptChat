@@ -13,7 +13,7 @@ export type IconName =
 /** The three-word identity shown in the hero and the browser tab. */
 export const BRAND = "CryptChat";
 export const TAGLINE = "end-to-end encrypted chat";
-export const HERO_LINE = "Your own chats, stored on your device.";
+export const HERO_LINE = "Encrypted chats, locally";
 export const HERO_SUB =
     "Chats encrypted on your device, sealed in a vault only your password opens. No plaintext ever leaves. No server ever reads it.";
 

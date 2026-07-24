@@ -1,13 +1,16 @@
+import { useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, Flame, KeyRound, Lock, Phone } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import MarketingLayout from "./components/MarketingLayout";
 import { Icon } from "./components/icons";
+import { Circuit, HERO_CIRCUIT } from "./components/CircuitWeb";
 import { BurnMockup, ChatMockup, TerminalCard } from "./components/visuals";
-import { FEATURES, HERO_SUB, MARQUEE } from "./content";
+import { FEATURES, HERO_LINE, HERO_SUB } from "./content";
 
 /**
- * The product's front door, discord.com-style: a huge centred hero over a live
- * typing terminal with floating feature tiles, a looping claim ticker, a
+ * The product's front door, discord.com-style: a split hero with the copy and
+ * CTAs on the left and a live typing terminal on the right, riding a tilted
+ * semi-transparent "cyber net" that connects the feature icons. Below it a
  * staggered feature grid, two alternating deep-dive rows with UI mockups and
  * a bold closing band. Motion comes from marketing.css ([data-reveal], .mk-*)
  * and respects prefers-reduced-motion. Solid token fills only.
@@ -16,7 +19,6 @@ export default function Landing() {
     return (
         <MarketingLayout>
             <Hero />
-            <Ticker />
             <FeatureGrid />
             <DeepDives />
             <ClosingBand />
@@ -28,115 +30,140 @@ export default function Landing() {
 
 function Hero() {
     return (
-        <section className="relative overflow-hidden pb-5">
-            <div className="mx-auto max-w-4xl px-4 pt-20 pb-14 text-center sm:px-6 lg:pt-28">
-                {/* Terminal + floating tiles. Tiles are decorative, hidden on small
-                screens, bobbing on independent phases. */}
-                <div className="relative mx-auto max-w-2xl px-4 sm:px-6">
+        <section className="relative">
+            <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 pt-20 pb-16 sm:px-6 lg:grid-cols-2 lg:gap-16 lg:pt-28">
+                {/* left: copy + CTAs (kept above the circuit at all sizes) */}
+                <div className="relative z-10 text-center lg:text-left">
+                    <h1 data-reveal className="t-display text-foreground">
+                        {HERO_LINE}
+                    </h1>
+                    <p
+                        data-reveal
+                        style={
+                            { "--reveal-delay": "160ms" } as React.CSSProperties
+                        }
+                        className="t-lead text-muted mx-auto mt-6 max-w-xl lg:mx-0"
+                    >
+                        {HERO_SUB}
+                    </p>
+                    <div
+                        data-reveal
+                        style={
+                            { "--reveal-delay": "240ms" } as React.CSSProperties
+                        }
+                        className="mt-8 flex flex-wrap items-center justify-center gap-3 lg:justify-start"
+                    >
+                        <Link to="/login" className="btn-primary btn-hero">
+                            Launch App
+                            <ArrowRight size={18} aria-hidden="true" />
+                        </Link>
+                        <Link to="/showcase" className="btn-ghost btn-hero">
+                            See how it works
+                        </Link>
+                    </div>
+                </div>
+
+                {/* right: terminal over the tilted cyber net */}
+                <div className="relative">
+                    {/* Net sits absolute behind the terminal, oversized so its
+                    strands reach the icons and bleed past the panel. Tilted and
+                    faded so it reads as texture, never straight-on. */}
+                    <div
+                        className="pointer-events-none absolute top-1/2 left-1/2 z-0"
+                        style={{
+                            transform:
+                                "translate(-50%, -50%) perspective(1000px) rotateY(-24deg) rotateX(9deg)",
+                            opacity: 0.3,
+                        }}
+                    >
+                        <Circuit preset={HERO_CIRCUIT} className="text-primary" />
+                    </div>
                     <div
                         data-reveal
                         style={
                             { "--reveal-delay": "320ms" } as React.CSSProperties
                         }
+                        className="relative z-10"
                     >
                         <TerminalCard />
                     </div>
-                    <FloatTile className="mk-float -top-6 -left-24 hidden lg:grid">
-                        <Lock
-                            size={22}
-                            className="text-secondary"
-                            aria-hidden="true"
-                        />
-                    </FloatTile>
-                    <FloatTile className="mk-float-alt top-24 -right-28 hidden lg:grid">
-                        <Flame
-                            size={22}
-                            className="text-warn"
-                            aria-hidden="true"
-                        />
-                    </FloatTile>
-                    <FloatTile className="mk-float -right-16 -bottom-2 hidden xl:grid">
-                        <KeyRound
-                            size={22}
-                            className="text-primary"
-                            aria-hidden="true"
-                        />
-                    </FloatTile>
-                    <FloatTile className="mk-float-alt bottom-24 -left-32 hidden xl:grid">
-                        <Phone
-                            size={22}
-                            className="text-info"
-                            aria-hidden="true"
-                        />
-                    </FloatTile>
-                </div>
-                <p
-                    data-reveal
-                    style={{ "--reveal-delay": "160ms" } as React.CSSProperties}
-                    className="t-lead text-muted mx-auto mt-6 max-w-xl"
-                >
-                    {HERO_SUB}
-                </p>
-                <div
-                    data-reveal
-                    style={{ "--reveal-delay": "240ms" } as React.CSSProperties}
-                    className="mt-8 flex flex-wrap items-center justify-center gap-3"
-                >
-                    <Link to="/login" className="btn-primary btn-hero">
-                        Launch App
-                        <ArrowRight size={18} aria-hidden="true" />
-                    </Link>
-                    <Link to="/showcase" className="btn-ghost btn-hero">
-                        See how it works
-                    </Link>
                 </div>
             </div>
         </section>
     );
 }
 
-function FloatTile({
-    className,
-    children,
-}: {
-    className: string;
-    children: React.ReactNode;
-}) {
-    return (
-        <div
-            className={`border-border bg-surface absolute size-14 place-items-center rounded-2xl border shadow-lg ${className}`}
-            aria-hidden="true"
-        >
-            {children}
-        </div>
-    );
-}
-
-/* ---- ticker ------------------------------------------------------------- */
-
-function Ticker() {
-    // Track holds the list twice; the loop translates -50% for a seamless wrap.
-    const row = [...MARQUEE, ...MARQUEE];
-    return (
-        <div className="mk-marquee border-primary bg-bg mt-5 border-t border-b py-3">
-            <div className="mk-marquee-track">
-                {row.map((t, i) => (
-                    <span
-                        key={i}
-                        className="text-primary flex items-center gap-8 pr-8 text-xl font-semibold tracking-wide whitespace-nowrap uppercase"
-                    >
-                        {t}
-                        <span aria-hidden="true">|</span>
-                    </span>
-                ))}
-            </div>
-        </div>
-    );
-}
-
 /* ---- feature grid ------------------------------------------------------- */
 
 function FeatureGrid() {
+    // Card centers, measured from the DOM so connections follow whatever the
+    // responsive grid lays out (1 / 2 / 3 columns). Cards link to their grid
+    // neighbours (same row across, same column down); hovering a card lights
+    // its segments and border green so the connection reads.
+    const gridRef = useRef<HTMLDivElement>(null);
+    const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
+    const [segs, setSegs] = useState<
+        { a: number; b: number; x1: number; y1: number; x2: number; y2: number }[]
+    >([]);
+    const [active, setActive] = useState<number | null>(null);
+
+    useLayoutEffect(() => {
+        const compute = () => {
+            const grid = gridRef.current;
+            if (!grid) return;
+            // offset* is the laid-out position relative to the positioned grid,
+            // ignoring the data-reveal transform (rect would include it).
+            const centers = cardRefs.current.map((el, i) => ({
+                i,
+                x: el!.offsetLeft + el!.offsetWidth / 2,
+                y: el!.offsetTop + el!.offsetHeight / 2,
+            }));
+            // Cluster into rows/cols by rounding position to a tolerance, then
+            // connect each card to the next one in its row and in its column.
+            const TOL = 12;
+            const key = (v: number) => Math.round(v / TOL);
+            const list: typeof segs = [];
+            const link = (a: number, b: number) =>
+                list.push({
+                    a,
+                    b,
+                    x1: centers[a].x,
+                    y1: centers[a].y,
+                    x2: centers[b].x,
+                    y2: centers[b].y,
+                });
+            // rows: same y, connect consecutive by x
+            const rows = new Map<number, number[]>();
+            centers.forEach((c) => {
+                const k = key(c.y);
+                (rows.get(k) ?? rows.set(k, []).get(k)!).push(c.i);
+            });
+            rows.forEach((ids) => {
+                ids.sort((a, b) => centers[a].x - centers[b].x);
+                for (let n = 0; n < ids.length - 1; n++) link(ids[n], ids[n + 1]);
+            });
+            // cols: same x, connect consecutive by y
+            const cols = new Map<number, number[]>();
+            centers.forEach((c) => {
+                const k = key(c.x);
+                (cols.get(k) ?? cols.set(k, []).get(k)!).push(c.i);
+            });
+            cols.forEach((ids) => {
+                ids.sort((a, b) => centers[a].y - centers[b].y);
+                for (let n = 0; n < ids.length - 1; n++) link(ids[n], ids[n + 1]);
+            });
+            setSegs(list);
+        };
+        compute();
+        const ro = new ResizeObserver(compute);
+        if (gridRef.current) ro.observe(gridRef.current);
+        window.addEventListener("resize", compute);
+        return () => {
+            ro.disconnect();
+            window.removeEventListener("resize", compute);
+        };
+    }, []);
+
     return (
         <section className="mx-auto max-w-6xl px-4 py-20 sm:px-6 lg:py-28">
             <h2 data-reveal className="t-display-2 text-foreground">
@@ -150,27 +177,55 @@ function FeatureGrid() {
                 Every feature was built around a single idea... who can see and
                 stores what.
             </p>
-            <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                {FEATURES.map((f, i) => (
-                    <div
-                        key={f.title}
-                        data-reveal
-                        style={
-                            {
-                                "--reveal-delay": `${(i % 3) * 90}ms`,
-                            } as React.CSSProperties
-                        }
-                        className="mk-lift group border-border bg-surface relative space-y-3 overflow-hidden rounded-2xl border p-6"
-                    >
-                        <div className="text-muted/10 group-hover:text-primary/30 pointer-events-none absolute -top-2 right-2 mt-5 transition-colors">
-                            <Icon name={f.icon} size={96} />
+            <div ref={gridRef} className="relative mt-12">
+                {/* connection lines behind the cards. cards are opaque so the
+                lines only show through the gaps between them. */}
+                <svg className="pointer-events-none absolute inset-0 h-full w-full">
+                    {segs.map((s, k) => (
+                        <line
+                            key={k}
+                            x1={s.x1}
+                            y1={s.y1}
+                            x2={s.x2}
+                            y2={s.y2}
+                            className={`mk-link ${
+                                active !== null &&
+                                (s.a === active || s.b === active)
+                                    ? "is-lit"
+                                    : ""
+                            }`}
+                        />
+                    ))}
+                </svg>
+                <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                    {FEATURES.map((f, i) => (
+                        <div
+                            key={f.title}
+                            ref={(el) => {
+                                cardRefs.current[i] = el;
+                            }}
+                            data-reveal
+                            onMouseEnter={() => setActive(i)}
+                            onMouseLeave={() => setActive(null)}
+                            style={
+                                {
+                                    "--reveal-delay": `${(i % 3) * 90}ms`,
+                                } as React.CSSProperties
+                            }
+                            className="mk-lift mk-node group border-border bg-surface relative space-y-3 overflow-hidden rounded-2xl border p-6"
+                        >
+                            <div className="text-muted/10 group-hover:text-primary/30 pointer-events-none absolute -top-2 right-2 mt-5 transition-colors">
+                                <Icon name={f.icon} size={96} />
+                            </div>
+                            <h3 className="t-h2 text-foreground relative pt-10 font-bold">
+                                {f.title}
+                            </h3>
+                            <p className="t-base text-muted relative">
+                                {f.body}
+                            </p>
                         </div>
-                        <h3 className="t-h2 text-foreground relative pt-10 font-bold">
-                            {f.title}
-                        </h3>
-                        <p className="t-base text-muted relative">{f.body}</p>
-                    </div>
-                ))}
+                    ))}
+                </div>
             </div>
         </section>
     );
