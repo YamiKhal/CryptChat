@@ -24,7 +24,7 @@ import { useChannelList } from "@/pages/channels/useChannelList";
 
 export default function Channels() {
     const { vault, token, account } = useSession();
-    const { revision } = useRelayContext();
+    const { revision, membershipRevision } = useRelayContext();
     const navigate = useNavigate();
     const { channelId: activeChannelId } = useParams<{ channelId: string }>();
 
@@ -45,6 +45,7 @@ export default function Channels() {
         vault,
         token,
         revision,
+        membershipRevision,
     );
 
     async function handleCreate(name: string, incognito: boolean) {

@@ -12,6 +12,7 @@ export function useChannelList(
     vault: Vault | null,
     token: string | null,
     revision: number,
+    membershipRevision: number,
 ) {
     const [channels, setChannels] = useState<StoredChannel[]>([]);
     const [unread, setUnread] = useState<Record<string, number>>({});
@@ -54,7 +55,14 @@ export function useChannelList(
         };
     }, [vault, revision]);
 
-    // Reconcile local channels against server membership
+    // Reconcile local channels against server membership.
+    //
+    // Keyed on membershipRevision, NOT the general revision: this fires a
+    // rate-limited GET /channel/list, and running it on every revision bump (i.e.
+    // behind every received message and profile re-announce) is what drove clients
+    // into the 120/min apiLimiter -- the next DM or accept then failed with 429.
+    // membershipRevision only advances on a DM request or a reconnect, which are
+    // the only events that change what the server lists for us.
     useEffect(() => {
         if (!vault || !token) return;
         let cancelled = false;
@@ -111,7 +119,7 @@ export function useChannelList(
         return () => {
             cancelled = true;
         };
-    }, [vault, token, reload, revision]);
+    }, [vault, token, reload, membershipRevision]);
 
     return { channels, unread, premium, reload };
 }

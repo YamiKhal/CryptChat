@@ -35,6 +35,7 @@ export function useRelay({
     userId,
     onMessage,
     onChannelKey,
+    onMembership,
     onKeyChangeWarning,
     onTyping,
     onPresence,
@@ -47,6 +48,7 @@ export function useRelay({
     const handlers = useRef<RelayHandlers>({
         onMessage,
         onChannelKey,
+        onMembership,
         onKeyChangeWarning,
         onTyping,
         onPresence,
@@ -55,6 +57,7 @@ export function useRelay({
     handlers.current = {
         onMessage,
         onChannelKey,
+        onMembership,
         onKeyChangeWarning,
         onTyping,
         onPresence,
@@ -108,6 +111,12 @@ export function useRelay({
             ws.onopen = () => {
                 retry = 0;
                 setConnected(true);
+
+                // Reconcile membership on every (re)connect: a DM request or accept
+                // that happened while we were offline is not delivered as a live
+                // frame, so without this a reconnect would miss it until the next
+                // one arrived.
+                handlers.current.onMembership?.();
 
                 // Ask for keys for any channel we are a member of but cannot read --
                 // new device, cleared storage, or a join whose offer never arrived
@@ -231,10 +240,11 @@ export function useRelay({
                         }
                         case "dm-request":
                             // A DM invitation just gained its first message. Nothing is
-                            // delivered yet -- just nudge the UI to refetch /channel/list so the
-                            // request appears. onChannelKey bumps the relay revision, which is
-                            // what the channel list reloads on.
-                            handlers.current.onChannelKey?.(data.channelId);
+                            // delivered yet -- refetch /channel/list so the request appears.
+                            // This is a membership change, so it goes through onMembership
+                            // (which the reconcile listens to) rather than onChannelKey --
+                            // the reconcile must not run on ordinary message frames.
+                            handlers.current.onMembership?.();
                             break;
                         default:
                             break;

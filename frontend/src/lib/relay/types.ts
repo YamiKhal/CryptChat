@@ -10,6 +10,13 @@ export const MAX_PARKED = 200;
 export interface RelayHandlers {
     onMessage?: (message: StoredMessage) => void;
     onChannelKey?: (channelId: string) => void;
+    /**
+     * Server membership may have changed: a DM request arrived, or we just
+     * reconnected. Distinct from onChannelKey on purpose -- it drives the
+     * `/channel/list` reconcile, and firing that on every message (which
+     * onChannelKey does) is what put a rate-limited GET behind every relay frame.
+     */
+    onMembership?: () => void;
     onKeyChangeWarning?: (userId: string) => void;
     /** Ephemeral "someone is typing". never stored, never in the transcript. `stop` retracts it. */
     onTyping?: (event: {

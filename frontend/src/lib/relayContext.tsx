@@ -55,6 +55,12 @@ type RelayValue = ReturnType<typeof useRelay> & {
      * reflects when the revision changes.
      */
     bumpRevision: () => void;
+    /**
+     * Bumped only when server-side membership can have changed (a DM request, a
+     * reconnect), never on ordinary messages. The channel list's network
+     * reconcile keys on this so it is not refetched behind every relay frame.
+     */
+    membershipRevision: number;
     lastMessage: StoredMessage | null;
     keyChangeWarnings: string[];
     /** senderIds currently shown as typing in a channel. Ephemeral. */
@@ -81,10 +87,18 @@ const RelayContext = createContext<RelayValue | null>(null);
 export function RelayProvider({ children }: { children: ReactNode }) {
     const { vault, token, account } = useSession();
     const [revision, setRevision] = useState(0);
+    const [membershipRevision, setMembershipRevision] = useState(0);
     const [lastMessage, setLastMessage] = useState<StoredMessage | null>(null);
     const [keyChangeWarnings, setKeyChangeWarnings] = useState<string[]>([]);
 
     const bump = useCallback(() => setRevision((n) => n + 1), []);
+    // Membership changes are also vault changes, so bump both: the list must
+    // re-read locally (revision) and re-reconcile against the server
+    // (membershipRevision). The narrow one never fires on message traffic.
+    const bumpMembership = useCallback(() => {
+        setMembershipRevision((n) => n + 1);
+        setRevision((n) => n + 1);
+    }, []);
 
     // Keep the sound engine's settings in step with this device's preferences, so
     // a cue plays (or stays silent) per the audio tab without threading settings
@@ -268,6 +282,7 @@ export function RelayProvider({ children }: { children: ReactNode }) {
         userId: account?.userId ?? null,
         onMessage,
         onChannelKey: bump,
+        onMembership: bumpMembership,
         onKeyChangeWarning,
         onTyping,
         onPresence,
@@ -292,6 +307,7 @@ export function RelayProvider({ children }: { children: ReactNode }) {
                 ...relay,
                 revision,
                 bumpRevision: bump,
+                membershipRevision,
                 lastMessage,
                 keyChangeWarnings,
                 typingIn,
