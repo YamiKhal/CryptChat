@@ -113,23 +113,32 @@ export function useChannelMessages({
     // transcript grows. Clears the unread badge on the channel list. markChannelRead
     // never moves the marker backwards, so this only ever writes when there is
     // genuinely newer material.
+    //
+    // Mark up to the newest message's relay stamp, not "now": a device whose clock
+    // runs behind the relay would otherwise write a marker older than the messages
+    // it just showed and leave them unread.
+    const newest = messages.length
+        ? messages[messages.length - 1].createdAt
+        : undefined;
     useEffect(() => {
-        if (!vault || !channelId) return;
-        // Mark up to the newest message we are showing, not to "now". Messages are
-        // stamped by the relay while this device's clock is its own; a device
-        // running behind the relay writes a marker older than the messages it just
-        // displayed and they stay unread. Falls back to now for an empty channel.
-        const newest = messages[messages.length - 1]?.createdAt;
-        // Bump the shared revision when the marker actually advances, so the channel
-        // list recomputes its unread badge now rather than waiting for the next
-        // unrelated relay event (which left the badge stuck at 1-2).
+        if (!vault || !channelId || !newest) return;
+        // Empty channel -> nothing to mark. Marking "now" here was a feedback loop:
+        // the marker always advanced, which bumped the revision, which reloaded the
+        // (still empty) transcript, which re-ran this effect -- flickering the empty
+        // state between "decrypting" and "no messages" forever.
+        //
+        // Depend on the stamp string, not the messages array: an equal reload
+        // produces the same string, so it does not retrigger; only a genuinely
+        // newer message does. Bump the shared revision when the marker advances so
+        // the channel list recomputes its unread badge now rather than on the next
+        // unrelated relay event.
         vault
             .markChannelRead(channelId, newest)
             .then((advanced) => {
                 if (advanced) bumpRevision();
             })
             .catch(() => {});
-    }, [vault, channelId, messages, bumpRevision]);
+    }, [vault, channelId, newest, bumpRevision]);
 
     // Burn-after-read sweep. While the channel is open, start the clock on any
     // burn message on screen and remove ones whose time is up. Running only while
