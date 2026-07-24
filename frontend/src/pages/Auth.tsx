@@ -1,7 +1,9 @@
 import { useState, FormEvent, useRef, ChangeEvent } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { ShieldCheck } from "lucide-react";
 import { useSession } from "@/lib/session";
 import { readBackupFile } from "@/lib/backup/exportImport";
+import { Circuit, AUTH_CIRCUIT } from "@/pages/marketing/components/CircuitWeb";
 import Avatar from "@/components/ui/Avatar";
 import { InfoTip } from "@/components/ui/InfoTip";
 
@@ -25,6 +27,29 @@ export default function Auth() {
 
     const locked = session.status === "locked" && session.account !== null;
     const needsImport = session.needsImport;
+
+    // Heading + subtitle adapt to whichever screen is showing.
+    const { heading, sub } = recoveryPhrase
+        ? {
+              heading: "Save your recovery code",
+              sub: "Twenty-four words. your only way back in.",
+          }
+        : needsImport
+          ? {
+                heading: "Restore your vault",
+                sub: "This device has none of your data yet.",
+            }
+          : locked
+            ? { heading: "Welcome back", sub: "Unlock your encrypted vault." }
+            : mode === "register"
+              ? {
+                    heading: "Create your identity",
+                    sub: "Your keys are generated on this device.",
+                }
+              : {
+                    heading: "Welcome back",
+                    sub: "Log in to your encrypted vault.",
+                };
 
     async function handleRestoreFile(e: ChangeEvent<HTMLInputElement>) {
         const file = e.target.files?.[0];
@@ -90,19 +115,23 @@ export default function Auth() {
     }
 
     return (
-        <div className="grid min-h-screen place-items-center p-4">
-            <div className="w-full max-w-sm space-y-4">
-                <header className="space-y-1 text-center">
-                    <h1 className="t-h1 text-primary font-bold tracking-tight">
-                        CryptChat
-                    </h1>
-                    <p className="t-base text-muted">
-                        end-to-end encrypted chat
-                    </p>
-                </header>
+        <div className="grid min-h-screen place-items-center overflow-clip bg-bg p-4">
+            <div className="border-border relative grid w-full max-w-md overflow-visible rounded-2xl border shadow-2xl lg:max-w-4xl lg:grid-cols-2">
+                {/* left: the form / state screens */}
+                <div className="bg-surface relative z-10 flex flex-col justify-center rounded-2xl p-6 sm:p-8 lg:rounded-r-none">
+                    <div className="mx-auto w-full max-w-sm space-y-5">
+                        <header className="space-y-1">
+                            <p className="t-base text-primary font-semibold lg:hidden">
+                                CryptChat
+                            </p>
+                            <h1 className="t-h2 text-foreground font-bold tracking-tight">
+                                {heading}
+                            </h1>
+                            <p className="t-base text-muted">{sub}</p>
+                        </header>
 
-                {recoveryPhrase ? (
-                    <div className="card space-y-4">
+                        {recoveryPhrase ? (
+                    <div className="space-y-4">
                         <h2 className="t-h4 text-muted font-semibold tracking-wider uppercase">
                             Your recovery code
                         </h2>
@@ -162,7 +191,7 @@ export default function Auth() {
                         </button>
                     </div>
                 ) : needsImport ? (
-                    <div className="card space-y-4">
+                    <div className="space-y-4">
                         <div className="flex items-center gap-3">
                             <Avatar
                                 name={session.account!.username}
@@ -215,7 +244,7 @@ export default function Auth() {
                         </button>
                     </div>
                 ) : (
-                    <form onSubmit={handleSubmit} className="card space-y-4">
+                    <form onSubmit={handleSubmit} className="space-y-4">
                         {locked ? (
                             <div className="space-y-3">
                                 <div className="flex items-center gap-3">
@@ -445,6 +474,33 @@ export default function Auth() {
                         </button>
                     </div>
                 )}
+                    </div>
+                </div>
+
+                {/* right: brand + circuit web bleeding past the panel */}
+                <AuthAside className="hidden lg:block" />
+            </div>
+        </div>
+    );
+}
+
+/* ---- brand aside -------------------------------------------------------- */
+
+function AuthAside({ className = "" }: { className?: string }) {
+    return (
+        <div className={`bg-surface relative rounded-r-2xl ${className}`}>
+            {/* circuit traces attach to the shield and bleed past the panel */}
+            <div className="pointer-events-none absolute inset-0 flex animate-pulse items-center justify-center motion-reduce:animate-none">
+                <Circuit preset={AUTH_CIRCUIT} className="text-primary-line" />
+            </div>
+
+            {/* oversized bare shield, no badge / border / text */}
+            <div className="relative z-10 grid h-full place-items-center p-8">
+                <ShieldCheck
+                    strokeWidth={1.25}
+                    aria-hidden="true"
+                    className="text-primary h-auto w-3/5 max-w-72"
+                />
             </div>
         </div>
     );
